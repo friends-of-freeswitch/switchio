@@ -1,10 +1,6 @@
-# vim:ts=4:sw=4:softtabstop=4:smarttab:expandtab
-#
-# Copyright (C) 2013  Sangoma Technologies Corp.
-# All Rights Reserved.
-#
-# Author(s)
-# Tyler Goodlet <tgoodlet@sangoma.com>
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
 Proxies for shared freeswitch objects
 """
@@ -196,7 +192,7 @@ class CustomSyncMng(managers.SyncManager):
             except AttributeError:
                 proxytype = make_inst_proxy(cls)
                 get_logger().debug("no proxy was provided for '{}' using "
-                    "default '{}'".format(cls, proxytype))
+                                   "default '{}'".format(cls, proxytype))
 
         cls = functools.partial(cls, *init_args, **init_kwargs)
         mng_cls.register(typeid, cls, proxytype=proxytype, **kwargs)

@@ -1,0 +1,19 @@
+TODO:
+    - Consider tearing down the last N calls when limit is descreased by N?
+    - Move all fs looking logging into this package?
+    - consider adding a 'register_observer/poller' interface where objects can
+      ask to only receive events they care about from the listener?
+      (listener might return an itr of callables for each consumer request?)
+    - registration of clients for events associated with their id (i.e.
+      events not pertaining to that id should trigger invocation of that
+      client's callbacks)
+    - connections collection so that any registered connections will be
+      reconnected on server restart
+    - register handlers/callbacks using decorator mechanism
+
+Useful FreeSWITCH debugging commands:
+
+	/events plain CHANNEL_CREATE CHANNEL_ORIGINATE CHANNEL_HANGUP CHANNEL_ANSWER
+	SERVER_DISCONNECTED SOCKET_DATA BACKGROUND_JOB
+
+	uuid_dump <session-id>
