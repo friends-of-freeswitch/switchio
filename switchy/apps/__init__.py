@@ -1,0 +1,3 @@
+'''
+Built-in `switchy` applications
+'''
