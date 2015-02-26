@@ -58,7 +58,7 @@ def cps(request):
 def con(fshost):
     '''Deliver a esl connection to fshost
     '''
-    from ..connection import Connection
+    from switchy.connection import Connection
     with Connection(fshost) as con:
         yield con
 
@@ -66,7 +66,7 @@ def con(fshost):
 @pytest.yield_fixture
 def el(fshost):
     'deliver a connected event listener'
-    from sangoma.switchy import get_listener
+    from switchy import get_listener
     el = get_listener(fshost)
     assert not el.connected()
     yield el
@@ -80,7 +80,7 @@ def el(fshost):
 def client(fshost):
     """Deliver a core.Client connected to fshost
     """
-    from .. import Client
+    from switchy import Client
     cl = Client(fshost)
     yield cl
     cl.disconnect()

@@ -6,7 +6,7 @@ import pytest
 
 @pytest.fixture(scope='module')
 def pool():
-    from ..apps.call_gen import get_pool
+    from switchy.apps.call_gen import get_pool
     # TODO: require this list from cli arg!!
     sp = get_pool([
         'vm-host.qa.sangoma.local',
@@ -16,8 +16,8 @@ def pool():
 
 
 def test_setup(pool):
-    from ..apps.bert import Bert
-    from .. import utils
+    from switchy.apps.bert import Bert
+    from switchy import utils
     pool.evals('listener.unsubscribe("CALL_UPDATE")')
     assert not any(pool.evals('listener.connected()'))
     pool.evals('listener.connect()')

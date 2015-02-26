@@ -6,7 +6,7 @@
 from __future__ import division
 import time
 import pytest
-from ..utils import ConfigurationError
+from switchy.utils import ConfigurationError
 
 
 @pytest.yield_fixture
@@ -65,11 +65,11 @@ def proxy_dp(ael):
 
     # attempt to add measurement collection
     try:
-        from ..apps.measure import Metrics
+        from switchy.apps.measure import Metrics
     except ImportError:
         print("WARNING: numpy measurements not available")
     else:
-        from .. import marks
+        from switchy import marks
         # manually insert the metrics app
         metrics = Metrics(listener=ael)
         for ev_type, cb_type, obj in marks.get_callbacks(metrics):
@@ -243,10 +243,10 @@ class TestClient:
     def test_apps(self, client, el):
         """Test app loading, unloading
         """
-        from ..apps.test import TonePlay
-        from ..apps.bert import Bert
-        from ..marks import get_callbacks, event_callback
-        from .. import utils
+        from switchy.apps.test import TonePlay
+        from switchy.apps.bert import Bert
+        from switchy.marks import get_callbacks, event_callback
+        from switchy import utils
         with pytest.raises(AttributeError):
             client.load_app(TonePlay)
         client.listener = el  # assign listener manually
@@ -314,7 +314,7 @@ class TestClient:
         assert len(client.listener.consumers[bid]) == cbcount
 
     def test_commands(self, client):
-        from ..utils import CommandError
+        from switchy.utils import CommandError
         with pytest.raises(CommandError):
             client.api('doggy')
         assert client.api('status')
