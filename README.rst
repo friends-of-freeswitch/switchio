@@ -27,8 +27,8 @@ The simplest way to install this package is using pip with the command:
 
 Documentation
 =============
-    Coming soon...
-.. Full usage documentation can be found here: http://switchy.readthedocs.org/
+Full usage documentation can be found at readthedocs:
+https://switchy.readthedocs.org/
 
 License
 =======
