@@ -23,4 +23,4 @@ __version__ = '0.1.alpha'
 __author__ = 'Tyler Goodlet (tgoodlet@sangoma.com, tgoodlet@gmail.com)'
 
 
-PARK_DP = path.join(path.dirname(__file__), 'conf', 'switchydp.xml')
+PARK_DP = path.join(path.dirname(__file__), '../conf', 'switchydp.xml')

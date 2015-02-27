@@ -115,7 +115,7 @@ class Originator(object):
         self.debug = debug
         self.auto_duration = auto_duration
         self.server = self.pool.evals('client.server')
-        self.log = log or utils.get_logger(utils.pstr(self))
+        self.log = utils.get_logger(utils.pstr(self))
         self._thread = None
         self._start = mp.Event()
         self._exit = mp.Event()
