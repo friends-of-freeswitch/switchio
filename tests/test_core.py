@@ -7,6 +7,7 @@ Tests for core components
 from __future__ import division
 import time
 import pytest
+from distutils import spawn
 from switchy.utils import ConfigurationError
 
 
@@ -15,18 +16,56 @@ def scenario(request, fssock):
     '''provision and return a SIPp scenario with the
     remote proxy set to the current fs server
     '''
-    try:
-        from sangoma.tools import sipp
-    except ImportError:
-        pytest.skip("python sipp module not found?")
-    s = sipp.Scenario()
-    # first hop should be fs server
-    s.proxy = fssock
+    sipp = spawn.find_executable('sipp')
+    if not sipp:
+        pytest.skip("SIPp is required to run call/speed tests")
+    import socket
+    from helpers import CmdStr, get_runner
+    # build command template
+    template = (
+        '{remote_host}:{remote_port}',
+        '-i {local_ip}',
+        '-p {local_port}',
+        '-recv_timeout {msg_timeout}',
+        '-sn {scen_name}',
+        '-s {uri_username}',
+        '-rsa {proxy}',
+        # load settings
+        '-d {duration}',
+        '-r {rate}',
+        '-l {limit}',
+        '-m {call_count}'
+    )
+
+    # common
+    ua = CmdStr(sipp, template)
+    ua.local_ip = socket.gethostbyname(socket.getfqdn())
+    ua.duration = 10000
+    ua.call_count = 1
+    ua.limit = 1
+    # uas
+    uas = ua.copy()
+    uas.scen_name = 'uas'
+    uas.local_port = 8888
+    # uac
+    uac = ua.copy()
+    uac.scen_name = 'uac'
+    uac.local_port = 9999
+    uac.remote_host = uas.local_ip
+    uac.remote_port = uas.local_port
     # NOTE: you must add a park extension to your default dialplan!
-    s.agents.uac.inputs.username_uri = 'park'
-    yield s
-    assert s.collect_results()
-    s.cleanup()
+    uac.uri_username = 'park'  # call the park extension
+    # first hop should be fs server
+    uac.proxy = ':'.join(map(str, fssock))
+
+    runner = get_runner((uas, uac))
+    yield runner
+    # print output
+    for name, (out, err) in runner.results.items():
+        print("{} stderr: {}".format(name, err))
+    # ensure no failures
+    for ua, proc in runner.procs.items():
+        assert proc.returncode == 0
 
 
 @pytest.yield_fixture
@@ -54,8 +93,8 @@ def proxy_dp(ael):
         '''bridge to the dest specified in the req uri
         '''
         if sess['Call-Direction'] == 'inbound':
-            sess.bridge(
-                dest_url="${sip_req_user}@${sip_req_host}:${sip_req_port}")
+            sess.bridge(dest_url="${sip_req_uri}")
+            # dest_url="${sip_req_user}@${sip_req_host}:${sip_req_port}")
             # print(sess.show())
 
     ev = "CHANNEL_PARK"
@@ -173,14 +212,17 @@ class TestListener:
 
     def test_call(self, ael, proxy_dp, scenario):
         duration = 3
-        scenario.call_load = 1
-        scenario.global_settings.pause_duration = int(duration * 1000)
-        # scenario.show_cmds()
-        scenario.run(block=False)  # non-blocking
-        time.sleep(1.3)  # we can track up to around 250cps (very rough)
-        assert ael.count_calls() == 1
-        time.sleep(duration + 0.5)
-        assert ael.count_calls() == 0
+        for ua in scenario.cmds:
+            ua.rate = 1
+            ua.limit = 1
+            ua.call_count = 1
+            ua.duration = int(duration * 1000)
+            print("SIPp cmd: {}".format(ua.render()))
+        with scenario():
+            time.sleep(1.3)  # we can track up to around 250cps (very rough)
+            assert ael.count_calls() == 1
+            time.sleep(duration + 0.5)
+            assert ael.count_calls() == 0
 
     def test_track_cps(self, proxy_dp, ael, scenario, cps):
         '''load fs with up to 250 cps and test that we're fast enough
@@ -191,17 +233,22 @@ class TestListener:
         speed of the fs server under test
         '''
         duration = 4
-        scenario.global_settings.pause_duration = int(duration * 1000)
-        scenario.call_load = cps
-        scenario.run(block=False)  # non-blocking
+        for ua in scenario.cmds:
+            ua.rate = cps
+            ua.limit = cps
+            ua.call_count = cps
+            ua.duration = int(duration * 1000)
+            print("SIPp cmd: {}".format(ua.render()))
 
-        # wait for events to arrive and be processed
-        time.sleep(1.1)
-        msg = "Wasn't quite fast enough to track {} cps".format(cps)
-        assert ael.count_calls() == cps, msg
-        time.sleep(duration + 1.05)
-        assert ael.count_calls() == 0
-        if hasattr(ael, 'metrics'):
+        with scenario():
+            # wait for events to arrive and be processed
+            time.sleep(1.1)
+            msg = "Wasn't quite fast enough to track {} cps".format(cps)
+            assert ael.count_calls() == cps, msg
+            time.sleep(duration + 1.05)
+            assert ael.count_calls() == 0
+
+        if hasattr(ael, 'metrics'):  # check metrics tracking
             assert ael.metrics.array.size == cps
 
     def test_track_1kcapacity(self, ael, proxy_dp, scenario, cps):
@@ -214,15 +261,20 @@ class TestListener:
         '''
         limit = 1000
         duration = limit / cps + 1  # h = E/lambda (erlang formula)
-        scenario.global_settings.pause_duration = int(duration * 1000)
-        scenario.call_load = cps, limit, limit
-        scenario.run(block=False)  # non-blocking
+        for ua in scenario.cmds:
+            ua.rate = cps
+            ua.limit = limit
+            ua.call_count = limit
+            ua.duration = int(duration * 1000)
+            print("SIPp cmd: {}".format(ua.render()))
 
-        # wait for events to arrive and be processed
-        time.sleep(duration)
-        assert ael.count_calls() == limit
-        time.sleep(duration + 1.5)
-        assert ael.count_calls() == 0
+        with scenario():
+            # wait for events to arrive and be processed
+            time.sleep(duration)
+            assert ael.count_calls() == limit
+            time.sleep(duration + 1.5)
+            assert ael.count_calls() == 0
+
         if hasattr(ael, 'metrics'):
             assert ael.metrics.array.size == limit
 
