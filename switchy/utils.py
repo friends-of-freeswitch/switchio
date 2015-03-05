@@ -158,9 +158,9 @@ def copy_attrs(src_ns, dest, methods, props=True):
 
 
 def get_args(func):
-    """Return the arguments found in func's signature in a tuple
+    """Return the argument names found in func's signature in a tuple
 
-    :return: the args, kwargs defined by func
+    :return: the argnames, kwargnames defined by func
     :rtype: tuple
     """
     args, varargs, varkw, defaults = inspect.getargspec(func)

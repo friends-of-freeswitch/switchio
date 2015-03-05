@@ -11,7 +11,6 @@ The EventListener component was inspired by Moises Silva's
 'fs_test' project: https://github.com/moises-silva/fs_test
 """
 import time
-import logging
 import traceback
 import inspect
 # import operator
@@ -76,6 +75,7 @@ class EventListener(object):
                  call_corr_xheader_name='originating_session_uuid',
                  debug=False,
                  autorecon=30,
+                 max_limit=float('inf'),
                  # proxy_mng=None,
                  _tx_lock=None):
         '''
@@ -126,7 +126,7 @@ class EventListener(object):
         self.autorecon = autorecon
         self.set_call_var(call_corr_var_name)
         self.set_xheader_var(call_corr_xheader_name)
-        self.max_limit = float('inf')
+        self.max_limit = max_limit
         self._id = utils.uuid()
 
         # if a mng is provided then assume this listener will
@@ -142,7 +142,7 @@ class EventListener(object):
         self._exit = mp.Event()  # indicate when event loop should terminate
         self._lookup_blocker = mp.Event()  # used block event loop temporarily
         self._lookup_blocker.set()
-        self.log = logging.getLogger(utils.pstr(self))
+        self.log = utils.get_logger(utils.pstr(self))
         self._epoch = self._fs_time = 0.0
 
         # set up contained connections
@@ -756,8 +756,9 @@ class EventListener(object):
                 # session's uuid in the ev body
                 if resp in self.sessions:
                     if job.sess_uuid:
-                        assert job.sess_uuid == resp, \
-                            "Session <-> BgJob uuid mismatch!?"
+                        assert str(job.sess_uuid) == str(resp), \
+                            ("""Session uuid '{}' <-> BgJob uuid '{}' mismatch!?
+                             """.format(job.sess_uuid, resp))
 
                     # reference this job in the corresponding session
                     self.sessions[resp].bg_job = job
@@ -951,7 +952,7 @@ class Client(object):
         self.auth = auth
         self._id = utils.uuid()
         self._orig_cmd = None
-        self.log = logger or logging.getLogger(utils.pstr(self))
+        self.log = logger or utils.get_logger(utils.pstr(self))
         # generally speaking clients should only host one call app
         self._apps = {}
         self.apps = type('apps', (), {})()
@@ -1161,7 +1162,7 @@ class Client(object):
         return bj
 
     def originate(self, dest_url=None,
-                  uuid_str=None,
+                  uuid_func=utils.uuid,
                   app_id=None,
                   bgapi_kwargs={},
                   listener=None,
@@ -1180,8 +1181,8 @@ class Client(object):
         instance of `Job` a background job
         '''
         listener = self._assert_alive(listener)
-        if not uuid_str:  # gen originating session uuid for tracking call
-            uuid_str = utils.uuid()
+        # gen originating session uuid for tracking call
+        uuid_str = uuid_func()
         if dest_url:  # generate the cmd now
             cmd_str = build_originate_cmd(
                 dest_url,

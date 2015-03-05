@@ -7,7 +7,6 @@ Call generator app for load testing
 from __future__ import division
 import time
 import sched
-import logging
 import traceback
 from itertools import cycle
 import random
@@ -22,17 +21,19 @@ from bert import Bert
 from measure import Metrics, new_array
 
 
-def get_pool(contacts):
+def get_pool(contacts, **kwargs):
     """Construct and return a slave pool from a sequence of
     contact information
     """
     SlavePair = namedtuple("SlavePair", "client listener")
     pairs = deque()
+
+    # instantiate all pairs
     for contact in contacts:
         if isinstance(contact, (basestring)):
             contact = (contact,)
         # create pairs
-        listener = EventListener(*contact)
+        listener = EventListener(*contact, **kwargs)
         client = Client(*contact, listener=listener)
         pairs.append(SlavePair(client, listener))
 
@@ -44,7 +45,15 @@ def get_originator(contacts, *args, **kwargs):
     """
     if isinstance(contacts, str):
         contacts = (contacts,)
-    slavepool = get_pool(contacts)
+
+    # pop kwargs destined for the listener
+    argname, kwargnames = utils.get_args(EventListener.__init__)
+    lkwargs = {}
+    for name in kwargnames:
+        if name in kwargs:
+            lkwargs[name] = kwargs.pop(name)
+
+    slavepool = get_pool(contacts, **lkwargs)
     return Originator(slavepool, *args, **kwargs)
 
 
@@ -94,20 +103,25 @@ class Originator(object):
         'report_interval': 0,
         'bert_test': True,
         'max_rate': 250,
+        'duration_offset': 5,
+        'uuid_gen': utils.uuid,
     }
 
-    def __init__(self, slavepool, debug=False, auto_duration=True, **kwargs):
+    def __init__(self, slavepool, debug=False, auto_duration=True,
+                 app_id=None, **kwargs):
         '''
         Parameters
         ----------
         slavepool : SlavePool instance
             slave pool of (Client, EventListener) pairs to use for call
             generation
-        debug: bool
+        debug : bool
             toggle debug logging on the slave servers
-        auto_duration: bool
+        auto_duration : bool
             determines whether to recalculate call hold times when adjusting
             rate or limit setting
+        app_id : str
+            id to use
         '''
         self.pool = slavepool
         self.iterslaves = limiter(slavepool.nodes)
@@ -141,15 +155,15 @@ class Originator(object):
         # register our apps with the same id such that events
         # pertaining to the above app are also
         # handled by our locally defined callbacks
-        self.app_id = appid = utils.uuid()
+        self.app_id = app_id or utils.uuid()
         self.pool.evals('client.load_app(Bert, ident=appid)',
-                        Bert=Bert, appid=appid)
+                        Bert=Bert, appid=self.app_id)
         self.pool.evals('client.load_app(Originator, ident=appid)',
-                        Originator=self, appid=appid)
+                        Originator=self, appid=self.app_id)
         self.metrics = new_array()
         self.pool.evals(
             'client.load_app(Metrics, ident=appid, array=array)',
-            Metrics=Metrics, array=self.metrics, appid=appid)
+            Metrics=Metrics, array=self.metrics, appid=self.app_id)
 
         # listener startup
         self.pool.evals('listener.start()')
@@ -177,8 +191,7 @@ class Originator(object):
 
         # Reduce logging level to avoid too much output in console/logfile
         if self.debug is True:
-            self.log.info("setting debug logging!")
-            self.log.setLevel('DEBUG')
+            self.log.info("setting debug logging on slaves!")
             self.pool.evals('client.api("fsctl loglevel debug")')
             self.pool.evals('client.api("console loglevel debug")')
         else:
@@ -198,7 +211,7 @@ class Originator(object):
         self.ibp = 1 / burst_rate * 0.90
         self._rate = value
         if self.auto_duration and hasattr(self, '_limit'):
-            self.duration = self.limit / value + 10.0
+            self.duration = self.limit / value + self.duration_offset
 
     rate = property(_get_rate, _set_rate, "Call rate (cps)")
 
@@ -209,7 +222,7 @@ class Originator(object):
     def _set_limit(self, value):
         self._limit = value
         if self.auto_duration:
-            self.duration = value / self.rate + 10.0
+            self.duration = value / self.rate + self.duration_offset
 
     limit = property(_get_limit, _set_limit,
                      'Number of simultaneous calls allowed at once'
@@ -308,7 +321,10 @@ class Originator(object):
                 break
             self.log.debug("count calls = {}".format(count_calls()))
             # originate a call
-            job = slave.client.originate(app_id=self.app_id)
+            job = slave.client.originate(
+                app_id=self.app_id,
+                uuid_func=self.uuid_gen
+            )
             originated += 1
             # limit the max transmission rate
             time.sleep(self.ibp)
