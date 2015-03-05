@@ -22,6 +22,9 @@ setup(
         'switchy.apps',
         # 'tests',
     ],
+    package_data={
+        'switchy': ['../conf/switchydp.xml']
+    },
     # use_2to3 = False
     # zip_safe=True,
     extras_require={
