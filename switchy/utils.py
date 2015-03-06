@@ -38,30 +38,6 @@ def get_root_log():
     global _log
     if not _log:
         _log = logging.getLogger('switchy')
-        _log.propagate = False
-        _log.setLevel(logging.INFO)
-        handler = logging.StreamHandler()
-        # do colours if we can
-        try:
-            import colorlog
-            fs_colors = {
-                'CRITICAL': 'bold_red',
-                'ERROR': 'red',
-                'WARNING': 'purple',
-                'INFO': 'green',
-                'DEBUG': 'yellow',
-            }
-            formatter = colorlog.ColoredFormatter(
-                "%(log_color)s" + LOG_FORMAT,
-                datefmt=DATE_FORMAT,
-                log_colors=fs_colors
-            )
-        except ImportError:
-            logging.warning("Colour logging not supported. Please install"
-                            "the colorlog module to enable")
-            formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
-        handler.setFormatter(formatter)
-        _log.addHandler(handler)
     return _log
 
 
@@ -70,6 +46,37 @@ def get_logger(name=None):
     '''
     log = get_root_log()
     return log.getChild(name) if name else log
+
+
+def log_to_stderr(level=None):
+    '''Turn on logging and add a handler which prints to stderr
+    '''
+    log = get_root_log()
+    if level:
+        log.setLevel(level)
+    handler = logging.StreamHandler()
+    # do colours if we can
+    try:
+        import colorlog
+        fs_colors = {
+            'CRITICAL': 'bold_red',
+            'ERROR': 'red',
+            'WARNING': 'purple',
+            'INFO': 'green',
+            'DEBUG': 'yellow',
+        }
+        formatter = colorlog.ColoredFormatter(
+            "%(log_color)s" + LOG_FORMAT,
+            datefmt=DATE_FORMAT,
+            log_colors=fs_colors
+        )
+    except ImportError:
+        logging.warning("Colour logging not supported. Please install"
+                        "the colorlog module to enable")
+        formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+    handler.setFormatter(formatter)
+    log.addHandler(handler)
+    return log
 
 
 def dirinfo(inst):
