@@ -301,7 +301,7 @@ class Session(object):
 
 
 class Call(object):
-    '''A deque of sessions which  a call
+    '''A deque of sessions which a compose a call
     '''
     def __init__(self, uuid, session):
         self.uuid = uuid

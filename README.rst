@@ -5,10 +5,10 @@ A fast FreeSWITCH ESL control library with an emphasis on load testing.
 Among other things, Switchy let's you
 
     - drive N slaves as call generators
-    - write call applications in pure python using a super thin
-      ESL api wrapper
-    - dynamically modify call flows at runtime
+    - write call control applications in pure python using a
+      super thin ESL api wrapper
     - collect performance metrics using numpy
+    - dynamically modify call flows at runtime
 
 Installation
 ============

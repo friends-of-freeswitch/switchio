@@ -8,7 +8,7 @@ Overview
 |  Switchy intends to be a fast control library for harnessing the power of
    the *FreeSWITCH* telephony engine whilst leveraging the expressiveness of
    python.
-|  It relies on the *FreeSWITCH* ESL `inbound method <inbound>`_
+|  It relies on the *FreeSWITCH* ESL `inbound`_ method
    for control and was originally created for load testing using *FreeSWITCH*
    :term:`slave` clusters.
 
@@ -49,6 +49,7 @@ Configuration
 Switchy relies on baseline *FreeSWITCH* :ref:`deployment <fsconfig>` steps for
 import-and-go usage
 
+
 .. hyperlinks
 .. _inbound:
     https://freeswitch.org/confluence/display/FREESWITCH/mod_event_socket#mod_event_socket-Inbound
@@ -58,6 +59,7 @@ import-and-go usage
     https://github.com/sangoma/switchy
 .. _ESL SWIG python package:
     https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
+
 
 Contents
 --------
@@ -70,8 +72,6 @@ Contents
     apps
     api
 .. ::
-    call-apps
-    benchmarks
     testing
 
 
@@ -80,4 +80,3 @@ Contents
    * :ref:`genindex`
    * :ref:`modindex`
    * :ref:`search`
-

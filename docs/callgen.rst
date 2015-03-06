@@ -1,4 +1,9 @@
 .. _callgen:
+.. toctree::
+    :maxdepth: 2
+    :hidden:
+
+    api
 
 Call generation and load testing
 --------------------------------
@@ -67,7 +72,7 @@ and stays active::
 Before we can start loading we must set the command which will be used by the
 application when instructing each slave to `originate` a call. Note that the error
 above was not raised as a Python exception but instead just printed to the screen to
-avoid terminating the event processing loop in the :py:class:`switchy.EventListener`.
+avoid terminating the event processing loop in the :py:class:`switchy.observe.EventListener`.
 
 Let's set an originate command which will call our :term:`intermediary`
 as it's first hop with a destination of ourselves using the default
@@ -87,11 +92,11 @@ the outbound session's post-connect execution::
     origination_uuid={uuid_str}}}sofia/external/doggy@hostnameA:5060;
     fs_path=sip:goodboy@intermediary_hostname:5060 &park()']
 
-The underlying `originate <origcmd>`_ command has now been
+The underlying `originate`_ command has now been
 set for the **first** client in the `Orignator` app's client pool. You might
 notice that the command is a :py:class:`format` string which has some
-placeholder variables set. It is the job of the :py:class:`switchy.Client`
-to fill in these values at runtime (i.e. when the :py:meth:`switchy.Client.originate` is called).
+placeholder variables set. It is the job of the :py:class:`switchy.observe.Client`
+to fill in these values at runtime (i.e. when the :py:meth:`switchy.observe.Client.originate` is called).
 For more info on the `originate` cmd wrapper see :py:func:`switchy.commands.build_originate_cmd`.
 Also see :doc:`usage`.
 
@@ -121,7 +126,7 @@ The `Originator` will keep offering new calls indefinitely with `duration` secon
 allowing up to `limit`'s (in *erlangs*) worth of concurrent calls until told stop.
 That is, continuous load is offered until you either `stop` or `hupall` calls.
 You can verify this by ssh-ing to the slave and calling the `status`
-command from `fs_cli <fscli>`_.
+command from `fs_cli`_.
 
 You can now increase the call load parameters::
 
@@ -167,7 +172,7 @@ configuration steps are required to properly provision the
 this involves use of handy cluster helper components provided with
 Switchy.
 
-The main trick is to configure each :py:class:`switchy.Client` to have
+The main trick is to configure each :py:class:`switchy.observe.Client` to have
 the appropriate originate command set such that calls are routed to
 where you expect. A clever and succint way to accomplish this is by
 using the :py:class:`switchy.distribute.SlavePool`. Luckily the
@@ -188,11 +193,11 @@ arbitrary Python expressions across all slaves in the cluster.
 
 For more details see :ref:`clustertools` .
 
-.. _origcmd:
+.. _originate:
     https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-originate
 
 .. _erlang formula:
     http://en.wikipedia.org/wiki/Erlang_%28unit%29#Traffic_measurements_of_a_telephone_circuit
 
-.. _fscli:
+.. _fs_cli:
     https://freeswitch.org/confluence/display/FREESWITCH/Command-Line+Interface+fs_cli

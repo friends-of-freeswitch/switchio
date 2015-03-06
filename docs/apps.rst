@@ -1,3 +1,10 @@
+.. toctree::
+    :maxdepth: 2
+    :hidden:
+
+    api
+
+
 Call Applications
 =================
 Switchy supports composing *applications* written in pure python which

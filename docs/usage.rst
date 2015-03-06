@@ -1,3 +1,10 @@
+.. toctree::
+    :maxdepth: 2
+    :hidden:
+
+    api
+
+
 Quick-Start - Originating a single call
 =======================================
 Getting familiar with *Switchy*'s features means learning to put the
@@ -153,8 +160,8 @@ configurations thanks, yet again, to Switchy's use of the :ref:`ESL inbound meth
 
 App Loading
 ***********
-Switchy apps are loaded using :py:meth:`switchy.Client.load_app`. Each
-app is associated with a `uuid` if none is provided which allows for
+Switchy apps are loaded using :py:meth:`switchy.observe.Client.load_app`.
+Each app is associated with a `uuid` if none is provided which allows for
 the appropriate callback lookups to be completed by the `EventListener`.
 
 We can now accomplish the same tone play steps from above using the
