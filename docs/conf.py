@@ -15,6 +15,12 @@
 import sys
 import os
 
+# work around ESL.so and optional numpy dependencies
+import mock
+MOCK_MODS = ['ESL', 'numpy']
+for modname in MOCK_MODS:
+    sys.modules[modname] = mock.Mock()
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
@@ -32,7 +38,6 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
-    # 'numpydoc',
 ]
 
 # Add any paths that contain templates here, relative to this directory.

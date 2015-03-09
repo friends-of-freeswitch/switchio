@@ -1,0 +1,7 @@
+-e
+
+# docs gen
+mock
+
+# testing
+pytest
