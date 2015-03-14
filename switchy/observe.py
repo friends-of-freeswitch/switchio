@@ -36,7 +36,7 @@ from connection import Connection, ConnectionError
 
 def con_repr(self):
     """Repr with a [<connection-status>] slapped in"""
-    rep = type(self).__name__
+    rep = object.__repr__(self).strip('<>')
     return "<{} [{}]>".format(
         rep, "connected" if self.connected() else "disconnected")
 
@@ -68,8 +68,8 @@ class EventListener(object):
     AUTH = 'ClueCon'
 
     def __init__(self, host=HOST, port=PORT, auth=AUTH,
-                 session_map=OrderedDict(),
-                 bg_jobs=OrderedDict(),
+                 session_map=None,
+                 bg_jobs=None,
                  rx_con=None,
                  call_corr_var_name='call_uuid',
                  call_corr_xheader_name='originating_session_uuid',
@@ -109,8 +109,8 @@ class EventListener(object):
         self.server = host
         self.port = port
         self.auth = auth
-        self._sessions = session_map  # maps session uuids to Session instances
-        self._bg_jobs = bg_jobs
+        self._sessions = session_map or OrderedDict()
+        self._bg_jobs = bg_jobs or OrderedDict()
         self._calls = OrderedDict()  # maps aleg uuids to Sessions instances
         self.hangup_causes = Counter()  # record of causes by category
         self.failed_sessions = deque(maxlen=1e3)
@@ -557,8 +557,8 @@ class EventListener(object):
                 cid = model.cid if model else self.get_id(e, 'default')
                 consumers = self.consumers.get(cid, False)
                 if consumers and consumed:
-                    self.log.debug("{} callbacks registered for {}: {}".format(
-                                   len(consumers), cid, ", ".join(consumers)))
+                    # self.log.debug("{} callbacks registered for {}: {}".format(
+                    #                len(consumers), cid, ", ".join(consumers)))
                     # look up the client's callback chain and run
                     # e -> handler -> cb1, cb2, ... cbN
                     # map(operator.methodcaller('__call__', *ret),
@@ -808,9 +808,7 @@ class EventListener(object):
                            uuid, call.uuid))
             # append this session to the call's set
             call.sessions.append(sess)
-            # reference this session from the other and the other from ours
-            # partner_sess.partner_sess = sess
-            # sess.partner_sess = partner_sess
+
         else:  # this sess is not yet tracked so use its id as the 'call' id
             call = Call(call_uuid, sess)
             self.calls[call_uuid] = call
@@ -1022,10 +1020,26 @@ class Client(object):
 
             # assign a 'consumer id'
             cid = ident if ident else utils.uuid()
-            self.log.info("Loading call app '{}'".format(name))
+            self.log.info("Loading call app '{}' for listener '{}'"
+                          .format(name, self.listener))
             icb, failed = 1, False
+            # insert handlers and callbacks
             for ev_type, cb_type, obj in marks.get_callbacks(app):
-                if cb_type == 'callback':
+                if cb_type == 'handler':
+                    # TODO: similar unloading on failure here as above?
+                    self.listener.add_handler(ev_type, obj)
+
+                elif cb_type == 'callback':
+                    # add default handler if none exists
+                    if ev_type not in self.listener._handlers:
+                        self.log.info(
+                            "adding default session lookup handler for event"
+                            " type '{}'".format(ev_type)
+                        )
+                        self.listener.add_handler(
+                            ev_type,
+                            self.listener.lookup_sess
+                        )
                     added = self.listener.add_callback(ev_type, cid, obj)
                     if not added:
                         failed = obj
@@ -1034,9 +1048,6 @@ class Client(object):
                     icb += 1
                     self.log.debug("'{}' event callback '{}' added for id '{}'"
                                    .format(ev_type, obj.__name__, cid))
-                elif cb_type == 'handler':
-                    # TODO: similar unloading on failure here as above?
-                    self.listener.add_handler(ev_type, obj)
 
             if failed:
                 raise TypeError("app load failed since '{}' is not a valid"

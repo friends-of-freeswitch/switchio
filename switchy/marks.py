@@ -39,11 +39,13 @@ def has_callbacks(ns):
 
 
 def get_callbacks(ns, skip=(), only=False):
-    """Deliver all switchy callbacks found in a namespace object
+    """Deliver all switchy callbacks found in a namespace object yielding
+    event `handler` marked functions first followed by `event_callbacks`.
 
     :param ns namespace: the namespace object containing marked callbacks
     :yields: event_type, callback_type, callback_obj
     """
+    callbacks = []
     for name in (name for name in dir(ns) if name not in skip):
         try:
             obj = object.__getattribute__(ns, name)
@@ -51,7 +53,14 @@ def get_callbacks(ns, skip=(), only=False):
             continue
         ev_types = getattr(obj, '_switchy_event', False)
         cb_type = getattr(obj, '_switchy_cb_type', None)
-        if ev_types:
+
+        if ev_types:  # only marked attrs
             if not only or cb_type == only:
                 for ev in ev_types:
-                    yield ev, cb_type, obj
+                    if cb_type == 'handler':  # deliver handlers immediately
+                        yield ev, cb_type, obj
+                    else:
+                        callbacks.append((ev, cb_type, obj))
+    else:  # yield all callbacks last
+        for tup in callbacks:
+            yield tup

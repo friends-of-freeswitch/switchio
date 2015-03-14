@@ -172,7 +172,7 @@ class Session(object):
     def setvars(self, params):
         """Set all variables in map `params` with a single command
         """
-        pairs = ('='.join(map(str, pair)) for pair in pairs.iteritems())
+        pairs = ('='.join(map(str, pair)) for pair in params.iteritems())
         self.api("uuid_setvar_multi {} {}".format(self.uuid, ';'.join(pairs)))
 
     def unsetvar(self, var):
@@ -222,6 +222,12 @@ class Session(object):
             cmd += ' @{}'.format(tone_duration)
         self.con.api(cmd)
 
+    def send_dtmf(self, sequence, duration='w'):
+        '''Send a dtmf sequence with constant tone durations
+        '''
+        self.con.api('uuid_send_dtmf {} {} @{}'.format(
+                     self.uuid, sequence, duration))
+
     def playback(self, file_path, leg='aleg'):
         '''Playback a file on this session
 
@@ -249,16 +255,13 @@ class Session(object):
         self.con.api('uuid_break {}'.format(self.uuid))
 
     def start_amd(self, timeout=None):
-        # self.con.api('avmd %s start' % (self.uuid))
         self.con.api('avmd {} start'.format(self.uuid))
         if timeout is not None:
-            # self.con.api('sched_api +%d none avmd %s stop'
-            #              % (int(timeout), self.uuid))
             self.con.api('sched_api +{} none avmd {} stop'.format(
                          int(timeout), self.uuid))
 
     def stop_amd(self):
-        self.con.api('avmd %s stop' % (self.uuid))
+        self.con.api('avmd {} stop'.format(self.uuid))
 
     def park(self):
         '''Park this session
@@ -301,7 +304,7 @@ class Session(object):
 
 
 class Call(object):
-    '''A deque of sessions which a compose a call
+    '''A collection of sessions which a compose a call
     '''
     def __init__(self, uuid, session):
         self.uuid = uuid
