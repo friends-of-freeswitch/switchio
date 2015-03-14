@@ -92,14 +92,12 @@ class Originator(object):
     """An automatic session generator
     """
     default_settings = {
-        'rate': 30,  # call rate in cps
+        'rate': 30,  # call offer rate in cps
         'limit': 1,  # concurrent calls limit (i.e. erlangs)
-        'max_sessions': float('inf'),  # max offered sessions
+        'max_offered': float('inf'),  # max offered calls
         'duration': 0,
         'random': 0,
         'period': 1,
-        'dtmf_seq': None,
-        'dtmf_delay': 1,
         'report_interval': 0,
         'bert_test': True,
         'max_rate': 250,
@@ -108,7 +106,7 @@ class Originator(object):
     }
 
     def __init__(self, slavepool, debug=False, auto_duration=True,
-                 app_id=None, **kwargs):
+                 app_id=None, apps=(Bert,), **kwargs):
         '''
         Parameters
         ----------
@@ -156,8 +154,9 @@ class Originator(object):
         # pertaining to the above app are also
         # handled by our locally defined callbacks
         self.app_id = app_id or utils.uuid()
-        self.pool.evals('client.load_app(Bert, ident=appid)',
-                        Bert=Bert, appid=self.app_id)
+        for app in apps:
+            self.pool.evals('client.load_app(app, ident=appid)',
+                            app=app, appid=self.app_id)
         self.pool.evals('client.load_app(Originator, ident=appid)',
                         Originator=self, appid=self.app_id)
         self.metrics = new_array()
@@ -165,7 +164,7 @@ class Originator(object):
             'client.load_app(Metrics, ident=appid, array=array)',
             Metrics=Metrics, array=self.metrics, appid=self.app_id)
 
-        # listener startup
+        # listener(s) startup
         self.pool.evals('listener.start()')
 
         # delegate to listener stateful properties
@@ -175,16 +174,16 @@ class Originator(object):
 
         # create a scheduler
         self.sched = sched.scheduler(time.time, time.sleep)
-        # XXX: instead make this a `prepost` hook?
         self.setup()
         # counters
         self._total_originated_sessions = 0
 
+    # XXX: instead make this a `prepost` hook?
     def setup(self):
         """Apply load test settings on the slave server
         """
-        # Raise the sps and max_sessions limit to make sure
-        # they do not obstruct our tests
+        # Raise the sps and max_sessions limit so they do not obstruct our
+        # load settings
         self.pool.evals('client.api("fsctl sps {}")'.format(10000))
         self.pool.evals('client.api("fsctl max_sessions {}")'.format(10000))
         self.pool.evals('client.api("fsctl verbose_events true")')
@@ -234,7 +233,7 @@ class Originator(object):
     def __repr__(self):
         """Repr with [<state>] <load_settings> slapped in
         """
-        props = "rate limit max_sessions duration".split()
+        props = "rate limit max_offered duration".split()
         rep = type(self).__name__
         return "<{0}: '{2}' active calls, state=[{1}], {3}>".format(
             rep, self.state, self.pool.fast_count(),
@@ -276,12 +275,6 @@ class Originator(object):
                                self.duration, sess.uuid))
             sess.sched_hangup(self.duration)
 
-        if self.dtmf_seq:
-            self.log.debug(
-                'Scheduling DTMF seq {} with delay {} at uuid {}'
-                .format(self.dtmf_seq, self.dtmf_delay, sess.uuid))
-            sess.sched_dtmf(self.dtmf_seq, self.dtmf_delay)
-
         # if max sessions are already up, stop
         self._total_originated_sessions += 1
         self._check_max()
@@ -289,12 +282,12 @@ class Originator(object):
         # sess.con = None
 
     def _check_max(self):
-        if self._total_originated_sessions >= self.max_sessions:
+        if self._total_originated_sessions >= self.max_offered:
             self._change_state("STOPPED")
             self.log.info("'{}' sessions have been originated but"
                           " max allowed is '{}', exiting run loop..."
                           .format(self._total_originated_sessions,
-                                  self.max_sessions))
+                                  self.max_offered))
 
     @property
     def total_originated_sessions(self):
@@ -306,7 +299,7 @@ class Originator(object):
         originated = 0
         count_calls = self.count_calls
         num = min((self.limit - count_calls(), self.rate))
-        self.log.debug("num = {}".format(num))
+        self.log.debug("bursting num originates = {}".format(num))
         if num <= 0:
             self.log.debug(
                 "maximum simultaneous sessions limit '{}' reached..."
