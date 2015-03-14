@@ -25,17 +25,17 @@ class MultiEval(object):
             except AttributeError:
                 pass
 
-    @staticmethod
-    def attrs(obj, _cache={}):
+    def attrs(self, obj):
         """Cache of obj attributes since python has no built in for getting
         them all...
         """
         key = id(obj)
+        cache = self._cache
         try:
-            return _cache[key]
+            return cache[key]
         except KeyError:
-            _cache[key] = {name: getattr(obj, name) for name in dir(obj)}
-            return _cache[key]
+            cache[key] = {name: getattr(obj, name) for name in dir(obj)}
+            return cache[key]
 
     def __len__(self):
         return len(self._slaves)
@@ -56,9 +56,6 @@ class MultiEval(object):
 
         Parameters
         ----------
-        name: str
-            attr name of slave sub-component (i.e. `_slaves` is often a
-            sequence of named tuples)
         expr: str
             python expression to evaluate on slave components
         """
@@ -110,7 +107,8 @@ class MultiEval(object):
 
 
 def SlavePool(slaves):
-    """A slave pool for controlling multiple servers with ease
+    """A slave pool for controlling multiple (`Client`, `EventListener`)
+    pairs with ease
     """
     # turns out to be slightly faster (x2) then the reducer call below
     def fast_count(self):
