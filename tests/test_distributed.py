@@ -2,12 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 '''
-test mult-slave control
+test mult-slave/cluster tools
 '''
 import pytest
 
 
-@pytest.fixture(scope='module')
+@pytest.yield_fixture(scope='module')
 def pool():
     from switchy.apps.call_gen import get_pool
     # TODO: require this list from cli arg!!
@@ -15,7 +15,7 @@ def pool():
         'vm-host.qa.sangoma.local',
         'sip-cannon.qa.sangoma.local',
     ])
-    return sp
+    yield sp
 
 
 def test_setup(pool):
@@ -33,3 +33,5 @@ def test_setup(pool):
                if name not in apps)
     pool.evals('listener.start()')
     assert all(pool.evals('listener.is_alive()'))
+    pool.evals('listener.disconnect()')
+    assert not all(pool.evals('listener.is_alive()'))
