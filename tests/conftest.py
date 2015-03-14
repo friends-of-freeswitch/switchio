@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import pytest
+import sys
 import time
 
 
@@ -17,6 +18,13 @@ def pytest_addoption(parser):
     parser.addoption("--cps", action="store", dest='cps',
                      default=200,
                      help="num of sipp calls to launch per second")
+
+
+def pytest_configure(config):
+    if sys.stdout.isatty():
+        # enable console logging
+        from switchy import utils
+        utils.log_to_stderr(max(40 - config.option.verbose * 10, 10))
 
 
 @pytest.fixture(scope='module')
