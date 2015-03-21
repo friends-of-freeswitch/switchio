@@ -60,7 +60,7 @@ class EventListener(object):
     The main purpose is to enable event oriented state tracking of various
     slave server objects and call entities.
     '''
-    id_var = 'switchy_client'
+    id_var = 'switchy_app'
     id_xh = utils.xheaderify(id_var)
 
     HOST = '127.0.0.1'
@@ -286,7 +286,7 @@ class EventListener(object):
             raise ConfigurationError("you must call 'connect' first")
 
         if self._thread is None or not self._thread.is_alive():
-            self.log.info("starting event loop thread")
+            self.log.debug("starting event loop thread...")
             self._thread = Thread(target=self._listen_forever, args=(),
                                   name='event_loop')
             self._thread.daemon = True  # die with parent
@@ -555,10 +555,12 @@ class EventListener(object):
                 # attempt to lookup a consuming client app by id
                 model = ret[0]
                 cid = model.cid if model else self.get_id(e, 'default')
+                self.log.debug("consumer id is '{}'".format(cid))
                 consumers = self.consumers.get(cid, False)
                 if consumers and consumed:
-                    # self.log.debug("{} callbacks registered for {}: {}".format(
-                    #                len(consumers), cid, ", ".join(consumers)))
+                    self.log.debug("{} callbacks registered for {}: {}"
+                                   .format(len(consumers), cid, ", "
+                                   .join(consumers)))
                     # look up the client's callback chain and run
                     # e -> handler -> cb1, cb2, ... cbN
                     # map(operator.methodcaller('__call__', *ret),
@@ -889,7 +891,7 @@ class EventListener(object):
             call = self.calls.get(call_uuid, None)
             if call:
                 if sess in call.sessions:
-                    self.log.debug("session {} for call {} hungup".format(
+                    self.log.debug("hungup session '{}' for call '{}'".format(
                                    uuid, call.uuid))
                     call.sessions.remove(sess)
                 if uuid == call.uuid:  # len(calls.sessions) == 0
@@ -908,7 +910,7 @@ class EventListener(object):
         # may have been popped by the partner
         self.bg_jobs.pop(job.uuid if job else None, None)
 
-        self.log.debug('hung up session {}'.format(uuid))
+        self.log.debug("hungup session '{}'".format(uuid))
         # hangups are always consumed
         return True, sess, job
 
@@ -932,13 +934,13 @@ class EventListener(object):
 
 
 class Client(object):
-    '''Interface for server control using the esl "inbound method"
+    '''Interface for synchronous server control using the esl "inbound method"
     as described here:
     https://wiki.freeswitch.org/wiki/Mod_event_socket#Inbound
 
     Provides a high level interface for interaction with an event listener.
     '''
-    id_var = 'switchy_client'
+    id_var = 'switchy_app'
     id_xh = utils.xheaderify(id_var)
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
@@ -994,15 +996,16 @@ class Client(object):
 
     loglevel = property(get_loglevel, set_loglevel)
 
-    def load_app(self, ns, ident=None, **prepost_kwargs):
+    def load_app(self, ns, on_value=None, **prepost_kwargs):
         """Load annotated callbacks and from a namespace and add them
         to this client's listener's callback chain.
 
         :param ns: A namespace-like object containing functions marked with
             @event_callback (can be a module, class or instance).
-        :params str ident: id to be used for registering app callbacks with
+        :params str on_value: id key to be used for registering app callbacks with
             `EventListener`
         """
+        listener = self.listener
         name = utils.get_name(ns)
         if name not in self._apps:
             # if handed a class, instantiate appropriately
@@ -1019,31 +1022,31 @@ class Client(object):
                     app._finalize = ret
 
             # assign a 'consumer id'
-            cid = ident if ident else utils.uuid()
+            cid = on_value if on_value else utils.uuid()
             self.log.info("Loading call app '{}' for listener '{}'"
-                          .format(name, self.listener))
+                          .format(name, listener))
             icb, failed = 1, False
             # insert handlers and callbacks
             for ev_type, cb_type, obj in marks.get_callbacks(app):
                 if cb_type == 'handler':
                     # TODO: similar unloading on failure here as above?
-                    self.listener.add_handler(ev_type, obj)
+                    listener.add_handler(ev_type, obj)
 
                 elif cb_type == 'callback':
                     # add default handler if none exists
-                    if ev_type not in self.listener._handlers:
+                    if ev_type not in listener._handlers:
                         self.log.info(
                             "adding default session lookup handler for event"
                             " type '{}'".format(ev_type)
                         )
-                        self.listener.add_handler(
+                        listener.add_handler(
                             ev_type,
-                            self.listener.lookup_sess
+                            listener.lookup_sess
                         )
-                    added = self.listener.add_callback(ev_type, cid, obj)
+                    added = listener.add_callback(ev_type, cid, obj)
                     if not added:
                         failed = obj
-                        self.listener.remove_callbacks(cid, last=icb)
+                        listener.remove_callbacks(cid, last=icb)
                         break
                     icb += 1
                     self.log.debug("'{}' event callback '{}' added for id '{}'"
@@ -1125,12 +1128,10 @@ class Client(object):
             self.api('hupall NORMAL_CLEARING {} {}'.format(
                      self.id_var, app.cid))
 
-    def _assert_alive(self, listener):
+    def _assert_alive(self, listener=None):
         """Assert our listener is active and if so return it
         """
-        if not listener:
-            assert self.listener, "No listener associated with this client"
-            listener = self.listener
+        listener = listener or self.listener
         if not listener.is_alive():
             raise ConfigurationError(
                 "start this {} before issuing bgapi"
@@ -1198,7 +1199,8 @@ class Client(object):
             cmd_str = build_originate_cmd(
                 dest_url,
                 uuid_str,
-                xheaders={listener.call_corr_xheader: uuid_str},
+                xheaders={listener.call_corr_xheader: uuid_str,
+                          self.id_xh: app_id or self._id},
                 extra_params={self.id_var: app_id or self._id},
                 **kwargs
             )

@@ -155,13 +155,13 @@ class Originator(object):
         # handled by our locally defined callbacks
         self.app_id = app_id or utils.uuid()
         for app in apps:
-            self.pool.evals('client.load_app(app, ident=appid)',
+            self.pool.evals('client.load_app(app, on_value=appid)',
                             app=app, appid=self.app_id)
-        self.pool.evals('client.load_app(Originator, ident=appid)',
+        self.pool.evals('client.load_app(Originator, on_value=appid)',
                         Originator=self, appid=self.app_id)
         self.metrics = new_array()
         self.pool.evals(
-            'client.load_app(Metrics, ident=appid, array=array)',
+            'client.load_app(Metrics, on_value=appid, array=array)',
             Metrics=Metrics, array=self.metrics, appid=self.app_id)
 
         # listener(s) startup
