@@ -4,7 +4,7 @@
 """
 Dtmf tools
 """
-from collections import deque
+from collections import deque, OrderedDict
 from ..marks import event_callback
 from ..utils import get_logger
 
@@ -21,7 +21,7 @@ class DtmfChecker(object):
         self.sequence = range(1, 10)
         self.duration = 200  # ms
         self.total_time = len(self.sequence) * self.duration / 1000.0
-        self.incomplete = {}
+        self.incomplete = OrderedDict()
         self.failed = []
 
     @event_callback('CHANNEL_PARK')
