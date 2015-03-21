@@ -10,19 +10,17 @@ Originator testing
 '''
 import pytest
 import time
-import socket
 from switchy.apps import dtmf
 from switchy import get_originator
 
 
 @pytest.yield_fixture
-def get_orig(request, fshost):
+def get_orig(request, fsip):
     '''Deliver an `Originator` app which drives a single
     FreeSWITCH slave process.
     '''
     apps = request.node.get_marker('apps')
-    ip = socket.gethostbyname(socket.getfqdn(fshost))
-    orig = get_originator(ip, apps=apps.kwargs.values())
+    orig = get_originator(fsip, apps=apps.kwargs.values())
 
     def conf_orig(userpart, port=5080, limit=1, rate=1, offer=1):
         # each slave profile should call originate calls to itself

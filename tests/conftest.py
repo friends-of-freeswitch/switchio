@@ -39,6 +39,15 @@ def fshost(request):
 
 
 @pytest.fixture(scope='module')
+def fsip(fshost):
+    '''Convert provided host name to ip addr via dns
+    (Useful for loop back call tests)
+    '''
+    import socket
+    return socket.gethostbyname(socket.getfqdn(fshost))
+
+
+@pytest.fixture(scope='module')
 def fssock(request, fshost):
     '''return the fshost,fsport values as tuple (str, int)
     Use port 5080 (fs external profile) by default
