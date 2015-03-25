@@ -29,6 +29,7 @@ class DtmfChecker(object):
         if sess.is_inbound():
             sess.answer()
             self.incomplete[sess] = deque(self.sequence)
+            sess.vars['dtmf_checked'] = False
 
         if sess.is_outbound():
             self.log.info(
@@ -56,3 +57,4 @@ class DtmfChecker(object):
             self.log.debug("session '{}' completed dtmf sequence match"
                            .format(sess.uuid))
             self.incomplete.pop(sess)  # sequence match success
+            sess.vars['dtmf_checked'] = True
