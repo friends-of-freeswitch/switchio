@@ -7,9 +7,11 @@ Command wrappers and helpers
 
 
 def build_originate_cmd(dest_url, uuid_str=None, profile='external',
-                        dp_exten='park', dp_type='xml', dp_context='default',
-                        proxy=None,
-                        app_name=None, app_arg_str='',
+                        # explicit app
+                        app_name='park', app_arg_str='',
+                        # dp app
+                        dp_exten=None, dp_type='xml', dp_context='default',
+                        proxy=None,  # first hop uri
                         timeout=60,
                         caller_id='Mr_Switchy',
                         codec='PCMU',
@@ -53,7 +55,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
 
     # set a proxy destination if provided (i.e. the first hop)
     dest_str = ";fs_path=sip:{}".format(proxy) if proxy else ''
-        # params['sip_network_destination'] =
+    # params['sip_network_destination'] =
 
     # generate any requested Xheaders
     xheader_prefix = 'sip_h_X-'
@@ -70,7 +72,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
     pairs = ['='.join(map(str, pair)) for pair in params.iteritems()]
 
     # user specified app?
-    if app_name is None:  # use dialplan app
+    if dp_exten:  # use dialplan app for outbound channel
         app_part = '{} {} {}'.format(dp_exten, dp_type, dp_context)
     else:  # render app syntax
         app_part = '&{}({})'.format(app_name, app_arg_str)
