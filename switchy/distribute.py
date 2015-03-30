@@ -95,7 +95,7 @@ class MultiEval(object):
             # handle types as well
             itertype = itertype.__name__
 
-        # namespace can contain kwargs which are refereced in `expr`
+        # namespace can contain kwargs which are referenced in `expr`
         ns = {'slaves': self._slaves}
         ns.update(kwargs)
         return partial(
@@ -129,7 +129,7 @@ def SlavePool(slaves):
     sp.causes = partial(reduce, add, sp.hangup_causes)
 
     # small reduction protocol for 'multi-actions'
-    for attr in ('calls', 'jobs', 'sessions'):
+    for attr in ('calls', 'jobs', 'sessions', 'failed'):
         setattr(
             sp,
             'count_{}'.format(attr),
