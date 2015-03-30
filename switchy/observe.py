@@ -901,7 +901,7 @@ class EventListener(object):
                     self.log.debug("hungup session '{}' for call '{}'".format(
                                    uuid, call.uuid))
                     call.sessions.remove(sess)
-                if len(call.sessions) == 0:  # all sessions hungup
+                if len(call.sessions) == 0 or call_uuid == sess.uuid:  # all sessions hungup
                     self.log.debug("all sessions for call '{}' were hung up"
                                    .format(call_uuid))
                     # remove call from our set

@@ -161,8 +161,10 @@ class Originator(object):
                         Originator=self, appid=self.app_id)
         self.metrics = new_array()
         self.pool.evals(
-            'client.load_app(Metrics, on_value=appid, array=array)',
-            Metrics=Metrics, array=self.metrics, appid=self.app_id)
+            'client.load_app(Metrics, on_value=appid, array=array, pool=pool)',
+            Metrics=Metrics, array=self.metrics, appid=self.app_id,
+            pool=self.pool
+        )
 
         # listener(s) startup
         self.pool.evals('listener.start()')
@@ -294,7 +296,7 @@ class Originator(object):
         return self._total_originated_sessions
 
     def _burst(self):
-        '''Originate calls via 'bgapi originate' in a loop
+        '''Originate calls via a bgapi/originate call in a loop
         '''
         originated = 0
         count_calls = self.count_calls
@@ -404,7 +406,7 @@ class Originator(object):
         Change State INITIAL | STOPPED -> ORIGINATING
         """
         if self._thread is None or not self._thread.is_alive():
-            self.log.info("starting loop thread")
+            self.log.debug("starting burst loop thread")
             self._thread = Thread(target=self._serve_forever,
                                   name='burst-loop')
             self._thread.daemon = True  # die with parent

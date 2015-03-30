@@ -82,50 +82,51 @@ class CappedArray(object):
         return False
 
 
+class CallMetrics(CappedArray):
+    def seizure_fail_rate(self, start=0, end=-1):
+        '''Compute and return the average failed call rate between
+        indices `start` and `end` using the following formula:
+
+        sfr =   nfc[end] - nfc[start]
+               -----------------------
+                    end - start
+        where:
+            nfc        ::= number of failed calls array
+            start, end ::= array indices representing seizure index
+
+        The assumption is that nfc is a strictly
+        monotonic linear sequence.
+
+        TODO:
+            for non linear failed call counts we need to look at
+            taking a discrete derivative...
+        '''
+        array = self.num_failed_calls
+        if end < 0:
+            end = array.size + end
+        num = float(array[end] - array[start])
+        denom = float(end - start)
+        return num / denom
+
+    sfr = seizure_fail_rate
+
+    def answer_seizure_ratio(self, start=0, end=-1):
+        '''
+        Compute the answer seizure ratio using the following formula:
+
+        asr = 1 - sfr
+
+        where:
+            sfr ::= seizure fail rate
+        '''
+        return 1. - self.seizure_fail_rate(start, end)
+
+    asr = answer_seizure_ratio
+
+
 def new_array(dtype=metric_dtype, size=2**20):
     """Return a new capped numpy array
     """
-    class CallMetrics(CappedArray):
-        def seizure_fail_rate(self, start=0, end=-1):
-            '''Compute and return the average failed call rate between
-            indices `start` and `end` using the following formula:
-
-            sfr =   nfc[end] - nfc[start]
-                   -----------------------
-                        end - start
-            where:
-                nfc        ::= number of failed calls array
-                start, end ::= array indices representing seizure index
-
-            The assumption is that nfc is a strictly
-            monotonic linear sequence.
-
-            TODO:
-                for non linear failed call counts we need to look at
-                taking a discrete derivative...
-            '''
-            array = self.num_failed_calls
-            if end < 0:
-                end = array.size + end
-            num = float(array[end] - array[start])
-            denom = float(end - start)
-            return num / denom
-
-        sfr = seizure_fail_rate
-
-        def answer_seizure_ratio(self, start=0, end=-1):
-            '''
-            Compute the answer seizure ratio using the following formula:
-
-            asr = 1 - sfr
-
-            where:
-                sfr ::= seizure fail rate
-            '''
-            return 1. - self.seizure_fail_rate(start, end)
-
-        asr = answer_seizure_ratio
-
     return CallMetrics(np.zeros(size, dtype=dtype))
 
 
@@ -134,18 +135,21 @@ class Metrics(object):
 
     Only an instance of this class can be loaded as switchy app
     """
-    def __init__(self, listener=None, array=None):
-        self.listener = weakref.proxy(listener) if listener else listener
-        self.log = utils.get_logger(__name__)
+    def __init__(self, listener=None, array=None, pool=None):
+        self.listener = weakref.proxy(listener) if listener else None
         self._array = array if array else new_array()  # np default buffer
+        self.log = utils.get_logger(__name__)
+        self.pool = pool if pool else self.listener
 
-    def prepost(self, listener, array=None):
-        if array is not None:
-            # array can be overriden at app load time
+    def prepost(self, listener, array=None, pool=None):
+        if array is not None: # array can be overriden at app load time
             self._array = array
-        self.listener = listener
+        if not self.listener:
+            self.listener = listener
+        self.pool = pool if pool else self.listener
         yield
-        del self.listener
+        self.listener = None
+        self.slaves = None
 
     @property
     def array(self):
@@ -159,6 +163,7 @@ class Metrics(object):
         # separation of metrics between those that require two vs. one
         # leg to calculate?
         l = self.listener
+        pool = self.pool
         if sess.call.sessions:
             # the `callee` UA is who's time measures we want
             partner_sess = sess.call.sessions[-1]
@@ -169,8 +174,8 @@ class Metrics(object):
                     abs(sess.answer_time - partner_sess.answer_time),
                     abs(sess.answer_time - sess.create_time),
                     sess.originate_time - job.launch_time if job else 0,
-                    l.total_failed_sessions if l else 0,
-                    sess.num_sessions,
+                    pool.count_failed() if pool else 0,
+                    pool.count_sessions(),
                 ))
                 if rollover:
                     self.log.warn('resetting metric buffer index!')
