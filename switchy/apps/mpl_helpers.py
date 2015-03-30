@@ -11,9 +11,13 @@ Measurement and plotting tools - numpy + mpl helpers
 #          an order of mag of some other, they are both placed on the same
 #          axes?
 #     - consider placing arrays on the same axes which have the same suffix?
-#     - consider a way to easily move lines to different axes and re-rendering
-#       leveraging ipython tab completion
+#     - consider a way to easily move lines to different axes and
+#       re-rendering leveraging ipython tab completion
+from collections import OrderedDict, defaultdict
 import matplotlib.pyplot as plt
+import numpy as np
+import os
+import glob
 
 
 class OverwriteError(Exception):
@@ -47,13 +51,13 @@ class Plotter(object):
         # mpl bindings
         self._fig = None
         self._mng = None
-        self._axes = bunch.Bunch()
+        self._axes = {}
         self._plot_opts = defaultdict(dict)
         self.fields = OrderedDict()
 
         # parse args
         if buf is None:
-            self._buf = buf
+            self.array = buf
             # create an new internal buffer
             self.length = length
             # add any records declared in the class defn
@@ -63,14 +67,14 @@ class Plotter(object):
         elif buf is not None:
             # we're handed either an array or a file path
             if isinstance(buf, str):
-                self._buf = np.load(buf)
+                self.array = np.load(buf)
                 filename = os.path.basename(buf)
                 self._title, ext = os.path.splitext(filename)
             else:
-                self._buf = buf
-            self.length = self._buf.size
+                self.array = buf
+            self.length = self.array.size
             self._mi = self.length
-            fields = self._buf.dtype.fields
+            fields = self.array.dtype.fields
 
             # add fields in a 'suffix sorted' order
             for name in sorted(fields.keys(),
@@ -81,7 +85,7 @@ class Plotter(object):
 
             # validate field signature declared in the class declaration
             for name, opts in self.field_sig.items():
-                assert self._buf[name].any(), ("Field signature mismatch '{}'!"
+                assert self.array[name].any(), ("Field signature mismatch '{}'!"
                                                .format(name))
                 assert self.fields[name] == opts['dtype'], \
                     "Field type mismatch '"+name+"'!"
@@ -91,9 +95,9 @@ class Plotter(object):
     def __dir__(self):
         attrs = dir(self.__class__)
         attrs.extend(self.__dict__)
-        if self._buf is not None:
-            attrs.extend(self._buf.dtype.names)
-            attrs.extend(dir(self._buf))
+        if self.array is not None:
+            attrs.extend(self.array.dtype.names)
+            attrs.extend(dir(self.array))
         return attrs
 
     def __repr__(self):
@@ -101,12 +105,6 @@ class Plotter(object):
         fields_repr = " with fields '" + "', '".join(self.fields)\
             if len(self.fields) else ''
         return inst_repr + fields_repr + "'>"
-
-    def __getattr__(self, name):
-        try:
-            return getattr(self._buf, name)
-        except AttributeError:
-            return object.__getattribute__(self, name)
 
     def add_measure(self, name, data_type=np.float32, **plot_opts):
         if self._init:
@@ -129,7 +127,7 @@ class Plotter(object):
                                  " re-initializing!")
         # build np dtype and array
         self._dtype = np.dtype(self.fields.items())
-        self._buf = np.zeros(self.length, dtype=self._dtype)
+        self.array = np.zeros(self.length, dtype=self._dtype)
         self._mi = 0
         self._init = True  # mark us an initialized
 
@@ -140,7 +138,7 @@ class Plotter(object):
         self._title = name
         if not self._mng:
             self.get_fig()  # activate fig creation
-        self._mng.window.set_title(name)
+        # self._mng.window.set_title(name)
 
     title = property(get_title, set_title, "Title of this metrics instance")
 
@@ -178,9 +176,9 @@ class Plotter(object):
         '''
         Clear the figure and all referenced axes
         '''
-        if self.fig is not None:
-            self.fig.clear()
-            self.fig.canvas.draw()
+        if self.figure is not None:
+            self.figure.clear()
+            self.figure.canvas.draw()
         self._axes.clear()
 
     def plot(self, *args, **kwargs):
@@ -223,8 +221,8 @@ class Plotter(object):
             plot_opts.pop('axes', None)
 
             # generate plots
-            ax = self.fig.add_subplot(num_axes, 1, axes[name])
-            ax.plot(getattr(self, name), label=name, **plot_opts)
+            ax = self.figure.add_subplot(num_axes, 1, axes[name])
+            ax.plot(self.array[name], label=name, **plot_opts)
 
             # set legend
             ax.legend(loc='upper right')
@@ -236,8 +234,9 @@ class Plotter(object):
             # TODO: use a namedtuple here...
             self._axes[name] = ax
 
-        # show in a window
-        self.fig.show()
+        # show in a window full size
+        self.figure.tight_layout()
+        self.figure.show()
 
 
 def load_from_dir(path='./*.pkl', mtype=Plotter):
