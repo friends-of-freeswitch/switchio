@@ -113,7 +113,7 @@ class EventListener(object):
         self._bg_jobs = bg_jobs or OrderedDict()
         self._calls = OrderedDict()  # maps aleg uuids to Sessions instances
         self.hangup_causes = Counter()  # record of causes by category
-        self.failed_sessions = deque(maxlen=1e3)
+        self.failed_sessions = OrderedDict()
         self._handlers = self.default_handlers  # active handler set
         self._unsub = ()
         self.consumers = {}  # callback chains, one for each event type
@@ -174,6 +174,11 @@ class EventListener(object):
     def count_sessions(self):
         return len(self.sessions)
 
+    def count_failed(self):
+        '''Return the failed session count
+        '''
+        return sum(map(len, self.failed_sessions.values()))
+
     @property
     def bg_jobs(self):
         '''Background jobs collection'''
@@ -187,6 +192,8 @@ class EventListener(object):
         return self._calls
 
     def count_calls(self):
+        '''Count the number of active calls hosted by the slave process
+        '''
         return len(self.calls)
 
     def iter_cons(self):
@@ -276,7 +283,6 @@ class EventListener(object):
         self.failed_jobs = Counter()
         self.total_originated_sessions = 0
         self.total_answered_sessions = 0
-        self.total_failed_sessions = 0
 
     def start(self):
         '''Start this listener's event loop in a thread to start tracking
@@ -558,9 +564,10 @@ class EventListener(object):
                 self.log.debug("consumer id is '{}'".format(cid))
                 consumers = self.consumers.get(cid, False)
                 if consumers and consumed:
-                    self.log.debug("{} callbacks registered for {}: {}"
-                                   .format(len(consumers), cid, ", "
-                                   .join(consumers)))
+                    self.log.debug(
+                        "{} callbacks registered for {}: {}"
+                        .format(len(consumers), cid, ", ".join(
+                            consumers)))
                     # look up the client's callback chain and run
                     # e -> handler -> cb1, cb2, ... cbN
                     # map(operator.methodcaller('__call__', *ret),
@@ -573,7 +580,7 @@ class EventListener(object):
                     # unblock `session.vars` waiters
                     if model in self._waiters:
                         for varname, events in self._waiters[model].items():
-                            if model.vars.get(varname, False):
+                            if model.vars.get(varname):
                                 map(Event.set, events)
 
             # exception raised by handler/chain on purpose?
@@ -612,7 +619,7 @@ class EventListener(object):
         -------
         Do not call this from the event loop thread!
         '''
-        if sess.vars.get(varname, False):
+        if sess.vars.get(varname):
             return
         # retrieve cached event/blocker if possible
         event = mp.Event() if not self._blockers else self._blockers.pop()
@@ -876,14 +883,14 @@ class EventListener(object):
         sess.update(e)
         sess.hungup = True
         cause = e.getHeader('Hangup-Cause')
-        self.hangup_causes[cause] += 1
+        self.hangup_causes[cause] += 1  # count session causes
 
-        # remove call from our set
-        # try xheader first
+        # try xheader first then channel var
         call_uuid = e.getHeader('variable_{}'.format(self.call_corr_xheader))
         if not call_uuid:
             self.log.debug("handling HANGUP no call_uuid xheader found!?")
             call_uuid = e.getHeader(self.call_corr_var)  # try call_uuid
+
         if not call_uuid:
             self.log.warn("No call found for session '{}'"
                           .format(sess.uuid))
@@ -894,21 +901,21 @@ class EventListener(object):
                     self.log.debug("hungup session '{}' for call '{}'".format(
                                    uuid, call.uuid))
                     call.sessions.remove(sess)
-                if uuid == call.uuid:  # len(calls.sessions) == 0
+                if len(call.sessions) == 0:  # all sessions hungup
                     self.log.debug("all sessions for call '{}' were hung up"
                                    .format(call_uuid))
+                    # remove call from our set
                     self.calls.pop(call_uuid)
         self.log.debug("handling HANGUP for call_uuid: {}".format(call_uuid))
-
-        if not sess.answered or cause != 'NORMAL_CLEARING':
-            self.log.debug("'{}' was not answered??".format(sess.uuid))
-            self.total_failed_sessions += 1
-            self.failed_sessions.append(sess)
 
         # pop any corresponding job
         job = sess.bg_job
         # may have been popped by the partner
         self.bg_jobs.pop(job.uuid if job else None, None)
+
+        if not sess.answered or cause != 'NORMAL_CLEARING':
+            self.log.debug("'{}' was not successful??".format(sess.uuid))
+            self.failed_sessions.setdefault(cause, deque()).append(sess)
 
         self.log.debug("hungup session '{}'".format(uuid))
         # hangups are always consumed
@@ -1002,8 +1009,8 @@ class Client(object):
 
         :param ns: A namespace-like object containing functions marked with
             @event_callback (can be a module, class or instance).
-        :params str on_value: id key to be used for registering app callbacks with
-            `EventListener`
+        :params str on_value: id key to be used for registering app callbacks
+            with `EventListener`
         """
         listener = self.listener
         name = utils.get_name(ns)
