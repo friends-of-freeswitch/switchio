@@ -5,8 +5,8 @@
 Measurements app for collecting call latency and performance stats.
 """
 import weakref
-from ..marks import event_callback
-from .. import utils
+from switchy.marks import event_callback
+from switchy import utils
 from metrics import new_array
 
 

@@ -6,6 +6,7 @@ This module includes helpers for capturing measurements using numpy.
 """
 import numpy as np
 from switchy import utils
+from mpl_helpers import plot
 
 
 # numpy ndarray template
@@ -27,9 +28,9 @@ class CappedArray(object):
     Wraps the numpy array as if it was subclassed by overloading the
     getattr iterface
     """
-    def __init__(self, buf):
+    def __init__(self, buf, mi):
         self._buf = buf
-        self._mi = 0  # current row insertion-index
+        self._mi = mi  # current row insertion-index
         # provide subscript access to the underlying buffer
         for attr in ('__getitem__', '__setitem__'):
             setattr(self.__class__, attr, getattr(buf, attr))
@@ -115,8 +116,47 @@ class CallMetrics(CappedArray):
 
     asr = answer_seizure_ratio
 
+    def plot(self):
+        self.mng, self.fig, self.artists = plot(self, field_opts={
+            'time': None,  # indicates this field will not be plotted
+            # latencies
+            'invite_latency': (1, 1),
+            'answer_latency': (1, 1),
+            'call_setup_latency': (1, 1),
+            'originate_latency': (1, 1),
+            # counts
+            'num_failed_calls': (2, 1),
+            # TODO: change name to num_seizures?
+            'num_sessions': (2, 1)
+        })
+
 
 def new_array(dtype=metric_dtype, size=2**20):
     """Return a new capped numpy array
     """
-    return CallMetrics(np.zeros(size, dtype=dtype))
+    return CallMetrics(np.zeros(size, dtype=dtype), 0)
+
+
+def load(path, wrapper=CallMetrics):
+    '''Load a pickeled numpy array from the filesystem into a metrics wrapper
+    '''
+    array = np.load(path)
+    return wrapper(array, array.size)
+
+
+def load_from_dir(path='./*.pkl'):
+    '''Autoload all pickeled arrays in a dir into Metric
+    instances and plot
+
+    Parameters
+    ----------
+    path : string, optional
+        file system path + glob pattern to scan for files
+    '''
+    import glob
+    file_names = glob.glob(path)
+    tups = []
+    for f in file_names:
+        tup = plot(load(f))
+        tups.append(tup)
+    return tups
