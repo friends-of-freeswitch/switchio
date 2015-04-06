@@ -6,7 +6,6 @@ This module includes helpers for capturing measurements using numpy.
 """
 import numpy as np
 from switchy import utils
-from mpl_helpers import plot
 
 
 # numpy ndarray template
@@ -130,6 +129,7 @@ class CallMetrics(CappedArray):
     def inst_rate(self):
         '''The instantaneous rate computed per call
         '''
+        self.sort(order='time')  # sort array by time stamp
         rates = 1. / (self.time[1:] - self.time[:-1])
         # bound rate measures
         rates[rates > 300] = 300
@@ -141,22 +141,35 @@ class CallMetrics(CappedArray):
         '''
         return moving_avg(self.inst_rate, n=20)
 
+
+try:
+    from mpl_helpers import multiplot
+except ImportError:
+    log = utils.get_logger()
+    if not log.handlers:
+        utils.log_to_stderr()
+    log.warn(
+        "Matplotlib must be installed for graphing support"
+    )
+else:
     def plot(self):
-        self.sort(order='time')  # sort array by time stamp
-        self.mng, self.fig, self.artists = plot(self, fieldspec=[
-            ('time', None),  # this field will not be plotted
-            # latencies
-            ('invite_latency', (1, 1)),
-            ('answer_latency', (1, 1)),
-            ('call_setup_latency', (1, 1)),
-            ('originate_latency', (1, 1)),
-            # counts
-            ('num_sessions', (2, 1)),  # concurrent calls at creation time
-            ('num_failed_calls', (2, 1)),
-            # rates
-            ('inst_rate', (3, 1)),
-            ('wm20_rate', (3, 1)),
-        ])
+            self.sort(order='time')  # sort array by time stamp
+            self.mng, self.fig, self.artists = multiplot(self, fieldspec=[
+                ('time', None),  # this field will not be plotted
+                # latencies
+                ('invite_latency', (1, 1)),
+                ('answer_latency', (1, 1)),
+                ('call_setup_latency', (1, 1)),
+                ('originate_latency', (1, 1)),
+                # counts
+                ('num_sessions', (2, 1)),  # concurrent calls at creation time
+                ('num_failed_calls', (2, 1)),
+                # rates
+                ('inst_rate', (3, 1)),
+                ('wm20_rate', (3, 1)),
+            ])
+    # attach a plot method
+    CallMetrics.plot = plot
 
 
 def new_array(dtype=metric_dtype, size=2**20):

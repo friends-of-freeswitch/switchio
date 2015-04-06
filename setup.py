@@ -14,7 +14,7 @@ setup(
     long_description=readme,
     license='Mozilla',
     author='Tyler Goodlet',
-    author_email='tgoodlet@sangoma.com',
+    author_email='tgoodlet@gmail.com',
     url='',
     platforms=['linux'],
     packages=[
@@ -30,6 +30,7 @@ setup(
     # zip_safe=True,
     extras_require={
         'metrics': ['numpy'],
+        'graphing': ['matplotlib'],
     },
     classifiers=[
         'Development Status :: 3 - Alpha',

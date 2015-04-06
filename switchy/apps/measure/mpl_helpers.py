@@ -8,12 +8,11 @@ Measurement and plotting tools - numpy + mpl helpers
 #     - figure.tight_layout doesn't seem to work??
 #     - make legend malleable
 #     - consider a way to easily move lines to different axes and
-from collections import OrderedDict
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot(metrics, fieldspec=None, fig=None, mng=None):
+def multiplot(metrics, fieldspec=None, fig=None, mng=None):
     '''Plot all columns in appropriate axes on a figure
     '''
     fig = fig if fig else plt.figure()
