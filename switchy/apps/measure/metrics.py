@@ -2,30 +2,33 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-Measurements app for collecting call latency and performance stats.
-
-This module includes helper classes for taking load measurements using numpy.
+This module includes helpers for capturing measurements using numpy.
 """
-import logging
-import weakref
-from ..marks import event_callback
-from .. import utils
 import numpy as np
-import glob
-import os
-from collections import OrderedDict, defaultdict
+from switchy import utils
+from mpl_helpers import plot
 
 
 # numpy ndarray template
 metric_dtype = np.dtype([
-    ('time', np.float32),
-    ('invite_latency', np.float32),
-    ('answer_latency', np.float32),
-    ('call_setup_latency', np.float32),
-    ('originate_latency', np.float32),
-    ('num_failed_calls', np.uint16),
-    ('num_sessions', np.uint16),
+    ('time', np.float64),
+    ('invite_latency', np.float64),
+    ('answer_latency', np.float64),
+    ('call_setup_latency', np.float64),
+    ('originate_latency', np.float64),
+    ('num_failed_calls', np.uint32),
+    ('num_sessions', np.uint32),
 ])
+
+
+def moving_avg(x, n=100):
+    '''Compute the windowed arithmetic mean of `x` with window length `n`
+    '''
+    n = min(x.size, n)
+    cs = np.cumsum(x)
+    cs[n:] = cs[n:] - cs[:-n]
+    # cs[n - 1:] / n  # true means portion
+    return cs / n  # NOTE: first n-2 vals are not true means
 
 
 class CappedArray(object):
@@ -35,9 +38,9 @@ class CappedArray(object):
     Wraps the numpy array as if it was subclassed by overloading the
     getattr iterface
     """
-    def __init__(self, buf):
+    def __init__(self, buf, mi):
         self._buf = buf
-        self._mi = 0  # current row insertion-index
+        self._mi = mi  # current row insertion-index
         # provide subscript access to the underlying buffer
         for attr in ('__getitem__', '__setitem__'):
             setattr(self.__class__, attr, getattr(buf, attr))
@@ -123,59 +126,60 @@ class CallMetrics(CappedArray):
 
     asr = answer_seizure_ratio
 
+    @property
+    def inst_rate(self):
+        '''The instantaneous rate computed per call
+        '''
+        rates = 1. / (self.time[1:] - self.time[:-1])
+        # bound rate measures
+        rates[rates > 300] = 300
+        return rates
+
+    @property
+    def wm20_rate(self):
+        '''The rolling average call rate windowed over 20 calls
+        '''
+        return moving_avg(self.inst_rate, n=20)
+
+    def plot(self):
+        self.sort(order='time')  # sort array by time stamp
+        self.mng, self.fig, self.artists = plot(self, fieldspec=[
+            ('time', None),  # this field will not be plotted
+            # latencies
+            ('invite_latency', (1, 1)),
+            ('answer_latency', (1, 1)),
+            ('call_setup_latency', (1, 1)),
+            ('originate_latency', (1, 1)),
+            # counts
+            ('num_sessions', (2, 1)),  # concurrent calls at creation time
+            ('num_failed_calls', (2, 1)),
+            # rates
+            ('inst_rate', (3, 1)),
+            ('wm20_rate', (3, 1)),
+        ])
+
 
 def new_array(dtype=metric_dtype, size=2**20):
     """Return a new capped numpy array
     """
-    return CallMetrics(np.zeros(size, dtype=dtype))
+    return CallMetrics(np.zeros(size, dtype=dtype), 0)
 
 
-class Metrics(object):
-    """Collect call oriented measurements
+def load(path, wrapper=CallMetrics):
+    '''Load a pickeled numpy array from the filesystem into a metrics wrapper
+    '''
+    array = np.load(path)
+    return wrapper(array, array.size)
 
-    Only an instance of this class can be loaded as switchy app
-    """
-    def __init__(self, listener=None, array=None, pool=None):
-        self.listener = weakref.proxy(listener) if listener else None
-        self._array = array if array else new_array()  # np default buffer
-        self.log = utils.get_logger(__name__)
-        self.pool = pool if pool else self.listener
 
-    def prepost(self, listener, array=None, pool=None):
-        if array is not None: # array can be overriden at app load time
-            self._array = array
-        if not self.listener:
-            self.listener = listener
-        self.pool = pool if pool else self.listener
-        yield
-        self.listener = None
-        self.slaves = None
-
-    @property
-    def array(self):
-        return self._array
-
-    @event_callback('CHANNEL_HANGUP')
-    def log_stats(self, sess, job):
-        """Append measurement data inserting only once per call
-        """
-        # TODO: eventually we should use a data type which allows the
-        # separation of metrics between those that require two vs. one
-        # leg to calculate?
-        l = self.listener
-        pool = self.pool
-        if sess.call.sessions:
-            # the `callee` UA is who's time measures we want
-            partner_sess = sess.call.sessions[-1]
-            if l.sessions.get(partner_sess.uuid, False):
-                rollover = self._array.insert((
-                    sess.create_time - l._epoch if l else sess.create_time,
-                    abs(sess.create_time - partner_sess.create_time),
-                    abs(sess.answer_time - partner_sess.answer_time),
-                    abs(sess.answer_time - sess.create_time),
-                    sess.originate_time - job.launch_time if job else 0,
-                    pool.count_failed() if pool else 0,
-                    pool.count_sessions(),
-                ))
-                if rollover:
-                    self.log.warn('resetting metric buffer index!')
+def load_from_dir(path='./*.pkl'):
+    '''Autoload all pickeled arrays from dir-glob `path` into Metric
+    instances and plot
+    '''
+    import glob
+    file_names = glob.glob(path)
+    tups = []
+    for f in file_names:
+        tup = plot(load(f))
+        tups.append(tup)
+    return tups

@@ -796,7 +796,6 @@ class EventListener(object):
         # note the start time and current load
         # TODO: move this to Session __init__??
         sess.create_time = get_event_time(e)
-        sess.num_sessions = len(self.sessions)
 
         # Use our special Xheader to try and associate sessions into calls
         # (assumes that x-headers are forwarded by the proxy/B2BUA)
@@ -836,6 +835,7 @@ class EventListener(object):
         if sess:
             sess.update(e)
             # store local time stamp for originate
+            sess.originate_event_time = get_event_time(e)
             sess.originate_time = time.time()
             self.total_originated_sessions += 1
             return True, sess
@@ -901,7 +901,8 @@ class EventListener(object):
                     self.log.debug("hungup session '{}' for call '{}'".format(
                                    uuid, call.uuid))
                     call.sessions.remove(sess)
-                if len(call.sessions) == 0 or call_uuid == sess.uuid:  # all sessions hungup
+                # all sessions hungup
+                if len(call.sessions) == 0 or call_uuid == sess.uuid:
                     self.log.debug("all sessions for call '{}' were hung up"
                                    .format(call_uuid))
                     # remove call from our set

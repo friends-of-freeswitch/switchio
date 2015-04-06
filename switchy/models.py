@@ -92,7 +92,6 @@ class Session(object):
         self.duration = 0
         self.bg_job = None
         self.answered = False
-        self.num_sessions = None
         self.call = None
         self.hungup = False
         # time stamps
