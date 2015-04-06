@@ -23,6 +23,9 @@ def plot(metrics, fieldspec=None, fig=None, mng=None):
         fieldspec = [
             (name, (i, 1)) for i, name in enumerate(metrics.dtype.fields)
         ]
+    elif hasattr(fieldspec, 'items'):
+        fieldspec = fieldspec.items()
+
     rows, cols = max(tup[1] for tup in fieldspec)
 
     # plot loop

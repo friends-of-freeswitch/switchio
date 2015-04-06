@@ -22,7 +22,7 @@ metric_dtype = np.dtype([
 
 
 def moving_avg(x, n=100):
-    '''Compute the windowed arithmetic mean of `x` for with window length `n`
+    '''Compute the windowed arithmetic mean of `x` with window length `n`
     '''
     n = min(x.size, n)
     cs = np.cumsum(x)
