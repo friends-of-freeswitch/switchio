@@ -20,6 +20,7 @@ setup(
     packages=[
         'switchy',
         'switchy.apps',
+        'switchy.apps.measure',
         # 'tests',
     ],
     package_data={
