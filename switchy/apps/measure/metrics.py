@@ -11,14 +11,24 @@ from mpl_helpers import plot
 
 # numpy ndarray template
 metric_dtype = np.dtype([
-    ('time', np.float32),
-    ('invite_latency', np.float32),
-    ('answer_latency', np.float32),
-    ('call_setup_latency', np.float32),
-    ('originate_latency', np.float32),
-    ('num_failed_calls', np.uint16),
-    ('num_sessions', np.uint16),
+    ('time', np.float64),
+    ('invite_latency', np.float64),
+    ('answer_latency', np.float64),
+    ('call_setup_latency', np.float64),
+    ('originate_latency', np.float64),
+    ('num_failed_calls', np.uint32),
+    ('num_sessions', np.uint32),
 ])
+
+
+def moving_avg(x, n=100):
+    '''Compute the windowed arithmetic mean of `x` for with window length `n`
+    '''
+    n = min(x.size, n)
+    cs = np.cumsum(x)
+    cs[n:] = cs[n:] - cs[:-n]
+    # cs[n - 1:] / n  # true means portion
+    return cs / n  # NOTE: first n-2 vals are not true means
 
 
 class CappedArray(object):
@@ -116,19 +126,37 @@ class CallMetrics(CappedArray):
 
     asr = answer_seizure_ratio
 
+    @property
+    def inst_rate(self):
+        '''The instantaneous rate computed per call
+        '''
+        rates = 1. / (self.time[1:] - self.time[:-1])
+        # bound rate measures
+        rates[rates > 300] = 300
+        return rates
+
+    @property
+    def wm20_rate(self):
+        '''The rolling average call rate windowed over 20 calls
+        '''
+        return moving_avg(self.inst_rate, n=20)
+
     def plot(self):
-        self.mng, self.fig, self.artists = plot(self, field_opts={
-            'time': None,  # indicates this field will not be plotted
+        self.sort(order='time')  # sort array by time stamp
+        self.mng, self.fig, self.artists = plot(self, fieldspec=[
+            ('time', None),  # this field will not be plotted
             # latencies
-            'invite_latency': (1, 1),
-            'answer_latency': (1, 1),
-            'call_setup_latency': (1, 1),
-            'originate_latency': (1, 1),
+            ('invite_latency', (1, 1)),
+            ('answer_latency', (1, 1)),
+            ('call_setup_latency', (1, 1)),
+            ('originate_latency', (1, 1)),
             # counts
-            'num_failed_calls': (2, 1),
-            # TODO: change name to num_seizures?
-            'num_sessions': (2, 1)
-        })
+            ('num_sessions', (2, 1)),  # concurrent calls at creation time
+            ('num_failed_calls', (2, 1)),
+            # rates
+            ('inst_rate', (3, 1)),
+            ('wm20_rate', (3, 1)),
+        ])
 
 
 def new_array(dtype=metric_dtype, size=2**20):
@@ -145,13 +173,8 @@ def load(path, wrapper=CallMetrics):
 
 
 def load_from_dir(path='./*.pkl'):
-    '''Autoload all pickeled arrays in a dir into Metric
+    '''Autoload all pickeled arrays from dir-glob `path` into Metric
     instances and plot
-
-    Parameters
-    ----------
-    path : string, optional
-        file system path + glob pattern to scan for files
     '''
     import glob
     file_names = glob.glob(path)

@@ -49,7 +49,7 @@ class Metrics(object):
             partner_sess = sess.call.sessions[-1]
             if l.sessions.get(partner_sess.uuid, False):
                 rollover = self._array.insert((
-                    sess.create_time - l._epoch if l else sess.create_time,
+                    sess.create_time,  # invite time index
                     abs(sess.create_time - partner_sess.create_time),
                     abs(sess.answer_time - partner_sess.answer_time),
                     abs(sess.answer_time - sess.create_time),
