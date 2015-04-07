@@ -18,7 +18,6 @@ from .. import marks
 from ..observe import EventListener, Client
 from ..distribute import SlavePool
 from bert import Bert
-from measure import Metrics, new_array
 
 
 def get_pool(contacts, **kwargs):
@@ -159,12 +158,21 @@ class Originator(object):
                             app=app, appid=self.app_id)
         self.pool.evals('client.load_app(Originator, on_value=appid)',
                         Originator=self, appid=self.app_id)
-        self.metrics = new_array()
-        self.pool.evals(
-            'client.load_app(Metrics, on_value=appid, array=array, pool=pool)',
-            Metrics=Metrics, array=self.metrics, appid=self.app_id,
-            pool=self.pool
-        )
+        try:
+            from measure import Metrics, new_array
+        except ImportError:
+            if not self.log.handlers:
+                utils.log_to_stderr()
+            self.log.warn(
+                "Numpy is not installed; no call metrics will be collected."
+            )
+        else:
+            self.metrics = new_array()
+            self.pool.evals(
+                'client.load_app(Metrics, on_value=appid, array=array, pool=pool)',
+                Metrics=Metrics, array=self.metrics, appid=self.app_id,
+                pool=self.pool
+            )
 
         # listener(s) startup
         self.pool.evals('listener.start()')
@@ -209,7 +217,7 @@ class Originator(object):
         burst_rate = float(min(self.max_rate, value))
         # set the inter-burst-period
         # account for surrounding processing latencies by small %
-        self.ibp = 1 / burst_rate * 0.90
+        self.ibp = 1 / burst_rate * 0.99
         self._rate = value
         if self.auto_duration and hasattr(self, '_limit'):
             self.duration = self.limit / value + self.duration_offset
@@ -368,6 +376,8 @@ class Originator(object):
                 except Exception:
                     self.log.error("exiting burst loop due to exception:\n{}"
                                    .format(traceback.format_exc()))
+                    self._change_state("STOPPED")
+
                 self.log.info("stopping burst loop...")
 
             # exit gracefully
