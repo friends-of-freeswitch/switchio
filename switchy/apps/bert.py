@@ -29,6 +29,7 @@ class Bert(object):
 
         self.log = get_logger(self.__class__.__name__)
         self.hangup_on_error = True  # hangup on desyncs by default
+        self._two_sided = False  # toggle whether to run bert on both ends
 
         # make sure the module is loaded
         client.api('reload mod_bert', exc=False)
@@ -37,6 +38,10 @@ class Bert(object):
         self.lost_sync = deque(maxlen=1e3)
         self.timed_out = deque(maxlen=1e3)
         yield
+
+    def two_sided(self, enable):
+        assert isinstance(enable, bool)
+        self._two_sided = enable
 
     def setup(self, sess):
         """Apply bert config settings
@@ -58,8 +63,11 @@ class Bert(object):
             sess.setvar('absolute_codec_string', 'PCMU')
             sess.answer()  # next step will be in answer handler
             sess.setvar("jitterbuffer_msec", "100:200:40")
-            sess.broadcast('echo::')  # one-sided test
-            # self.setup(sess)  # two-sided test
+            if self._two_sided:  # bert run on both sides
+                self.setup(sess)
+                sess.broadcast('bert_test::')
+            else:  # one-sided looping audio back to source
+                sess.broadcast('echo::')
 
         # for outbound calls the park event comes AFTER the answer
         # initiated by the inbound leg given that the originate command
@@ -68,14 +76,6 @@ class Bert(object):
             self.setup(sess)
             sess.setvar('absolute_codec_string', 'PCMU')
             sess.broadcast('bert_test::')
-
-    # @event_callback('CHANNEL_ANSWER')
-    # def on_answer(self, sess):
-    #     """Start b-leg bert test
-    #     (only use for 2-sided bert testing, otherwise comment out)
-    #     """
-    #     if sess.is_inbound():
-    #         sess.broadcast('bert_test::')
 
     desync_stats = (
         "sync_lost_percent",
