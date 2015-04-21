@@ -122,12 +122,12 @@ class Connection(object):
             return not bool(ret)
         return False
 
-    def connect(self, **kwargs):
+    def connect(self, host=None, port=None, auth=None):
         """Reconnect if disconnected
         """
-        host = kwargs.pop('host', None) or self.host
-        port = kwargs.pop('port', None) or self.port
-        auth = kwargs.pop('auth', None) or self.auth
+        host = host or self.host
+        port = port or self.port
+        auth = auth or self.auth
         if not self.connected():
             # XXX: try a few times since connections seem to be flaky
             # We should probably try to fix this in the _ESL.so
@@ -143,6 +143,10 @@ class Connection(object):
                 "Failed to connect to server at '{}:{}'\n"
                 "Please check that FreeSWITCH is running and "
                 "accepting esl connections.".format(host, port))
+        # on success change our contact info
+        self.host = host
+        self.port = port
+        self.auth = auth
 
     def connected(self):
         '''Return bool indicating if this connection is active
