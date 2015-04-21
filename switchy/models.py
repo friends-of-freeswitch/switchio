@@ -227,18 +227,63 @@ class Session(object):
         self.con.api('uuid_send_dtmf {} {} @{}'.format(
                      self.uuid, sequence, duration))
 
-    def playback(self, file_path, leg='aleg'):
+    def playback(self, args, start_sample=None, leg='aleg'):
         '''Playback a file on this session
 
         Parameters
         ----------
-        file_path : string
-            path to audio file to playback
+        args : string
+            arguments or path to audio file for playback app
         leg : string
-            call leg to transmit the audio on.
+            call leg to transmit the audio on
         '''
-        self.con.api('uuid_broadcast {} playback::{} aleg'.format(
-                     self.uuid, file_path))
+        self.broadcast(
+            'playback::{}{} aleg'.format(
+                args,
+                '@@{}'.format(start_sample if start_sample else '')
+            )
+        )
+
+    def start_record(self, path, rx_only=True):
+        '''Record audio from this session to a local file on the slave filesystem
+        using the `record_session`_ cmd
+
+        .. _record_session:
+            https://freeswitch.org/confluence/display/FREESWITCH/record_session
+        '''
+        self.broadcast('record_session::{{RECORD_READ_ONLY={1}}}{0}'.format(
+                       path, {True: 'true', False: 'false'}[rx_only]))
+
+    def stop_record(self, path='all', delay=1):
+        '''Stop recording audio from this session to a local file on the slave
+        filesystem using the `stop_record_session`_ cmd
+
+        .. _stop_record_session:
+            https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+stop_record_session
+        '''
+        if delay:
+            self.con.api(
+                "sched_api +{delay} none uuid_broadcast {sessid} "
+                "stop_record_session::{path}".
+                format(sessid=self.uuid, delay=delay, path=path)
+            )
+        else:
+            self.broadcast('stop_record_session::{}'.format(path))
+
+    def record(self, action, path, rx_only=True):
+        '''Record audio from this session to a local file on the slave filesystem
+        using the `uuid_record`_ command:
+            uuid_record <uuid> [start|stop|mask|unmask] <path> [<limit>]
+
+        .. _uuid_record:
+            https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-uuid_record
+        '''
+        self.con.api('uuid_record {} {} {}'.format(self.uuid, action, path))
+
+    def echo(self):
+        '''Echo back all audio recieved
+        '''
+        self.broadcast('echo::')
 
     def bypass_media(self, state):
         '''Re-invite a bridged node out of the media path for this session
@@ -253,11 +298,11 @@ class Session(object):
         '''
         self.con.api('uuid_break {}'.format(self.uuid))
 
-    def start_amd(self, timeout=None):
+    def start_amd(self, delay=None):
         self.con.api('avmd {} start'.format(self.uuid))
         if timeout is not None:
             self.con.api('sched_api +{} none avmd {} stop'.format(
-                         int(timeout), self.uuid))
+                         int(delay), self.uuid))
 
     def stop_amd(self):
         self.con.api('avmd {} stop'.format(self.uuid))
@@ -269,7 +314,7 @@ class Session(object):
 
     def broadcast(self, path, leg=''):
         """Usage:
-            uuid_broadcast <uuid> <path> [aleg|bleg|both]
+        uuid_broadcast <uuid> <path> [aleg|bleg|both]
 
         Execute an application on a chosen leg(s) with optional hangup
         afterwards:
@@ -280,16 +325,21 @@ class Session(object):
         #       so that we are actually alerted of cmd errors!
         self.con.api('uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
 
-    def bridge(self, profile="${sofia_profile_name}",
-               dest_url="${sip_req_user}",
-               params=False):
+    def bridge(self, dest_url="${sip_req_uri}",
+               profile="${sofia_profile_name}",
+               proxy=None,
+               params=None):
         """Bridge this session using `uuid_broadcast`.
         By default the current profile is used to bridge to the requested user.
         """
         pairs = ('='.join(map(str, pair))
                  for pair in params.iteritems()) if params else ''
-        self.broadcast("bridge::{{{varset}}}sofia/{}/{}"
-                       .format(profile, dest_url, varset=','.join(pairs)))
+        self.broadcast(
+            "bridge::{{{varset}}}sofia/{}/{}{dest}".format(
+                profile, dest_url, varset=','.join(pairs),
+                dest=';fs_path=sip:{}'.format(proxy) if proxy else ''
+            )
+        )
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
