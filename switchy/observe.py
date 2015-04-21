@@ -17,6 +17,7 @@ import inspect
 import itertools
 import functools
 import weakref
+from contextlib import contextmanager
 from threading import Thread, current_thread
 from collections import deque, OrderedDict, defaultdict, Counter
 
@@ -58,7 +59,7 @@ class EventListener(object):
     and a receive-only esl connection.
 
     The main purpose is to enable event oriented state tracking of various
-    slave server objects and call entities.
+    slave process objects and call entities.
     '''
     id_var = 'switchy_app'
     id_xh = utils.xheaderify(id_var)
@@ -97,7 +98,7 @@ class EventListener(object):
             tested and is the first hop receiving requests. Note in
             order for this association mechanism to work the intermediary
             device must be configured to forward the Xheaders it recieves.
-            (see self._handle_create for more details)
+            (see `self._handle_create` for more details)
         debug : bool
             Enables debug logging
         autorecon : int, bool
@@ -516,7 +517,6 @@ class EventListener(object):
                 self.log.error("Received empty event!?")
             else:
                 evname = e.getHeader('Event-Name')
-                self.log.debug("receive event '{}'".format(evname))
                 if evname:
                     consumed = self._process_event(e, evname)
                 else:
@@ -551,11 +551,15 @@ class EventListener(object):
             self._fs_time = get_event_time(e)
         else:
             self._epoch = self._fs_time = get_event_time(e)
+
         consumed = False  # is this event consumed by a handler/callback
         if 'CUSTOM' in evname:
             evname = e.getHeader('Event-Subclass')
+        self.log.debug("receive event '{}'".format(evname))
+
         handler = self._handlers.get(evname, False)
         if handler:
+            self.log.debug("handler is '{}'".format(handler))
             try:
                 consumed, ret = utils.uncons(*handler(e))  # invoke handler
                 # attempt to lookup a consuming client app by id
@@ -564,18 +568,18 @@ class EventListener(object):
                 self.log.debug("consumer id is '{}'".format(cid))
                 consumers = self.consumers.get(cid, False)
                 if consumers and consumed:
+                    cbs = consumers.get(evname, ())
                     self.log.debug(
-                        "{} callbacks registered for {}: {}"
-                        .format(len(consumers), cid, ", ".join(
-                            consumers)))
+                        "consumer '{}' has callback '{}' registered for ev {}"
+                        .format(cid, cbs, evname)
+                    )
                     # look up the client's callback chain and run
                     # e -> handler -> cb1, cb2, ... cbN
                     # map(operator.methodcaller('__call__', *ret),
                     #                           consumers.get(evname, ()))
                     # XXX assign ret on each interation in an attempt to avoid
                     # python's dynamic scope lookup
-                    for cb, ret in zip(consumers.get(evname, ()),
-                                       itertools.repeat(ret)):
+                    for cb, ret in zip(cbs, itertools.repeat(ret)):
                         cb(*ret)
                     # unblock `session.vars` waiters
                     if model in self._waiters:
@@ -782,9 +786,8 @@ class EventListener(object):
 
     @handler('CHANNEL_CREATE')
     def _handle_create(self, e):
-        '''Handle channel create events.
-        Currently, records times for latency calculations in the Session
-        instance
+        '''Handle channel create events by building local
+        `Session` and `Call` objects for state tracking.
         '''
         uuid = e.getHeader('Unique-ID')
         self.log.debug("channel created for session '{}'".format(uuid))
@@ -1244,14 +1247,14 @@ class Client(object):
         return self._orig_cmd
 
 
-def get_listener(server, port=EventListener.PORT, auth=EventListener.AUTH,
+def get_listener(host, port=EventListener.PORT, auth=EventListener.AUTH,
                  shared=False, mng=None, mng_init=None, **kwargs):
     '''Listener factory which can be used to load a local instance or a shared
     proxy using `multiprocessing.managers`
     '''
     if not shared:
         # return a listener local to this process
-        l = EventListener(server, port, auth, **kwargs)
+        l = EventListener(host, port, auth, **kwargs)
     else:
         if mng is None:
             mng = multiproc.get_mng()
@@ -1260,5 +1263,28 @@ def get_listener(server, port=EventListener.PORT, auth=EventListener.AUTH,
         except AssertionError:
             pass
         # lock = mng.MpLock()
-        l = mng.EventListener(server, port, auth, **kwargs)
+        l = mng.EventListener(host, port, auth, **kwargs)
     return l
+
+
+@contextmanager
+def active_client(host, port='8021', auth='ClueCon',
+                  apps=None):
+    '''A context manager which delivers an active `Client` containing a started
+    `EventListener` with applications loaded that were passed in the `apps` map
+    '''
+    client = Client(
+        host, port, auth, listener=get_listener(host, port, auth)
+    )
+    client.listener.connect()
+    client.connect()
+    # load app set
+    if apps:
+        for value, app in apps.items():
+            client.load_app(app, on_value=value if value else
+                            utils.get_name(app))
+    # client setup/teardown
+    client.listener.start()
+    yield client
+    client.listener.disconnect()
+    client.disconnect()
