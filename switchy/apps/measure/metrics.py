@@ -31,18 +31,18 @@ def moving_avg(x, n=100):
 
 
 class CappedArray(object):
-    """Numpy buffer with a capped length which rolls over to the beginning
-    when data is inserted past the end of the internal np array.
+    """A capped length Numpy buffer which rolls over a data insertion index
+    when insertions run past the end of the pre-allocated internal array.
 
     Wraps the numpy array as if it was subclassed by overloading the
-    getattr iterface
+    getattr iterface.
     """
     def __init__(self, buf, mi):
         self._buf = buf
         self._mi = mi  # current row insertion-index
         # provide subscript access to the underlying buffer
         for attr in ('__getitem__', '__setitem__'):
-            setattr(self.__class__, attr, getattr(buf, attr))
+            setattr(self.__class__, attr, getattr(self._buf, attr))
 
     def __dir__(self):
         attrs = utils.dirinfo(self)
@@ -51,28 +51,37 @@ class CappedArray(object):
         return attrs
 
     def __repr__(self):
-        return repr(self._buf[:self._mi])
+        return repr(self._view)
+
+    @property
+    def _view(self):
+        return self._buf[:self._mi]
+
+    @property
+    def view(self):
+        '''A new instance of an array view up to the last inserted entry
+        '''
+        return type(self)(self._view, self._mi)
+
+    @property
+    def index(self):
+        '''Current entry index count
+        '''
+        return self._mi
 
     def __getattr__(self, name):
-        """Try to return a view into the numpy buffer
+        """Delegate all attribute access to the current view
         """
         try:
             # present the columns arrays as attributes
-            return self._buf[:self._mi][name]
+            return self._view[name]
         except ValueError:  # not one of the field names
-            return getattr(self._buf[:self._mi], name)
+            return getattr(self._view, name)
 
     def insert(self, value):
-        '''
-        Insert value(s) at the current index into the internal
-        numpy array.  If value is a tuple which fills every coloumn in the
-        current row of the internal buffer array then self.increment is called
-        automatically.
-
-        Parameters
-        ----------
-        value : type(self._buf.dtype[name]) or tuple
-            value to insert
+        '''Insert `value` into the internal numpy array at the current index
+        and increment the index. Return a bool indicating whether the current
+        entry has caused a roll over to the beginning of the internal buffer.
         '''
         # NOTE: consider using ndarray.itemset if we want to
         # insert into only one column?
@@ -85,6 +94,8 @@ class CappedArray(object):
 
 
 class CallMetrics(CappedArray):
+    """An array for computing and aggregating common call metrics
+    """
     def seizure_fail_rate(self, start=0, end=-1):
         '''Compute and return the average failed call rate between
         indices `start` and `end` using the following formula:
@@ -96,8 +107,7 @@ class CallMetrics(CappedArray):
             nfc        ::= number of failed calls array
             start, end ::= array indices representing seizure index
 
-        The assumption is that nfc is a strictly
-        monotonic linear sequence.
+        The assumption is that nfc is a strictly monotonic linear sequence.
 
         TODO:
             for non linear failed call counts we need to look at
@@ -113,8 +123,7 @@ class CallMetrics(CappedArray):
     sfr = seizure_fail_rate
 
     def answer_seizure_ratio(self, start=0, end=-1):
-        '''
-        Compute the answer seizure ratio using the following formula:
+        '''Compute the answer seizure ratio using the following formula:
 
         asr = 1 - sfr
 
@@ -129,17 +138,18 @@ class CallMetrics(CappedArray):
     def inst_rate(self):
         '''The instantaneous rate computed per call
         '''
-        self.sort(order='time')  # sort array by time stamp
-        rates = 1. / (self.time[1:] - self.time[:-1])
+        view = self.view
+        view.sort(order='time')  # sort array by time stamp
+        rates = 1. / (view['time'][1:] - self.view['time'][:-1])
         # bound rate measures
         rates[rates > 300] = 300
         return rates
 
     @property
-    def wm20_rate(self):
-        '''The rolling average call rate windowed over 20 calls
+    def wm_rate(self):
+        '''The rolling average call rate windowed over 100 calls
         '''
-        return moving_avg(self.inst_rate, n=20)
+        return moving_avg(self.inst_rate, n=100)
 
 
 try:
@@ -153,8 +163,9 @@ except ImportError:
     )
 else:
     def plot(self):
-            self.sort(order='time')  # sort array by time stamp
-            self.mng, self.fig, self.artists = multiplot(self, fieldspec=[
+            view = self.view
+            view.sort(order='time')  # sort array by time stamp
+            self.mng, self.fig, self.artists = multiplot(view, fieldspec=[
                 ('time', None),  # this field will not be plotted
                 # latencies
                 ('invite_latency', (1, 1)),
@@ -166,7 +177,7 @@ else:
                 ('num_failed_calls', (2, 1)),
                 # rates
                 ('inst_rate', (3, 1)),
-                ('wm20_rate', (3, 1)),
+                ('wm_rate', (3, 1)),
             ])
     # attach a plot method
     CallMetrics.plot = plot
