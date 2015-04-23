@@ -74,6 +74,7 @@ class PlayRec(object):
         '''
         self.log.info("Finished playing file '{}' for session ".format(
                       self.audiofile, sess.uuid))
+        sess.stop_record(delay=2)
         callee = sess.call.sessions[-1]
         callee.stop_record(delay=2)
 

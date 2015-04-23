@@ -296,7 +296,7 @@ class TestClient:
     def test_apps(self, client, el):
         """Test app loading, unloading
         """
-        from switchy.apps.test import TonePlay
+        from switchy.apps.players import TonePlay
         from switchy.apps.bert import Bert
         from switchy.marks import get_callbacks, event_callback
         from switchy import utils

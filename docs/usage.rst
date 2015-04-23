@@ -10,8 +10,7 @@ Quick-Start - Originating a single call
 Getting familiar with *Switchy*'s features means learning to put the
 appropriate components together to generate a call. This simple guide is
 meant to provide commentary along the way. It is assumed you are already
-familiar with the prerequisite :doc:`required deployment steps
-<fsconfig>`.
+familiar with the prerequisite :doc:`deployment steps <fsconfig>`.
 
 
 Components
@@ -144,7 +143,6 @@ A `Job` provides the same interface as that of the
 
     >>> client.hupall()  # hangup the call
 
-.. _appload:
 
 Call control using Switchy apps
 -------------------------------
@@ -155,8 +153,10 @@ benefit is that apps can be written in pure Python somewhat like the
 module provided with *FreeSWITCH*. Switchy gives the added benefit that
 the Python process does not have to run on the slave machine and in fact
 **multiple** applications can be managed independently of **multiple** slave
-configurations thanks, yet again, to Switchy's use of the :ref:`ESL inbound method <inbound>`.
+configurations thanks to Switchy's use of the :ref:`ESL inbound method <inbound>`.
 
+
+.. _appload:
 
 App Loading
 ***********
@@ -165,15 +165,15 @@ Each app is associated with a `uuid` if none is provided which allows for
 the appropriate callback lookups to be completed by the `EventListener`.
 
 We can now accomplish the same tone play steps from above using the
-built-in :py:class:`~switchy.apps.test.TonePlay` app::
+built-in :py:class:`~switchy.apps.players.TonePlay` app::
 
-    >>> from switchy.apps.test import TonePlay
+    >>> from switchy.apps.players import TonePlay
     >>> client.load_app(TonePlay)
     Feb 25 13:27:43 [INFO] switchy.Client@vm-host observe.py:1020 : Loading call app 'TonePlay'
     'fd27be58-bd1b-11e4-b22d-74d02bc595d7'  # the app uuid since None provided
 
     >>> client.apps.TonePlay
-    <sangoma.switchy.apps.test.TonePlay at 0x7f7c5fdaf650>
+    <sangoma.switchy.apps.players.TonePlay at 0x7f7c5fdaf650>
 
     >>> isinstance(client.apps.TonePlay, TonePlay)  # Loading the app type instantiates it
     True
