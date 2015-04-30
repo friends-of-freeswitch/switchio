@@ -36,4 +36,5 @@ class Bridger(object):
 
     @event_callback('CHANNEL_BRIDGE')
     def on_bridge(self, sess):
-        self.log.debug("Bridged session '{}'".format(sess.uuid))
+        self.log.debug("Bridged aleg session '{}' to bleg session '{}'"
+                       .format(sess.uuid, sess['Bridge-B-Unique-ID']))

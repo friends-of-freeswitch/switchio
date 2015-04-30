@@ -1286,5 +1286,11 @@ def active_client(host, port='8021', auth='ClueCon',
     # client setup/teardown
     client.listener.start()
     yield client
+
+    # unload app set
+    if apps:
+        for value, app in apps.items():
+            client.unload_app(app)
+
     client.listener.disconnect()
     client.disconnect()
