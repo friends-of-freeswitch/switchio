@@ -66,11 +66,11 @@ class Events(object):
                 return self._events[key]
             raise KeyError(key)
 
-    def show(self, index=0):
-        """Print data for index'th event to console.
-        Default is most recent.
+    def pprint(self, index=0):
+        """Print serialized event data in chronological order to stdout
         """
-        print(self._events[index].serialize())
+        for ev in reversed(self._events):
+            print(ev.serialize())
 
 
 class Session(object):
@@ -205,6 +205,11 @@ class Session(object):
         self.con.api('sched_hangup +{} {} {}'.format(timeout,
                      self.uuid, cause))
 
+    def clear_tasks(self):
+        '''Clear all scheduled tasks for this session
+        '''
+        self.con.api('sched_del {}'.format(self.uuid))
+
     def sched_dtmf(self, delay, sequence, tone_duration=None):
         '''Schedule dtmf sequence to be played on this channel
 
@@ -238,9 +243,10 @@ class Session(object):
             call leg to transmit the audio on
         '''
         self.broadcast(
-            'playback::{}{} aleg'.format(
+            'playback::{}{} {}'.format(
                 args,
-                '@@{}'.format(start_sample if start_sample else '')
+                '@@{}'.format(start_sample if start_sample else ''),
+                leg
             )
         )
 
@@ -300,7 +306,7 @@ class Session(object):
 
     def start_amd(self, delay=None):
         self.con.api('avmd {} start'.format(self.uuid))
-        if timeout is not None:
+        if delay is not None:
             self.con.api('sched_api +{} none avmd {} stop'.format(
                          int(delay), self.uuid))
 
