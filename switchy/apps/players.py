@@ -41,6 +41,7 @@ class PlayRec(object):
         self.audiofile = '{}/ivr/8000/ivr-founder_of_freesource.wav'.format(
             self.soundsdir)
         self.call2recs = OrderedDict()
+        self.recs = set()
 
     @event_callback("CHANNEL_PARK")
     def on_park(self, sess):
@@ -72,17 +73,18 @@ class PlayRec(object):
     def on_stop(self, sess):
         '''Hangup up the session once playback completes
         '''
-        self.log.info("Finished playing file '{}' for session ".format(
+        self.log.info("Finished playing file '{}' for session '{}'".format(
                       self.audiofile, sess.uuid))
         sess.stop_record(delay=2)
         callee = sess.call.sessions[-1]
-        callee.stop_record(delay=2)
+        callee.stop_record(delay=3)
 
     @event_callback("RECORD_START")
     def on_rec(self, sess):
         self.log.info("Recording file '{}' for session '{}'".format(
             sess['Record-File-Path'], sess.uuid))
         sess.vars['recorded'] = False
+        self.recs.add(sess)
 
     @event_callback("RECORD_STOP")
     def on_recstop(self, sess):
@@ -90,4 +92,6 @@ class PlayRec(object):
             sess['Record-File-Path'], sess.uuid))
         # mark as recorded so user can block with `EventListener.waitfor`
         sess.vars['recorded'] = True
-        sess.sched_hangup(0.5)  # delay hangup slightly
+        self.recs.remove(sess)
+        if not self.recs:
+            sess.sched_hangup(0.5)  # delay hangup slightly
