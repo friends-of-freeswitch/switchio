@@ -2,10 +2,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-Make single calls synchronously
+Make calls synchronously
 """
 from contextlib import contextmanager
-from players import TonePlay
+from apps.players import TonePlay
 from switchy.observe import active_client
 
 

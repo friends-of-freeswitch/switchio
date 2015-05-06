@@ -5,7 +5,7 @@
 Tests for synchronous call helper
 """
 import time
-from switchy.apps.synced import sync_caller
+from switchy import sync_caller
 
 
 def test_toneplay(fsip):
