@@ -17,6 +17,7 @@ from apps.call_gen import get_originator
 from distribute import SlavePool, MultiEval
 from marks import event_callback, handler
 from connection import Connection, ConnectionError
+from sync import sync_caller
 
 __package__ = 'switchy'
 __version__ = '0.1.alpha'
