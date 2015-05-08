@@ -13,8 +13,8 @@ class Bert(object):
     """Call application which runs the bert test application on both
     legs of a call
 
-    See the docs for `mod_bert`_ for more details and
-    discussion by the author `here`_.
+    See the docs for `mod_bert`_ and discussion by the author `here`_.
+
     .. _mod_bert:
         https://freeswitch.org/confluence/display/FREESWITCH/mod_bert
     .. _here:
