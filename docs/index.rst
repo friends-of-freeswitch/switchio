@@ -67,12 +67,12 @@ Contents
     :maxdepth: 1
 
     fsconfig
-    usage
+    quickstart
     callgen
+    usage
     apps
-    api
-.. ::
     testing
+    api
 
 
 .. Indices and tables

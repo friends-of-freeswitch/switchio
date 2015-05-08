@@ -48,7 +48,7 @@ As an example using *FreeSWITCH*'s provided `external` profile::
 
     <!-- Contents of ${FS_ROOT}/conf/sip_profiles/external.xml -->
     -- <param name="context" value="public"/>
-    ++ <param name="context" value="switchydp"/>
+    ++ <param name="context" value="switchy"/>
 
 
 Configuring the :term:`intermediary` server or 'softwares under test'

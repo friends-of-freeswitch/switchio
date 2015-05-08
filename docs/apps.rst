@@ -11,7 +11,7 @@ Switchy supports composing *applications* written in pure python which
 roughly correspond to the actions taken by `extensions` in *FreeSWITCH*'s
 xml dialplan interface. In fact, Switchy's *apps* offer extended control and
 flexibility since they can be implemented as a standalone python
-:py:class:`class` which can hold state as well as be mutated at runtime.
+:py:class:`class` which can hold state and be mutated at runtime.
 
 Applications are :ref:`loaded <appload>` using :py:class:`~switchy.observe.Client`
 instances which have been associated with a respective
@@ -45,7 +45,7 @@ type is most often a :py:class:`~switchy.models.Session`.
 
 .. note::
     Technically the method will receive whatever is returned as the 2nd
-    argument from the preceeding event `handler` looked up in the event
+    value from the preceeding event `handler` looked up in the event
     processing loop, but this is an implementation detail and may change
     in the future.
 
@@ -63,8 +63,9 @@ a global::
 
 .. note::
     This is meant to be a simple example and not actually
-    implemented for practical use. The :py:class:`switchy.observer.EventListener`
-    implements a counter method :py:meth:`count_calls` for this very purpose.
+    implemented for practical use.
+    :py:meth:`switchy.observe.EventListener.count_calls` exists
+    for this very purpose.
 
 
 Event Handlers
@@ -75,22 +76,10 @@ is expected to handle a received `ESLEvent` object and process it within the
 should expect a single argument being the received event.
 
 Example handlers can be found in the :py:class:`~switchy.observe.EventListener`
-such as the default `CHANNEL_ORIGINATE` handler::
+such as the default `CHANNEL_ORIGINATE` handler
 
-    @handler('CHANNEL_ORIGINATE')
-    def _handle_originate(self, e):
-        '''Handle originate events
-        '''
-        uuid = e.getHeader('Unique-ID')
-        sess = self.sessions.get(uuid, None)
-        self.log.debug("handling originated session '{}'".format(uuid))
-        if sess:
-            sess.update(e)
-            # store local time stamp for originate
-            sess.originate_time = time.time()
-            self.total_originated_sessions += 1
-            return True, sess
-        return False, sess
+.. literalinclude:: ../switchy/observe.py
+    :pyobject: EventListener._handle_originate
 
 As you can see a knowledge of the underlying :ref:`ESL SWIG python
 package` usually is required for `handler` implementations.
@@ -98,41 +87,26 @@ package` usually is required for `handler` implementations.
 
 Example applications
 --------------------
+.. _toneplayapp:
+
 TonePlay
 ********
-As a first example here is the `TonePlay` app which is provided as a built-in
-for Switchy::
+As a first example here is the :py:class:`~switchy.apps.players.TonePlay`
+app which is provided as a built-in for Switchy
 
-    from switchy import event_callback
+.. literalinclude:: ../switchy/apps/players.py
+    :pyobject: TonePlay
 
-    class TonePlay(object):
-        """Play a tone on the outbound leg and echo it back
-        on the inbound
-        """
-        @event_callback('CHANNEL_PARK')
-        def answer_inbound(self, sess):
-            if sess.is_inbound():
-                sess.answer()
 
-        @event_callback("CHANNEL_ANSWER")
-        def tone_play(self, sess):
-            # play infinite tones on calling leg
-            if sess.is_outbound():
-                sess.broadcast('playback::{loops=-1}tone_stream://%(251,0,1004)')
-
-            # inbound leg simply echos back the tone
-            if sess.is_inbound():
-                sess.broadcast('echo::')
-
-:py:class:`Clients` who load this app will originate calls wherein
-a simple tone is played infinitely and echoed back to the caller
-until each call is hung up.
+:py:class:`Clients <switchy.observe.Client>` who load this app will originate
+calls wherein a simple tone is played infinitely and echoed back to
+the caller until each call is hung up.
 
 .. _proxyapp:
 
 Proxier
 *******
-An example implementation of the :ref:`proxy dialplan <proxydp>` can be
+An example of the :ref:`proxy dialplan <proxydp>` can be
 implemented quite trivially::
 
     import switchy
@@ -143,5 +117,28 @@ implemented quite trivially::
             if sess.is_inbound():
                 sess.bridge(dest_url="${sip_req_user}@${sip_req_host}:${sip_req_port}")
 
-For further more complex examples check out the :py:mod:`switchy.apps`
-sub-package with the most complicated app being the notorious `Originator`.
+.. _metricsapp:
+
+Metrics
+*******
+The sub-application used by the
+:py:class:`~switchy.apps.call_gen.Originator` to gather load
+measurements:
+
+.. literalinclude:: ../switchy/apps/measure/__init__.py
+    :pyobject: Metrics
+
+It simply inserts measurement data on hangup once for each call.
+
+PlayRec
+*******
+This more involved application demonstrates *FreeSWITCH*'s ability to play
+and record rtp streams locally which can be used in tandem with MOS to do
+audio quality checking:
+
+.. literalinclude:: ../switchy/apps/players.py
+    :pyobject: PlayRec
+
+For further examples check out the :py:mod:`~switchy.apps`
+sub-package which also includes the very notorious
+:py:class:`switchy.apps.call_gen.Originator`.

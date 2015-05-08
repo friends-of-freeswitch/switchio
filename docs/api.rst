@@ -2,14 +2,25 @@
     :maxdepth: 1
     :hidden:
 
+    api/connection
     api/observe
     api/models
     api/distribute
+    api/sync
+    api/apps
+    api/commands
 
 
 API Reference
 =============
 This reference is not entirely comprehensive and is expected to change.
+
+
+Connection wrapper
+------------------
+A thread safe (plus more) wrapper around the ESL swig module's
+`ESLConnection` type is found in
+:doc:`connection.py <api/connection>`.
 
 
 Observer components
@@ -36,6 +47,7 @@ Model types
 
 .. _call management commands:
     https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-CallManagementCommands
+
 
 .. _clustertools:
 
