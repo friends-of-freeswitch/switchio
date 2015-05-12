@@ -9,13 +9,11 @@ Call generation and load testing
 --------------------------------
 |   Switchy enables you to drive multiple switch instances as a call
     generation cluster.
-|   A baseline FreeSWITCH :ref:`config <fsconfig>` is required for import-and-go
-    usage.
 
-Once you have a set of slave servers configured, have started
-:program:`freeswitch` processes on each slave **and** have configured
-the ESL to listen on the default *8021* port, simply load the originator app
-passing in a sequence of slave server host names::
+Once you have a set of slave servers :ref:`deployed <fsconfig>`,
+have started :program:`freeswitch` processes on each slave **and**
+have configured the *ESL* to listen on the default *8021* port, simply
+load the originator app passing in a sequence of slave server host names::
 
     >>> from switchy import get_originator
     >>> originator = get_originator(['hostnameA', 'hostnameB', 'hostnameC'])
@@ -43,7 +41,7 @@ passing in a sequence of slave server host names::
 
 |   In order to ensure that calls are made successfully it is recommended that
     the :term:`intermediary` system :ref:`loop calls back <proxydp>` to the
-    originating slave server's machine :term:`caller`.
+    originating slave server's :term:`caller`.
 |   This allows switchy to associate *outbound* and *inbound*
     SIP sessions into calls. As an example if the called system is another
     FreeSWITCH server under test then you can configure a :ref:`proxy
@@ -97,7 +95,7 @@ set for the **first** client in the `Orignator` app's client pool. You might
 notice that the command is a :py:class:`format` string which has some
 placeholder variables set. It is the job of the :py:class:`switchy.observe.Client`
 to fill in these values at runtime (i.e. when the :py:meth:`switchy.observe.Client.originate` is called).
-For more info on the `originate` cmd wrapper see :py:func:`switchy.commands.build_originate_cmd`.
+For more info on the `originate` cmd wrapper see :py:func:`~switchy.commands.build_originate_cmd`.
 Also see :doc:`usage`.
 
 Try starting again::
@@ -123,7 +121,7 @@ At this point there should be one active call from your :term:`caller`
     it may mean your :term:`callee` isn't configured correctly. Stop the `Originator` and Check the *FreeSWITCH* slave's logs to debug.
 
 The `Originator` will keep offering new calls indefinitely with `duration` seconds
-allowing up to `limit`'s (in *erlangs*) worth of concurrent calls until told stop.
+allowing up to `limit`'s (in *erlangs*) worth of concurrent calls until stopped.
 That is, continuous load is offered until you either `stop` or `hupall` calls.
 You can verify this by ssh-ing to the slave and calling the `status`
 command from `fs_cli`_.
@@ -145,8 +143,8 @@ Currently, the default Switchy app loaded by the `Originator` is :py:class:`swit
 which provides a decent media *tranparency* test useful in auditting :term:`intermediary` DUTs.
 This app requires that the `mod_bert` has been successfully initialized/loaded on the *FreeSWITCH* slave(s).
 
-To tear down calls you can use one of :py:meth:`switchy.apps.call_gen.Originator.stop` or
-:py:meth:`Originator.apps.call_gen.Originator.hupall`.  The former will simply stop the *burst*
+To tear down calls you can use one of :py:meth:`~switchy.apps.call_gen.Originator.stop` or
+:py:meth:`~switchy.apps.call_gen.Originator.hupall`.  The former will simply stop the *burst*
 loop and let calls slowly teardown as per the `duration` attr whereas the latter will forcefully
 abort all calls associated with a given `Client`::
 
@@ -192,6 +190,30 @@ system. The `pool.evals` method essentially allows you to invoke
 arbitrary Python expressions across all slaves in the cluster.
 
 For more details see :ref:`clustertools` .
+
+
+Measurement collection
+**********************
+Given that you have `numpy` installed, the `Originator` collects call latency measurements
+by default using the built-in :ref:`metrics <metricsapp>` app. The array
+is referenced by the :py:attr:`switchy.apps.call_gen.Originator.metrics`
+attribute::
+
+    >>> originator.metrics
+    array([
+    (1431052903.824296, 0.01998305320739746, 0.0199739933013916, 0.05997896194458008, 0.01702594757080078, 0L, 1999L),
+    (1431052903.864301, 0.0, 0.020053863525390625, 0.05999898910522461, 0.0016980171203613281, 0L, 1998L),
+    (1431052903.884275, 0.019971132278442383, 0.019969940185546875, 0.05999493598937988, 0.007421970367431641, 0L, 1997L),
+    ...,
+    (1431053015.88425, 0.06000018119812012, 0.019997835159301758, 0.09999799728393555, 0.01164388656616211, 0L, 1934L),
+    (1431053015.924249, 0.02000117301940918, 0.019997835159301758, 0.05999898910522461, 0.01691603660583496, 0L, 1933L),
+    (1431053015.96425, 0.019997835159301758, 0.03999900817871094, 0.09999799728393555, 0.013684988021850586, 0L, 1932L)],
+    dtype=[('time', '<f8'), ('invite_latency', '<f8'), ('answer_latency', '<f8'), ('call_setup_latency', '<f8'),
+    ('originate_latency', '<f8'), ('num_failed_calls', '<u4'), ('num_sessions', '<u4')])
+
+If you have `matplotlib` installed you can also plot the results using
+:py:meth:`switchy.apps.call_gen.Originator.metrics.plot`.
+
 
 .. _originate:
     https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-originate

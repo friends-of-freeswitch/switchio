@@ -5,13 +5,14 @@
 Tests for synchronous call helper
 """
 import time
-from switchy.apps.synced import sync_caller
+from switchy import sync_caller
+from switchy.apps.players import TonePlay
 
 
 def test_toneplay(fsip):
     '''Test the synchronous caller with a simple toneplay
     '''
-    with sync_caller(fsip) as caller:
+    with sync_caller(fsip, apps={"TonePlay": TonePlay}) as caller:
         # have the external prof call itself by default
         assert 'TonePlay' in caller.app_names
         sess, waitfor = caller(

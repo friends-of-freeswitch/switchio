@@ -7,15 +7,13 @@ test mult-slave/cluster tools
 import pytest
 
 
-@pytest.yield_fixture(scope='module')
-def pool():
+@pytest.fixture(scope='module')
+def pool(fshosts):
+    if not len(fshosts) > 1:
+        pytest.skip("the '--fshost' option must be a list of 2 or more "
+                    "hostnames in order to run multi-slave tests")
     from switchy.apps.call_gen import get_pool
-    # TODO: require this list from cli arg!!
-    sp = get_pool([
-        'vm-host.qa.sangoma.local',
-        'sip-cannon.qa.sangoma.local',
-    ])
-    yield sp
+    return get_pool(fshosts)
 
 
 def test_setup(pool):

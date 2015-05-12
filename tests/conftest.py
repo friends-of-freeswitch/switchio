@@ -3,7 +3,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import pytest
 import sys
-import time
 
 
 def pytest_addoption(parser):
@@ -27,15 +26,28 @@ def pytest_configure(config):
         utils.log_to_stderr(max(40 - config.option.verbose * 10, 10))
 
 
-@pytest.fixture(scope='module')
-def fshost(request):
-    '''return the fshost option string
+@pytest.fixture(scope='session')
+def fshosts(request):
+    argstring = request.config.option.fshost
+    if not argstring:
+        pytest.skip("the '--fshost' option is required to determine the "
+                    "FreeSWITCH slave server(s) under test")
+    # construct a list if passed as arg
+    if '[' in argstring:
+        fshosts = eval(argstring)
+        assert iter(fshosts), '`--fshost` list is not a valid python sequence?'
+    else:
+        fshosts = [argstring]
+
+    return fshosts
+
+
+@pytest.fixture(scope='session')
+def fshost(fshosts):
+    '''return the first fs slave hostname passed via the
+    `--fshost` cmd line arg
     '''
-    fshost = request.config.option.fshost
-    if fshost:
-        return fshost
-    pytest.skip("the '--fshost' option is required to determine the fs"
-                " slave server")
+    return fshosts[0]
 
 
 @pytest.fixture(scope='module')
