@@ -39,6 +39,15 @@ class Bert(object):
         self.timed_out = deque(maxlen=1e3)
         yield
 
+    @property
+    def two_sided(self):
+        '''Toggle whether to run the `bert_test` application
+        on all sessions of the call. Leaving this `False` means
+        all other legs will simply run the `echo` application.
+        '''
+        return self._two_sided
+
+    @two_sided.setter
     def two_sided(self, enable):
         assert isinstance(enable, bool)
         self._two_sided = enable
@@ -48,7 +57,7 @@ class Bert(object):
         """
         sess.setvar('bert_timer_name', 'soft')
         sess.setvar('bert_max_err', '30')
-        sess.setvar('bert_timeout_ms', '10000')  # 10 secs
+        sess.setvar('bert_timeout_ms', '3000')
         if self.hangup_on_error:
             sess.setvar('bert_hangup_on_error', 'yes')
         sess.setvar("jitterbuffer_msec", "100:200:40")
