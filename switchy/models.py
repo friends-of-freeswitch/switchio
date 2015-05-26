@@ -257,8 +257,9 @@ class Session(object):
         .. _record_session:
             https://freeswitch.org/confluence/display/FREESWITCH/record_session
         '''
-        self.broadcast('record_session::{{RECORD_READ_ONLY={1}}}{0}'.format(
-                       path, {True: 'true', False: 'false'}[rx_only]))
+        self.setvar('RECORD_READ_ONLY',
+                    {True: 'true', False: 'false'}[rx_only])
+        self.broadcast('record_session::{}'.format(path))
 
     def stop_record(self, path='all', delay=1):
         '''Stop recording audio from this session to a local file on the slave
