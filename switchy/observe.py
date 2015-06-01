@@ -72,9 +72,8 @@ class EventListener(object):
                  session_map=None,
                  bg_jobs=None,
                  rx_con=None,
-                 call_corr_var_name='call_uuid',
+                 call_corr_var_name='variable_call_uuid',
                  call_corr_xheader_name='originating_session_uuid',
-                 debug=False,
                  autorecon=30,
                  max_limit=float('inf'),
                  # proxy_mng=None,
@@ -99,8 +98,6 @@ class EventListener(object):
             order for this association mechanism to work the intermediary
             device must be configured to forward the Xheaders it recieves.
             (see `self._handle_create` for more details)
-        debug : bool
-            Enables debug logging
         autorecon : int, bool
             Enable reconnection attempts on server disconnect. An integer
             value specifies the of number seconds to spend re-trying the
@@ -121,11 +118,12 @@ class EventListener(object):
         self._waiters = {}  # holds events being waited on
         self._blockers = []  # holds cached events for reuse
         # store up to the last 10k of each event type
-        self.events = defaultdict(functools.partial(deque, maxlen=1e4))
+        self.events = defaultdict(functools.partial(deque, maxlen=1e3))
 
         # constants
         self.autorecon = autorecon
-        self.set_call_var(call_corr_var_name)
+        self._call_var = None
+        self.call_corr_var = call_corr_var_name
         self.set_xheader_var(call_corr_xheader_name)
         self.max_limit = max_limit
         self._id = utils.uuid()
@@ -212,10 +210,11 @@ class EventListener(object):
         """
         return self._call_var
 
-    def set_call_var(self, var_name):
+    @call_corr_var.setter
+    def call_corr_var(self, var_name):
         """Set the channel variable to use for associating sessions into calls
         """
-        self._call_var = 'variable_{}'.format(var_name)
+        self._call_var = var_name
 
     @property
     def call_corr_xheader(self):
@@ -916,10 +915,12 @@ class EventListener(object):
         job = sess.bg_job
         # may have been popped by the partner
         self.bg_jobs.pop(job.uuid if job else None, None)
+        sess.bg_job = None  # deref job - avoid mem leaks
 
         if not sess.answered or cause != 'NORMAL_CLEARING':
             self.log.debug("'{}' was not successful??".format(sess.uuid))
-            self.failed_sessions.setdefault(cause, deque()).append(sess)
+            self.failed_sessions.setdefault(
+                cause, deque(maxlen=1e3)).append(sess)
 
         self.log.debug("hungup session '{}'".format(uuid))
         # hangups are always consumed
