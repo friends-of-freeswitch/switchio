@@ -41,17 +41,9 @@ class PlayRec(object):
         self.audiofile = '{}/ivr/8000/ivr-founder_of_freesource.wav'.format(
             self.soundsdir)
         self.call2recs = OrderedDict()
-        self.recs = set()
 
     @event_callback("CHANNEL_PARK")
     def on_park(self, sess):
-        if sess.is_outbound():
-            # rec the tx stream
-            filename = '{}/tx_{}.wav'.format(self.recsdir, sess.uuid)
-            sess.start_record(filename)
-            self.call2recs.setdefault(sess.call.uuid, {})['tx'] = filename
-            sess.playback(self.audiofile)
-
         # inbound leg simply echos back the stream
         if sess.is_inbound():
             sess.answer()
@@ -63,6 +55,12 @@ class PlayRec(object):
             filename = '{}/rx_{}.wav'.format(self.recsdir, sess.uuid)
             sess.start_record(filename)
             self.call2recs.setdefault(sess.call.uuid, {})['rx'] = filename
+
+        if sess.is_outbound():
+            # rec the tx stream
+            filename = '{}/tx_{}.wav'.format(self.recsdir, sess.uuid)
+            sess.start_record(filename)
+            self.call2recs.setdefault(sess.call.uuid, {})['tx'] = filename
 
     @event_callback("PLAYBACK_START")
     def on_play(self, sess):
@@ -76,7 +74,7 @@ class PlayRec(object):
         self.log.info("Finished playing file '{}' for session '{}'".format(
                       self.audiofile, sess.uuid))
         sess.stop_record(delay=2)
-        callee = sess.call.sessions[-1]
+        callee = sess.call.callee
         callee.stop_record(delay=3)
 
     @event_callback("RECORD_START")
@@ -84,7 +82,11 @@ class PlayRec(object):
         self.log.info("Recording file '{}' for session '{}'".format(
             sess['Record-File-Path'], sess.uuid))
         sess.vars['recorded'] = False
-        self.recs.add(sess)
+
+        # start playback from the caller side
+        if sess.is_outbound():
+            sess.setvar('timer_name', 'soft')
+            sess.playback(self.audiofile)
 
     @event_callback("RECORD_STOP")
     def on_recstop(self, sess):
@@ -92,6 +94,11 @@ class PlayRec(object):
             sess['Record-File-Path'], sess.uuid))
         # mark as recorded so user can block with `EventListener.waitfor`
         sess.vars['recorded'] = True
-        self.recs.remove(sess)
-        if not self.recs:
+        if sess.hungup:
+            self.log.warn(
+                "tess '{}' was already hungup prior to recording completion?"
+                .format(sess.uuid))
+        callee = sess.call.callee
+        if callee.vars['recorded']:
+            self.log.info("sending hangup for session '{}'".format(sess.uuid))
             sess.sched_hangup(0.5)  # delay hangup slightly

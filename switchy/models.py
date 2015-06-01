@@ -250,15 +250,15 @@ class Session(object):
             )
         )
 
-    def start_record(self, path, rx_only=True):
+    def start_record(self, path, rx_only=False):
         '''Record audio from this session to a local file on the slave filesystem
         using the `record_session`_ cmd
 
         .. _record_session:
             https://freeswitch.org/confluence/display/FREESWITCH/record_session
         '''
-        self.setvar('RECORD_READ_ONLY',
-                    {True: 'true', False: 'false'}[rx_only])
+        if rx_only:
+            self.setvar('RECORD_READ_ONLY', 'true')
         self.broadcast('record_session::{}'.format(path))
 
     def stop_record(self, path='all', delay=1):
@@ -373,6 +373,12 @@ class Call(object):
 
     def hangup(self):
         self.sessions[0].hangup()
+
+    @property
+    def callee(self):
+        '''A reference to the session making up the final leg of this call
+        '''
+        return self.sessions[-1] if len(self.sessions) > 1 else None
 
 
 class Job(object):
