@@ -711,7 +711,7 @@ class EventListener(object):
         consumed = False
         resp = None
         ok = '+OK '
-        err = '-ERR '
+        err = '-ERR'
         job_uuid = e.getHeader('Job-UUID')
         body = e.getBody()
         # always report errors even for jobs which we aren't tracking
