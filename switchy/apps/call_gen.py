@@ -68,14 +68,13 @@ def limiter(pairs):
 
 
 class State(object):
-    """Type to represent originator state machine
+    """Enumeration to represent the originator state machine
     """
     __slots__ = ['value']
 
     INITIAL = 0  # Originator is initialized and is awaiting start command
     ORIGINATING = 1  # Calls are currently being originated
     STOPPED = 2  # There are no more active calls/sessions and bgjobs
-    SHUTDOWN = 3  # Originator is being shut down
 
     def __init__(self, state=INITIAL):
         self.value = state
@@ -208,7 +207,7 @@ class Originator(object):
             self.pool.evals('client.api("console loglevel warning")')
 
         # Make sure latest XML is loaded
-        self.pool.evals('client.api("reloadxml")')
+        # self.pool.evals('client.api("reloadxml")')
 
     def _get_rate(self):
         return self._rate
@@ -452,13 +451,13 @@ class Originator(object):
         self.pool.evals('client.hupall()')
 
     def shutdown(self):
-        '''Shutdown this originator instance and causing its call loop
-        to exit
+        '''Shutdown this originator instance and hanging up all
+        active calls and triggering the burst loop to exit.
         '''
         if self.pool.count_sessions():
             self.hupall()
         self._exit.set()  # trigger exit
-        self._change_state("SHUTDOWN")
+        self._change_state("STOPPED")
 
     @property
     def originate_cmd(self):
