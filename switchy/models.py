@@ -86,8 +86,10 @@ class Session(object):
         if uuid:
             self.uuid = uuid
         self.con = con
+
         # sub-namespace for apps to set/get state
         self.vars = {}
+
         # external attributes
         self.duration = 0
         self.bg_job = None
@@ -172,7 +174,8 @@ class Session(object):
         """Set all variables in map `params` with a single command
         """
         pairs = ('='.join(map(str, pair)) for pair in params.iteritems())
-        self.api("uuid_setvar_multi {} {}".format(self.uuid, ';'.join(pairs)))
+        self.con.api("uuid_setvar_multi {} {}".format(
+            self.uuid, ';'.join(pairs)))
 
     def unsetvar(self, var):
         """Unset a channel var
@@ -232,27 +235,41 @@ class Session(object):
         self.con.api('uuid_send_dtmf {} {} @{}'.format(
                      self.uuid, sequence, duration))
 
-    def playback(self, args, start_sample=None, leg='aleg'):
+    def playback(self, args, start_sample=None, endless=False,
+                 leg='aleg', params=None):
         '''Playback a file on this session
 
         Parameters
         ----------
-        args : string
+        args : string or tuple
             arguments or path to audio file for playback app
         leg : string
             call leg to transmit the audio on
         '''
+        app = 'endless_playback' if endless else 'playback'
+        pairs = ('='.join(map(str, pair))
+                 for pair in params.iteritems()) if params else ''
+
+        delim = ';'
+        if isinstance(args, str):
+            args = (args,)
+        else:  # set a stream file delimiter
+            self.setvar('playback_delimiter', delim)
+
         self.broadcast(
-            'playback::{}{} {}'.format(
-                args,
-                '@@{}'.format(start_sample if start_sample else ''),
-                leg
+            '{app}::{varset}{streams}{start} {leg}'.format(
+                app=app,
+                streams=delim.join(args),
+                start='@@{}'.format(start_sample if start_sample else ''),
+                leg=leg,
+                varset='{{{vars}}}'.format(','.join(pairs)) if pairs else '',
             )
         )
 
     def start_record(self, path, rx_only=False, rate=16000):
         '''Record audio from this session to a local file on the slave filesystem
-        using the `record_session`_ cmd. By default recordings are sampled at 16kHz.
+        using the `record_session`_ cmd. By default recordings are sampled at
+        16kHz.
 
         .. _record_session:
             https://freeswitch.org/confluence/display/FREESWITCH/record_session
@@ -342,12 +359,16 @@ class Session(object):
         """
         pairs = ('='.join(map(str, pair))
                  for pair in params.iteritems()) if params else ''
+
         self.broadcast(
             "bridge::{{{varset}}}sofia/{}/{}{dest}".format(
                 profile, dest_url, varset=','.join(pairs),
                 dest=';fs_path=sip:{}'.format(proxy) if proxy else ''
             )
         )
+
+    def breakapp(self):
+        self.con.api('uuid_break {}'.format(self.uuid))
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
@@ -367,6 +388,8 @@ class Call(object):
         self.uuid = uuid
         self.sessions = deque()
         self.sessions.append(session)
+        # sub-namespace for apps to set/get state
+        self.vars = {}
 
     def __repr__(self):
         return "<{}({}, {} sessions)>".format(
@@ -380,6 +403,20 @@ class Call(object):
         '''A reference to the session making up the final leg of this call
         '''
         return self.sessions[-1] if len(self.sessions) > 1 else None
+
+    @property
+    def caller(self):
+        '''A reference to the session making up the final leg of this call
+        '''
+        return self.sessions[0] if len(self.sessions) else None
+
+    def get_peer(self, sess):
+        if sess is self.caller:
+            return self.callee
+        elif sess is self.callee:
+            return self.caller
+        else:
+            return None
 
 
 class Job(object):
