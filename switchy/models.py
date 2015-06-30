@@ -266,7 +266,7 @@ class Session(object):
             )
         )
 
-    def start_record(self, path, rx_only=False, rate=16000):
+    def start_record(self, path, rx_only=False, stereo=False, rate=16000):
         '''Record audio from this session to a local file on the slave filesystem
         using the `record_session`_ cmd. By default recordings are sampled at
         16kHz.
@@ -276,6 +276,9 @@ class Session(object):
         '''
         if rx_only:
             self.setvar('RECORD_READ_ONLY', 'true')
+        elif stereo:
+            self.setvar('RECORD_STEREO', 'true')
+
         self.setvar('record_sample_rate', '{}'.format(rate))
         self.broadcast('record_session::{}'.format(path))
 
