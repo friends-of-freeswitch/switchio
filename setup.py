@@ -1,5 +1,6 @@
 #!/usr/bin/env python2.7
 from setuptools import setup
+import switchy
 
 
 with open('README.rst') as f:
@@ -8,14 +9,14 @@ with open('README.rst') as f:
 
 setup(
     name="Switchy",
-    version='0.1.alpha',
+    version=switchy.__version__,
     description='Switchy is a fast FreeSWITCH ESL control library with '
                 'an emphasis on load testing.',
     long_description=readme,
     license='Mozilla',
-    author='Tyler Goodlet',
-    author_email='tgoodlet@gmail.com',
-    url='',
+    author=switchy.__author__[0],
+    author_email=switchy.__author__[1],
+    url='https://github.com/sangoma/switchy',
     platforms=['linux'],
     packages=[
         'switchy',
@@ -31,6 +32,7 @@ setup(
     extras_require={
         'metrics': ['numpy'],
         'graphing': ['matplotlib'],
+        'testing': ['pytest'],
     },
     classifiers=[
         'Development Status :: 3 - Alpha',
