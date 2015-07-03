@@ -959,7 +959,7 @@ class Client(object):
                  listener=None,
                  logger=None):
 
-        self.server = host
+        self.host = self.server = host
         self.port = port
         self.auth = auth
         self._id = utils.uuid()
@@ -1177,7 +1177,8 @@ class Client(object):
                     **kwargs)
             else:
                 if not self._con.connected():
-                    raise ConnectionError("local connection down!?")
+                    raise ConnectionError("local connection down on '{}'!?"
+                                          .format(self._con.host))
                 else:
                     raise CommandError("bgapi cmd failed?!\n{}".format(cmd))
         finally:
@@ -1190,7 +1191,7 @@ class Client(object):
                   app_id=None,
                   bgapi_kwargs={},
                   listener=None,
-                  **kwargs):
+                  **orig_kwargs):
         # TODO: add a 'block' arg to determine whether api or bgapi is used
         '''Originate a call using FreeSWITCH 'originate' command.
         A non-blocking bgapi call is used by default.
@@ -1198,7 +1199,9 @@ class Client(object):
         Parameters
         ----------
         see :func:`build_originate_cmd`
-        kwargs : addional kwargs forwarded to :func:`build_originate_cmd` call
+
+        orig_kwargs: additional originate cmd builder kwargs forwarded to
+            :func:`build_originate_cmd` call
 
         Returns
         -------
@@ -1208,13 +1211,15 @@ class Client(object):
         # gen originating session uuid for tracking call
         uuid_str = uuid_func()
         if dest_url:  # generate the cmd now
+            origkwds = {self.id_var: app_id or self._id}
+            origkwds.update(orig_kwargs)
             cmd_str = build_originate_cmd(
                 dest_url,
                 uuid_str,
                 xheaders={listener.call_corr_xheader: uuid_str,
                           self.id_xh: app_id or self._id},
-                extra_params={self.id_var: app_id or self._id},
-                **kwargs
+                # extra_params={self.id_var: app_id or self._id},
+                **origkwds
             )
         else:  # accept late data insertion for the uuid_str and app_id
             cmd_str = self.originate_cmd.format(
@@ -1236,11 +1241,13 @@ class Client(object):
         if self.listener:
             user_xh[self._listener.call_corr_xheader] = '{uuid_str}'
         user_xh[self.id_xh] = '{app_id}'
+        origparams = {self.id_var: '{app_id}'}
+        origparams.update(kwargs)
+        # build a reusable command string
         self._orig_cmd = build_originate_cmd(
             *args,
-            extra_params={self.id_var: '{app_id}'},
             xheaders=user_xh,
-            **kwargs
+            **origparams
         )
 
     @property

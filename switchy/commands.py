@@ -17,7 +17,6 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
                         codec='PCMU',
                         abs_codec='',
                         xheaders={},
-                        extra_params={},
                         **kwargs):
     '''
     Return a formatted 'originate' command string conforming
@@ -66,7 +65,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
             params['{}{}'.format(xheader_prefix, name)] = val
 
     # override with user settings
-    params.update(extra_params)
+    params.update(kwargs)
 
     # render params as strings
     pairs = ['='.join(map(str, pair)) for pair in params.iteritems()]

@@ -5,7 +5,7 @@
 Common testing call flows
 """
 import inspect
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from ..marks import event_callback
 from ..utils import get_logger
 
@@ -30,6 +30,9 @@ class TonePlay(object):
             sess.broadcast('echo::')
 
 
+RecInfo = namedtuple("RecInfo", "host caller callee")
+
+
 class PlayRec(object):
     '''Play a recording to the callee and record it onto the local file system
 
@@ -46,15 +49,17 @@ class PlayRec(object):
         iterations=1,  # number of times the speech clip will be played
         callback=None,
         rec_rate=1,  # in calls/recording (i.e. 10 is 1 recording per 10 calls)
+        rec_stereo=False,
     ):
         self.filename = filename
         self.category = category
         self.rate = rate
         if callback:
             assert inspect.isfunction(callback), 'callback must be a function'
-            assert len(inspect.getargspec(callback)[0]) == 2
+            assert len(inspect.getargspec(callback)[0]) == 1
         self.callback = callback
         self.rec_rate = rec_rate
+        self.stereo = rec_stereo
         self.log = get_logger(self.__class__.__name__)
         self.silence = 'silence_stream://0'  # infinite silence stream
         self.iterations = iterations
@@ -66,6 +71,7 @@ class PlayRec(object):
         self.audiofile = '{}/{}/{}/{}'.format(
             self.soundsdir, self.category, self.rate, self.filename)
         self.call2recs = OrderedDict()
+        self.host = client.host
 
     @event_callback("CHANNEL_PARK")
     def on_park(self, sess):
@@ -76,19 +82,20 @@ class PlayRec(object):
     def on_answer(self, sess):
         if sess.is_inbound():
             self.call_count += 1
-            # rec the rx stream
+            # rec the callee stream
             if not (self.call_count % self.rec_rate):
-                filename = '{}/rx_{}.wav'.format(self.recsdir, sess.uuid)
-                sess.start_record(filename)
-                self.call2recs.setdefault(sess.call.uuid, {})['rx'] = filename
+                filename = '{}/callee_{}.wav'.format(self.recsdir, sess.uuid)
+                sess.start_record(filename, stereo=self.stereo)
+                self.call2recs.setdefault(sess.call.uuid, {})['callee'] = filename
                 sess.call.vars['record'] = True
+                self.call_count = 0
 
         if sess.is_outbound():
             if sess.call.vars.get('record'):
-                # rec the tx stream
-                filename = '{}/tx_{}.wav'.format(self.recsdir, sess.uuid)
-                sess.start_record(filename)
-                self.call2recs.setdefault(sess.call.uuid, {})['tx'] = filename
+                # rec the caller stream
+                filename = '{}/caller_{}.wav'.format(self.recsdir, sess.uuid)
+                sess.start_record(filename, stereo=self.stereo)
+                self.call2recs.setdefault(sess.call.uuid, {})['caller'] = filename
             else:
                 self.trigger_playback(sess)
 
@@ -174,4 +181,4 @@ class PlayRec(object):
             sess.sched_hangup(0.5)  # delay hangup slightly
             recs = self.call2recs[sess.call.uuid]
             if self.callback:
-                self.callback(recs['tx'], recs['rx'])
+                self.callback(RecInfo(self.host, recs['caller'], recs['callee']))
