@@ -8,7 +8,7 @@ from __future__ import division
 import time
 import sched
 import traceback
-from itertools import cycle
+from itertools import cycle, chain
 import random
 from collections import namedtuple, deque
 from threading import Thread
@@ -96,10 +96,6 @@ class Originator(object):
         'duration': 0,
         'random': 0,
         'period': 1,
-        'report_interval': 0,
-        'bert_test': True,
-        'max_rate': 250,
-        'duration_offset': 5,
         'uuid_gen': utils.uuid,
     }
 
@@ -130,31 +126,25 @@ class Originator(object):
         self._start = mp.Event()
         self._exit = mp.Event()
         self._state = State()
-
-        if len(kwargs):
-            self.log.debug("kwargs contents : {}".format(kwargs))
-
-        # assign instance vars
-        for name, val in type(self).default_settings.iteritems():
-            argval = kwargs.pop(name, None)
-            val = argval or val
-            setattr(self, name, val)
-
-        if len(kwargs):
-            raise TypeError("Unsupported arguments: "+str(kwargs))
+        # load settings
+        self._rate = None
+        self._limit = None
+        self._duration = None
+        self.max_rate = 250  # a realistic hard cps limit
+        self.duration_offset = 5  # calls must be at least 5 secs
 
         # don't worry so much about call state for load testing
         self.pool.evals('listener.unsubscribe("CALL_UPDATE")')
         self.pool.evals('listener.connect()')
         self.pool.evals('client.connect()')
 
-        # register our apps with the same id such that events
-        # pertaining to the above app are also
-        # handled by our locally defined callbacks
+        # register our sub-apps with the same id such that events pertaining to
+        # the above app are also handled by our locally defined callbacks
         self.app_id = app_id or utils.uuid()
         for app in apps:
             self.pool.evals('client.load_app(app, on_value=appid)',
                             app=app, appid=self.app_id)
+
         self.pool.evals('client.load_app(Originator, on_value=appid)',
                         Originator=self, appid=self.app_id)
         try:
@@ -176,12 +166,23 @@ class Originator(object):
         # listener(s) startup
         self.pool.evals('listener.start()')
 
+        # apply default load settings
+        if len(kwargs):
+            self.log.debug("kwargs contents : {}".format(kwargs))
+
+        # assign instance vars
+        for name, val in type(self).default_settings.iteritems():
+            setattr(self, name, kwargs.get(name) or val)
+
+        if len(kwargs):
+            raise TypeError("Unsupported arguments: "+str(kwargs))
+
         # delegate to listener stateful properties
         # attrs = "bg_jobs sessions calls hangup_causes "\
         #     "total_failed_sessions"
         # utils.add_readonly_props(self._listener, self, attrs.split())
 
-        # create a scheduler
+        # burst loop scheduler
         self.sched = sched.scheduler(time.time, time.sleep)
         self.setup()
         # counters
@@ -206,8 +207,11 @@ class Originator(object):
             self.pool.evals('client.api("fsctl loglevel warning")')
             self.pool.evals('client.api("console loglevel warning")')
 
-        # Make sure latest XML is loaded
-        # self.pool.evals('client.api("reloadxml")')
+    def iterapps(self):
+        """Iterable over all contained subapps
+        """
+        return (app for app in chain.from_iterable(
+                self.pool.evals('client._apps.values()')))
 
     def _get_rate(self):
         return self._rate
@@ -218,7 +222,15 @@ class Originator(object):
         # latencies by a small %
         self.ibp = 1 / burst_rate * 0.90
         self._rate = value
-        if self.auto_duration and hasattr(self, '_limit'):
+
+        # update any sub-apps
+        for app in self.iterapps():
+            callback = getattr(app, '__setrate__', None)
+            if callback:
+                # XXX assumes equal delegation to all slaves
+                callback(value / float(len(self.pool)))
+
+        if self.auto_duration and self.limit:
             self.duration = self.limit / value + self.duration_offset
 
     rate = property(_get_rate, _set_rate, "Call rate (cps)")
@@ -226,15 +238,34 @@ class Originator(object):
     def _get_limit(self):
         return self._limit
 
-    # TODO: auto_duration should be applied via decorator
+    # TODO: auto_duration should be applied via decorator?
     def _set_limit(self, value):
+        # update any sub-apps
+        for app in self.iterapps():
+            callback = getattr(app, '__setlimit__', None)
+            if callback:
+                callback(value)
+
         self._limit = value
         if self.auto_duration:
             self.duration = value / self.rate + self.duration_offset
 
     limit = property(_get_limit, _set_limit,
-                     'Number of simultaneous calls allowed at once'
-                     ' (i.e. capacity)')
+                     "Number of simultaneous calls allowed  (i.e. erlangs)")
+
+    def _get_duration(self):
+        return self._duration
+
+    def _set_duration(self, value):
+        # update any sub-apps
+        for app in self.iterapps():
+            callback = getattr(app, '__setduration__', None)
+            if callback:
+                callback(value)
+        # apply the new duration
+        self._duration = value
+
+    duration = property(_get_duration, _set_duration, "Call duration (secs)")
 
     def __dir__(self):
         return utils.dirinfo(self)
@@ -277,7 +308,7 @@ class Originator(object):
 
         # schedule a duration until call hangup
         # if 0 then never schedule hangup events
-        if self.duration:
+        if not sess.call.vars.get('noautohangup') and self.duration:
             if self.random:
                 self.duration = random.randint(self.random, self.duration)
                 self.log.debug('Set random duration {} for uuid {}'.format(

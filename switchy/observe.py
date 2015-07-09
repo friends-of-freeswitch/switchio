@@ -968,7 +968,7 @@ class Client(object):
         # generally speaking clients should only host one call app
         self._apps = {}
         self.apps = type('apps', (), {})()
-        self.apps.__dict__ = self._apps  # dot-access to apps from 'apps' attr
+        self.apps.__dict__ = self._apps  # dot-access to `_apps` from `apps`
         self.client = self  # for app funcarg insertion
 
         # WARNING: order of these next steps matters!
