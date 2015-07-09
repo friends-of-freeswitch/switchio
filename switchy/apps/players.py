@@ -48,7 +48,8 @@ class PlayRec(object):
         self,
         filename='ivr-founder_of_freesource.wav',
         category='ivr',
-        rate=8000,
+        clip_length=4.25,  # measured empirically for the clip above
+        sample_rate=8000,
         iterations=1,  # number of times the speech clip will be played
         callback=None,
         rec_rate=1,  # in calls/recording (i.e. 10 is 1 recording per 10 calls)
@@ -56,7 +57,8 @@ class PlayRec(object):
     ):
         self.filename = filename
         self.category = category
-        self.rate = rate
+        self.framerate = sample_rate
+        self.clip_length = clip_length
         if callback:
             assert inspect.isfunction(callback), 'callback must be a function'
             assert len(inspect.getargspec(callback)[0]) == 1
@@ -66,15 +68,34 @@ class PlayRec(object):
         self.log = get_logger(self.__class__.__name__)
         self.silence = 'silence_stream://0'  # infinite silence stream
         self.iterations = iterations
+        self.tail = 1.0
         self.call_count = 0
 
     def prepost(self, client):
         self.soundsdir = client.cmd('global_getvar sound_prefix')
         self.recsdir = client.cmd('global_getvar recordings_dir')
         self.audiofile = '{}/{}/{}/{}'.format(
-            self.soundsdir, self.category, self.rate, self.filename)
+            self.soundsdir, self.category, self.framerate, self.filename)
         self.call2recs = OrderedDict()
         self.host = client.host
+
+    def __setduration__(self, value):
+        """Called when an originator changes it's `duration` attribute
+        """
+        self.iterations, self.tail = divmod(value, self.clip_length)
+
+    def __setrate__(self, value):
+        """Called when an originator changes it's `rate` attribute
+        """
+        # keep the rec rate at 1 rps during load testing
+        self.rec_rate = value
+
+    @event_callback("CHANNEL_CREATE")
+    def on_create(self, sess):
+        """Mark all calls to NOT be hung up automatically by an `Originator`
+        """
+        if sess.is_outbound():
+            sess.call.vars['noautohangup'] = True
 
     @event_callback("CHANNEL_PARK")
     def on_park(self, sess):
@@ -83,30 +104,39 @@ class PlayRec(object):
 
     @event_callback("CHANNEL_ANSWER")
     def on_answer(self, sess):
+        call = sess.call
         if sess.is_inbound():
             self.call_count += 1
+
             # rec the callee stream
-            if not (self.call_count % self.rec_rate):
+            count, rate = self.call_count, self.rec_rate
+            # XXX could this be rate limit logic which determines the time
+            # since last rec instead?
+            if not (count % rate):
                 filename = '{}/callee_{}.wav'.format(self.recsdir, sess.uuid)
                 sess.start_record(filename, stereo=self.stereo)
-                self.call2recs.setdefault(sess.call.uuid, {})['callee'] = filename
-                sess.call.vars['record'] = True
+                self.call2recs.setdefault(call.uuid, {})['callee'] = filename
+                call.vars['record'] = True
                 self.call_count = 0
 
+            # set call length
+            call.vars['iterations'] = self.iterations
+            call.vars['tail'] = self.tail
+
         if sess.is_outbound():
-            if sess.call.vars.get('record'):
+            if call.vars.get('record'):  # call is already recording
                 # rec the caller stream
                 filename = '{}/caller_{}.wav'.format(self.recsdir, sess.uuid)
                 sess.start_record(filename, stereo=self.stereo)
-                self.call2recs.setdefault(sess.call.uuid, {})['caller'] = filename
+                self.call2recs.setdefault(call.uuid, {})['caller'] = filename
             else:
                 self.trigger_playback(sess)
 
     @event_callback("PLAYBACK_START")
     def on_play(self, sess):
         fp = sess['Playback-File-Path']
-        self.log.info("Playing file '{}' for session '{}'"
-                      .format(fp, sess.uuid))
+        self.log.debug("Playing file '{}' for session '{}'"
+                       .format(fp, sess.uuid))
 
         self.log.debug("fp is '{}'".format(fp))
         if fp == self.audiofile:
@@ -120,28 +150,31 @@ class PlayRec(object):
 
     @event_callback("PLAYBACK_STOP")
     def on_stop(self, sess):
-        '''Hangup up the session once playback completes
+        '''On stop either trigger a new playing of the signal if more
+        iterations are required or hangup the call.
+        If the current call is being recorded schedule the recordings to stop
+        and expect downstream callbacks to schedule call teardown.
         '''
-        self.log.info("Finished playing '{}' for session '{}'".format(
+        self.log.debug("Finished playing '{}' for session '{}'".format(
                       sess['Playback-File-Path'], sess.uuid))
         if sess.vars['clip'] == 'signal':
             vars = sess.call.vars
             vars['playback_count'] += 1
 
-            if vars['playback_count'] < self.iterations:
+            if vars['playback_count'] < vars['iterations']:
                 sess.playback(self.silence)
             else:
-                if sess.call.vars.get('record'):
-                    # stop recording both ends
-                    sess.stop_record(delay=2)
-                    # kill the peer's app
+                # no more clips are expected to play
+                if vars.get('record'):  # stop recording both ends
+                    tail = vars['tail']
+                    sess.stop_record(delay=tail)
                     peer = sess.call.get_peer(sess)
-                    peer.breakapp()
-                    peer.stop_record(delay=2)
+                    peer.breakapp()  # infinite silence must be manually killed
+                    peer.stop_record(delay=tail)
                 else:
                     # hangup calls not being recorded immediately
-                    self.log.info("sending hangup for session '{}'"
-                                  .format(sess.uuid))
+                    self.log.debug("sending hangup for session '{}'"
+                                   .format(sess.uuid))
                     sess.sched_hangup(0.5)  # delay hangup slightly
 
     def trigger_playback(self, sess):
@@ -158,19 +191,20 @@ class PlayRec(object):
 
     @event_callback("RECORD_START")
     def on_rec(self, sess):
-        self.log.info("Recording file '{}' for session '{}'".format(
-            sess['Record-File-Path'], sess.uuid))
+        self.log.debug("Recording file '{}' for session '{}'".format(
+            sess['Record-File-Path'], sess.uuid)
+        )
         # mark this session as "currently recording"
         sess.vars['recorded'] = False
         sess.setvar('timer_name', 'soft')
 
-        # start playback from the caller side
+        # start signal playback on the caller
         if sess.is_outbound():
             self.trigger_playback(sess)
 
     @event_callback("RECORD_STOP")
     def on_recstop(self, sess):
-        self.log.info("Finished recording file '{}' for session '{}'".format(
+        self.log.debug("Finished recording file '{}' for session '{}'".format(
             sess['Record-File-Path'], sess.uuid))
         # mark as recorded so user can block with `EventListener.waitfor`
         sess.vars['recorded'] = True
@@ -178,10 +212,15 @@ class PlayRec(object):
             self.log.warn(
                 "sess '{}' was already hungup prior to recording completion?"
                 .format(sess.uuid))
+
         # if the far end has finished recording then hangup the call
         if sess.call.get_peer(sess).vars.get('recorded', True):
-            self.log.info("sending hangup for session '{}'".format(sess.uuid))
+            self.log.debug("sending hangup for session '{}'".format(sess.uuid))
             sess.sched_hangup(0.5)  # delay hangup slightly
             recs = self.call2recs[sess.call.uuid]
+
+            # invoke callback for each recording
             if self.callback:
-                self.callback(RecInfo(self.host, recs['caller'], recs['callee']))
+                self.callback(
+                    RecInfo(self.host, recs['caller'], recs['callee'])
+                )
