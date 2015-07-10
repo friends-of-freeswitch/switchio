@@ -142,8 +142,13 @@ class Originator(object):
         # the above app are also handled by our locally defined callbacks
         self.app_id = app_id or utils.uuid()
         for app in apps:
-            self.pool.evals('client.load_app(app, on_value=appid)',
-                            app=app, appid=self.app_id)
+            try:
+                app, ppkwargs = app
+            except TypeError:
+                ppkwargs = {}
+            self.pool.evals(
+                'client.load_app(app, on_value=appid, **prepostkwargs)',
+                app=app, appid=self.app_id, prepostkwargs=ppkwargs)
 
         self.pool.evals('client.load_app(Originator, on_value=appid)',
                         Originator=self, appid=self.app_id)
@@ -158,7 +163,9 @@ class Originator(object):
         else:
             self.metrics = new_array()
             self.pool.evals(
-                'client.load_app(Metrics, on_value=appid, array=array, pool=pool)',
+                ('''client.load_app(
+                        Metrics, on_value=appid, array=array, pool=pool
+                )'''),
                 Metrics=Metrics, array=self.metrics, appid=self.app_id,
                 pool=self.pool
             )
@@ -172,10 +179,10 @@ class Originator(object):
 
         # assign instance vars
         for name, val in type(self).default_settings.iteritems():
-            setattr(self, name, kwargs.get(name) or val)
+            setattr(self, name, kwargs.pop(name, None) or val)
 
         if len(kwargs):
-            raise TypeError("Unsupported arguments: "+str(kwargs))
+            raise TypeError("Unsupported kwargs: {}".format(kwargs))
 
         # delegate to listener stateful properties
         # attrs = "bg_jobs sessions calls hangup_causes "\
