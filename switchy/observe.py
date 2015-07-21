@@ -22,8 +22,8 @@ from threading import Thread, current_thread
 from collections import deque, OrderedDict, defaultdict, Counter
 
 # NOTE: the import order matters here!
-from utils import ConfigurationError, ESLError, CommandError
-from utils import get_logger
+import utils
+from utils import ConfigurationError, ESLError, CommandError, get_event_time
 from models import Session, Job, Call
 from commands import build_originate_cmd
 import multiproc
@@ -31,7 +31,6 @@ import marks
 from marks import handler
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
-import utils
 from connection import Connection, ConnectionError
 
 
@@ -40,17 +39,6 @@ def con_repr(self):
     rep = object.__repr__(self).strip('<>')
     return "<{} [{}]>".format(
         rep, "connected" if self.connected() else "disconnected")
-
-
-def get_event_time(event, epoch=0.0):
-    '''Return micro-second time stamp value in seconds
-    '''
-    value = event.getHeader('Event-Date-Timestamp')
-    if value is None:
-        get_logger().warning("Event '{}' has no timestamp!?".format(
-                             event.getHeader("Event-Name")))
-        return None
-    return float(value) / 1e6 - epoch
 
 
 class EventListener(object):
@@ -817,7 +805,7 @@ class EventListener(object):
             self.log.debug("session '{}' is bridged to call '{}'".format(
                            uuid, call.uuid))
             # append this session to the call's set
-            call.sessions.append(sess)
+            call.append(sess)
 
         else:  # this sess is not yet tracked so use its id as the 'call' id
             call = Call(call_uuid, sess)
@@ -1019,7 +1007,8 @@ class Client(object):
         """
         listener = self.listener
         name = utils.get_name(ns)
-        if name not in self._apps:
+        app = self._apps.get(name, None)
+        if not app:
             # if handed a class, instantiate appropriately
             app = ns() if isinstance(ns, type) else ns
             prepost = getattr(app, 'prepost', False)
@@ -1070,7 +1059,8 @@ class Client(object):
             # register locally
             self._apps[name] = app
             app.cid, app.name = cid, name
-            return cid
+
+        return app.cid
 
     def unload_app(self, ns):
         """Unload all callbacks associated with a particular app

@@ -204,6 +204,17 @@ def uuid():
     return str(mod_uuid.uuid1())
 
 
+def get_event_time(event, epoch=0.0):
+    '''Return micro-second time stamp value in seconds
+    '''
+    value = event.getHeader('Event-Date-Timestamp')
+    if value is None:
+        get_logger().warning("Event '{}' has no timestamp!?".format(
+                             event.getHeader("Event-Name")))
+        return None
+    return float(value) / 1e6 - epoch
+
+
 class FastScheduler(sched.scheduler):
 
     def next_event_time_delta(self):
