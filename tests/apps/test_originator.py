@@ -68,8 +68,12 @@ def test_convo_sim(get_orig):
     def count(recinfo):
         recs.append(recinfo)
 
-    playrec = players.PlayRec(rec_stereo=True, callback=count,)
-    orig = get_orig('doggy', apps=(playrec,),)
+    orig = get_orig(
+        'doggy',
+        apps=[(players.PlayRec, {'rec_stereo': True, 'callback': count})]
+    )
+    # manual app reference retrieval
+    playrec = orig.pool.nodes[0].client.apps.PlayRec
 
     # verify dynamic load settings modify playrec settings
     orig.rate = 10

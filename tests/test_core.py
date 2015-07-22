@@ -85,7 +85,7 @@ def ael(el):
 
 
 @pytest.fixture
-def proxy_dp(ael):
+def proxy_dp(ael, client):
     """Provision listener with a 'proxy' dialplan app
     """
     # define a chan park callback
@@ -94,8 +94,6 @@ def proxy_dp(ael):
         '''
         if sess['Call-Direction'] == 'inbound':
             sess.bridge(dest_url="${sip_req_uri}")
-            # dest_url="${sip_req_user}@${sip_req_host}:${sip_req_port}")
-            # print(sess.show())
 
     ev = "CHANNEL_PARK"
     # add a failover callback to provide the dialplan
@@ -109,14 +107,12 @@ def proxy_dp(ael):
     except ImportError:
         print("WARNING: numpy measurements not available")
     else:
-        from switchy import marks
-        # manually insert the metrics app
-        metrics = Metrics(listener=ael)
-        for ev_type, cb_type, obj in marks.get_callbacks(metrics):
-            if cb_type == 'callback':
-                assert ael.add_callback(ev_type, 'default', obj)
-                assert obj in ael.consumers['default']['CHANNEL_HANGUP']
-        ael.metrics = metrics
+        client.connect()
+        client.listener = ael
+        # insert the metrics app
+        assert 'default' == client.load_app(Metrics, on_value="default")
+        app = client.apps.Metrics
+        ael.metrics = app
     # sanity
     assert ael.connected()
     assert ael.is_alive()
@@ -368,6 +364,12 @@ class TestClient:
 
     def test_commands(self, client):
         from switchy.utils import CommandError
+        from switchy.connection import ConnectionError
+        # unconnected attempt
+        with pytest.raises(ConnectionError):
+            client.api('doggy')
+        client.connect()
+        # bad command
         with pytest.raises(CommandError):
             client.api('doggy')
         assert client.api('status')
