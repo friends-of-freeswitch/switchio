@@ -15,6 +15,7 @@ metric_dtype = np.dtype([
     ('answer_latency', np.float64),
     ('call_setup_latency', np.float64),
     ('originate_latency', np.float64),
+    ('originate_to_invite_latency', np.float64),
     ('num_failed_calls', np.uint32),
     ('num_sessions', np.uint32),
 ])
@@ -173,6 +174,7 @@ else:
                 ('call_setup_latency', (1, 1)),
                 ('invite_latency', (1, 1)),
                 ('originate_latency', (1, 1)),
+                ('originate_to_invite_latency', (1, 1)),
                 # counts
                 ('num_sessions', (2, 1)),  # concurrent calls at creation time
                 ('num_failed_calls', (2, 1)),

@@ -15,21 +15,14 @@ class Metrics(object):
 
     Only an instance of this class can be loaded as switchy app
     """
-    def __init__(self, listener=None, array=None, pool=None):
-        self.listener = weakref.proxy(listener) if listener else None
-        self._array = array if array else new_array()  # np default buffer
+    def __init__(self):
         self.log = utils.get_logger(__name__)
-        self.pool = pool if pool else self.listener
 
     def prepost(self, listener, array=None, pool=None):
-        if array is not None:  # array can be overriden at app load time
-            self._array = array
-        if not self.listener:
-            self.listener = listener
-        self.pool = pool if pool else self.listener
-        yield
-        self.listener = None
-        self.slaves = None
+        self.listener = listener
+        # array can be overriden at app load time
+        self._array = array if array else new_array()  # np default buffer
+        self.pool = weakref.proxy(pool) if pool else self.listener
 
     @property
     def array(self):
@@ -39,23 +32,32 @@ class Metrics(object):
     def log_stats(self, sess, job):
         """Append measurement data inserting only once per call
         """
+        call = sess.call
+        # ensure this is NOT the last active session in the call
+        if not call.sessions:
+            # all other sessions in call have been hungup and this is
+            # the last so all measurements should already have been collected
+            return
+
         # TODO: eventually we should use a data type which allows the
         # separation of metrics between those that require two vs. one
         # leg to calculate?
         l = self.listener
         pool = self.pool
-        if sess.call.sessions:
-            # the `callee` UA is who's time measures we want
-            partner_sess = sess.call.sessions[-1]
-            if l.sessions.get(partner_sess.uuid, False):
-                rollover = self._array.insert((
-                    sess.create_time,  # invite time index
-                    abs(sess.create_time - partner_sess.create_time),
-                    abs(sess.answer_time - partner_sess.answer_time),
-                    abs(sess.answer_time - sess.create_time),
-                    sess.originate_time - job.launch_time if job else 0,
-                    pool.count_failed() if pool else 0,
-                    pool.count_sessions(),
-                ))
-                if rollover:
-                    self.log.warn('resetting metric buffer index!')
+
+        peer = sess.call.get_peer(sess)
+        if peer and l.sessions.get(peer.uuid, False):
+            first = call.first
+            last = call.last
+            rollover = self._array.insert((
+                first.create_time,  # invite time index
+                last.create_time - first.create_time,
+                last.answer_time - first.answer_time,
+                first.answer_time - first.create_time,
+                first.originate_time - job.launch_time if job else 0,
+                first.originate_event_time - first.create_time if job else 0,
+                pool.count_failed() if pool else 0,
+                pool.count_sessions(),
+            ))
+            if rollover:
+                self.log.warn('resetting metric buffer index!')
