@@ -29,7 +29,7 @@ class TonePlay(object):
     def on_answer(self, sess):
         # inbound leg simply echos back the tone
         if sess.is_inbound():
-            sess.broadcast('echo::')
+            sess.echo()
 
 
 RecInfo = namedtuple("RecInfo", "host caller callee")
@@ -44,8 +44,9 @@ class PlayRec(object):
     that ${FS_CONFIG_ROOT}/${sound_prefix}/<category>/<filename> points to a
     valid wave file.
     '''
-    def __init__(
+    def prepost(
         self,
+        client,
         filename='ivr-founder_of_freesource.wav',
         category='ivr',
         clip_length=4.25,  # measured empirically for the clip above
@@ -70,8 +71,7 @@ class PlayRec(object):
         self.iterations = iterations
         self.tail = 1.0
         self.call_count = 0
-
-    def prepost(self, client):
+        # slave specific
         self.soundsdir = client.cmd('global_getvar sound_prefix')
         self.recsdir = client.cmd('global_getvar recordings_dir')
         self.audiofile = '{}/{}/{}/{}'.format(
@@ -79,16 +79,20 @@ class PlayRec(object):
         self.call2recs = OrderedDict()
         self.host = client.host
 
+        # self.stats = OrderedDict()
+
     def __setduration__(self, value):
         """Called when an originator changes it's `duration` attribute
         """
         self.iterations, self.tail = divmod(value, self.clip_length)
+        if self.tail < 1.0:
+            self.tail = 1.0
 
     def __setrate__(self, value):
         """Called when an originator changes it's `rate` attribute
         """
         # keep the rec rate at 1 rps during load testing
-        self.rec_rate = value
+        # self.rec_rate = value
 
     @event_callback("CHANNEL_CREATE")
     def on_create(self, sess):
@@ -131,6 +135,9 @@ class PlayRec(object):
                 self.call2recs.setdefault(call.uuid, {})['caller'] = filename
             else:
                 self.trigger_playback(sess)
+
+        # always enable a jitter buffer
+        # sess.broadcast('jitterbuffer::60')
 
     @event_callback("PLAYBACK_START")
     def on_play(self, sess):
@@ -196,7 +203,7 @@ class PlayRec(object):
         )
         # mark this session as "currently recording"
         sess.vars['recorded'] = False
-        sess.setvar('timer_name', 'soft')
+        # sess.setvar('timer_name', 'soft')
 
         # start signal playback on the caller
         if sess.is_outbound():
@@ -212,6 +219,12 @@ class PlayRec(object):
             self.log.warn(
                 "sess '{}' was already hungup prior to recording completion?"
                 .format(sess.uuid))
+
+        # if sess.call.vars.get('record'):
+        #     self.stats[sess.uuid] = sess.con.api(
+        #         'json {{"command": "mediaStats", "data": {{"uuid": "{0}"}}}}'
+        #         .format(sess.uuid)
+        #     ).getBody()
 
         # if the far end has finished recording then hangup the call
         if sess.call.get_peer(sess).vars.get('recorded', True):
