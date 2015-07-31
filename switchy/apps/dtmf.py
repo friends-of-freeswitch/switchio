@@ -9,6 +9,7 @@ from ..apps import app
 from ..marks import event_callback
 from ..utils import get_logger
 
+
 @app
 class DtmfChecker(object):
     '''Play dtmf tones as defined by the iterable attr `sequence` with

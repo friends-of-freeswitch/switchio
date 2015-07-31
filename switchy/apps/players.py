@@ -10,6 +10,7 @@ from ..apps import app
 from ..marks import event_callback
 from ..utils import get_logger
 
+
 @app
 class TonePlay(object):
     """Play a 'milli-watt' tone on the outbound leg and echo it back
@@ -32,6 +33,7 @@ class TonePlay(object):
 
 
 RecInfo = namedtuple("RecInfo", "host caller callee")
+
 
 @app
 class PlayRec(object):

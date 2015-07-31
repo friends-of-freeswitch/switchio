@@ -17,6 +17,7 @@ from ... import utils
 
 log = utils.get_logger(__name__)
 
+
 def multiplot(metrics, fieldspec=None, fig=None, mng=None, block=False):
     '''Plot all columns in appropriate axes on a figure
     (talk about reimplementing `pandas` like an dufus...)

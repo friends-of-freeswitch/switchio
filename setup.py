@@ -24,6 +24,12 @@ setup(
         'switchy.apps.measure',
         # 'tests',
     ],
+    entry_points={
+        'console_scripts': [
+            'switchy = switchy.cli:cli',
+        ]
+    },
+    install_requires=['click'],
     package_data={
         'switchy': ['../conf/switchydp.xml']
     },
