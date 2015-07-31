@@ -9,7 +9,6 @@ import time
 import sched
 import traceback
 from itertools import cycle, chain
-import random
 from collections import namedtuple, deque
 from threading import Thread
 import multiprocessing as mp
@@ -94,7 +93,6 @@ class Originator(object):
         'limit': 1,  # concurrent calls limit (i.e. erlangs)
         'max_offered': float('inf'),  # max offered calls
         'duration': 0,
-        'random': 0,
         'period': 1,
         'uuid_gen': utils.uuid,
     }
@@ -130,7 +128,7 @@ class Originator(object):
         self._rate = None
         self._limit = None
         self._duration = None
-        self.max_rate = 250  # a realistic hard cps limit
+        self._max_rate = 250  # a realistic hard cps limit
         self.duration_offset = 5  # calls must be at least 5 secs
 
         # don't worry so much about call state for load testing
@@ -161,7 +159,7 @@ class Originator(object):
                 "Numpy is not installed; no call metrics will be collected."
             )
         else:
-            self.metrics = new_array()
+            self.metrics = new_array()  # shared by all slaves in the cluster
             self.pool.evals(
                 ('''client.load_app(
                         Metrics, on_value=appid, array=array, pool=pool
@@ -219,6 +217,13 @@ class Originator(object):
         """
         return (app for app in chain.from_iterable(
                 self.pool.evals('client._apps.values()')))
+
+    @property
+    def max_rate(self):
+        """The maximum `rate` value which can be set.
+        Setting `rate` any higher will simply clip to this value.
+        """
+        return self._max_rate
 
     def _get_rate(self):
         return self._rate
@@ -294,9 +299,16 @@ class Originator(object):
             self._change_state("STOPPED")
 
     @marks.event_callback("BACKGROUND_JOB")
-    def _handle_bj(self, job):
+    def _handle_bj(self, sess, job):
         '''Check for all jobs complete
         '''
+        # if duration == 0 then never schedule hangup events
+        if not sess.call.vars.get('noautohangup') and self.duration:
+            self.log.debug("scheduling auto hangup for '{}'"
+                           .format(sess.uuid))
+            # schedule hangup
+            sess.sched_hangup(self.duration - (sess.time - sess.create_time))
+
         # failed jobs and sessions should be popped in the listener's
         # default bg job handler
         self._stop_on_none()
@@ -312,15 +324,6 @@ class Originator(object):
         # use our tx for session commands
         # with sess(self.ctl._con):
         # sess.con = self.ctl._con
-
-        # schedule a duration until call hangup
-        # if 0 then never schedule hangup events
-        if not sess.call.vars.get('noautohangup') and self.duration:
-            if self.random:
-                self.duration = random.randint(self.random, self.duration)
-                self.log.debug('Set random duration {} for uuid {}'.format(
-                               self.duration, sess.uuid))
-            sess.sched_hangup(self.duration)
 
         # if max sessions are already up, stop
         self._total_originated_sessions += 1
