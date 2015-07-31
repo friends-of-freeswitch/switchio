@@ -698,6 +698,7 @@ class EventListener(object):
         error = False
         consumed = False
         resp = None
+        sess = None
         ok = '+OK '
         err = '-ERR'
         job_uuid = e.getHeader('Job-UUID')
@@ -723,7 +724,7 @@ class EventListener(object):
             # if the job returned an error, report it and remove the job
             if error:
                 # if this job corresponds to a tracked session then
-                # remove that session
+                # remove it as well
                 if job.sess_uuid:
                     self.log.error(
                         "Job '{}' corresponding to session '{}'"
@@ -753,15 +754,17 @@ class EventListener(object):
                 resp = body.strip(ok + '\n')
 
                 # special case: the bg job event returns an originated
-                # session's uuid in the ev body
-                if resp in self.sessions:
+                # session's uuid in its body
+                sess = self.sessions.get(resp, None)
+                if sess:
                     if job.sess_uuid:
                         assert str(job.sess_uuid) == str(resp), \
                             ("""Session uuid '{}' <-> BgJob uuid '{}' mismatch!?
                              """.format(job.sess_uuid, resp))
 
                     # reference this job in the corresponding session
-                    self.sessions[resp].bg_job = job
+                    # self.sessions[resp].bg_job = job
+                    sess.bg_job = job
                     self.log.debug("Job '{}' was sucessful".format(
                                    job_uuid))
                 # run the job's callback
@@ -769,7 +772,7 @@ class EventListener(object):
             else:
                 self.log.warning("Received unexpected job message:\n{}"
                                  .format(body))
-        return consumed, job
+        return consumed, sess, job
 
     @handler('CHANNEL_CREATE')
     def _handle_create(self, e):
@@ -1141,7 +1144,8 @@ class Client(object):
             )
         return listener
 
-    def bgapi(self, cmd, listener=None, callback=None, **kwargs):
+    def bgapi(self, cmd, listener=None, callback=None, client_id=None,
+              **jobkwargs):
         '''Execute a non blocking api call and handle it to completion
 
         Parameters
@@ -1163,8 +1167,10 @@ class Client(object):
             ev = self._con.bgapi(cmd)
             if ev:
                 bj = listener.register_job(
-                    ev, callback=callback, client_id=self._id,
-                    **kwargs)
+                    ev, callback=callback,
+                    client_id=client_id or self._id,
+                    **jobkwargs
+                )
             else:
                 if not self._con.connected():
                     raise ConnectionError("local connection down on '{}'!?"
@@ -1179,8 +1185,8 @@ class Client(object):
     def originate(self, dest_url=None,
                   uuid_func=utils.uuid,
                   app_id=None,
-                  bgapi_kwargs={},
                   listener=None,
+                  bgapi_kwargs={},
                   **orig_kwargs):
         # TODO: add a 'block' arg to determine whether api or bgapi is used
         '''Originate a call using FreeSWITCH 'originate' command.
@@ -1217,8 +1223,12 @@ class Client(object):
                 app_id=app_id or self._id
             )
 
-        return self.bgapi(cmd_str, listener, sess_uuid=uuid_str,
-                          **bgapi_kwargs)
+        return self.bgapi(
+            cmd_str, listener,
+            sess_uuid=uuid_str,
+            client_id=app_id,
+            **bgapi_kwargs
+        )
 
     @functools.wraps(build_originate_cmd)
     def set_orig_cmd(self, *args, **kwargs):
