@@ -161,6 +161,12 @@ class Session(object):
     def __exit__(self, exc_type, exc_value, traceback):
         self.con = None
 
+    @property
+    def time(self):
+        """Time stamp for the most recent received event
+        """
+        return utils.get_event_time(self.events[0])
+
     # call control / 'mod_commands' methods
     # TODO: dynamically add @decorated functions to this class
     # and wrap them using functools.update_wrapper ...?
@@ -260,7 +266,7 @@ class Session(object):
             '{app}::{varset}{streams}{start} {leg}'.format(
                 app=app,
                 streams=delim.join(args),
-                start='@@{}'.format(start_sample if start_sample else ''),
+                start='@@{}'.format(start_sample) if start_sample else '',
                 leg=leg,
                 varset='{{{vars}}}'.format(','.join(pairs)) if pairs else '',
             )
@@ -282,7 +288,7 @@ class Session(object):
         self.setvar('record_sample_rate', '{}'.format(rate))
         self.broadcast('record_session::{}'.format(path))
 
-    def stop_record(self, path='all', delay=1):
+    def stop_record(self, path='all', delay=0):
         '''Stop recording audio from this session to a local file on the slave
         filesystem using the `stop_record_session`_ cmd
 
@@ -320,11 +326,6 @@ class Session(object):
             self.con.api('uuid_media off {}'.format(self.uuid))
         else:
             self.con.api('uuid_media {}'.format(self.uuid))
-
-    def app_break(self):
-        '''Stop playback of media on this session and move on in the dialplan
-        '''
-        self.con.api('uuid_break {}'.format(self.uuid))
 
     def start_amd(self, delay=None):
         self.con.api('avmd {} start'.format(self.uuid))
@@ -370,8 +371,29 @@ class Session(object):
             )
         )
 
-    def breakapp(self):
+    def breakmedia(self):
+        '''Stop playback of media on this session and move on in the dialplan
+        '''
         self.con.api('uuid_break {}'.format(self.uuid))
+
+    def mute(self, direction='write', level=1):
+        """Mute the current session. `level` determines the degree of comfort
+        noise to generate if > 1.
+        """
+        self.con.api(
+            'uuid_audio {uuid} {cmd} {direction} mute {level}'
+            .format(
+                uuid=self.uuid,
+                cmd='start',
+                direction=direction,
+                level=1 if level else 0,
+            )
+        )
+
+    def unmute(self, **kwargs):
+        """Unmute the write buffer for this session
+        """
+        self.mute(level=0, **kwargs)
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
