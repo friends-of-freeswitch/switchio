@@ -34,7 +34,7 @@ class Bert(object):
         self._two_sided = False  # toggle whether to run bert on both ends
 
         # make sure the module is loaded
-        client.api('reload mod_bert', exc=False)
+        client.api('reload mod_bert')
 
         # collections of failed sessions
         self.lost_sync = deque(maxlen=1e3)
