@@ -4,6 +4,7 @@
 """
 handy utilities
 """
+import sys
 import sched
 import inspect
 import functools
@@ -38,6 +39,7 @@ def get_root_log():
     global _log
     if not _log:
         _log = logging.getLogger('switchy')
+        _log.info("creating new logger")
         _log.propagate = True
     return _log
 
@@ -50,33 +52,37 @@ def get_logger(name=None):
 
 
 def log_to_stderr(level=None):
-    '''Turn on logging and add a handler which prints to stderr
+    '''Turn on logging and add a handler which writes to stderr
     '''
     log = get_root_log()
     if level:
         log.setLevel(level)
-    handler = logging.StreamHandler()
-    # do colours if we can
-    try:
-        import colorlog
-        fs_colors = {
-            'CRITICAL': 'bold_red',
-            'ERROR': 'red',
-            'WARNING': 'purple',
-            'INFO': 'green',
-            'DEBUG': 'yellow',
-        }
-        formatter = colorlog.ColoredFormatter(
-            "%(log_color)s" + LOG_FORMAT,
-            datefmt=DATE_FORMAT,
-            log_colors=fs_colors
-        )
-    except ImportError:
-        logging.warning("Colour logging not supported. Please install"
-                        "the colorlog module to enable")
-        formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
-    handler.setFormatter(formatter)
-    log.addHandler(handler)
+    if not any(
+        handler.stream == sys.stderr for handler in log.handlers
+        if getattr(handler, 'stream', None)
+    ):
+        handler = logging.StreamHandler()
+        # do colours if we can
+        try:
+            import colorlog
+            fs_colors = {
+                'CRITICAL': 'bold_red',
+                'ERROR': 'red',
+                'WARNING': 'purple',
+                'INFO': 'green',
+                'DEBUG': 'yellow',
+            }
+            formatter = colorlog.ColoredFormatter(
+                "%(log_color)s" + LOG_FORMAT,
+                datefmt=DATE_FORMAT,
+                log_colors=fs_colors
+            )
+        except ImportError:
+            logging.warning("Colour logging not supported. Please install"
+                            "the colorlog module to enable")
+            formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+        handler.setFormatter(formatter)
+        log.addHandler(handler)
     return log
 
 
