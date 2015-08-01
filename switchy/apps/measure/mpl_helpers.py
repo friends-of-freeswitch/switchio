@@ -8,12 +8,17 @@ Measurement and plotting tools - numpy + mpl helpers
 #     - figure.tight_layout doesn't seem to work??
 #     - make legend malleable
 #     - consider a way to easily move lines to different axes and
+from os.path import basename
 import matplotlib.pyplot as plt
 import numpy as np
+from ... import utils
+
+log = utils.get_logger(__name__)
 
 
 def multiplot(metrics, fieldspec=None, fig=None, mng=None):
     '''Plot all columns in appropriate axes on a figure
+    (talk about reimplementing `pandas` like an dufus...)
     '''
     fig = fig if fig else plt.figure()
     mng = mng if mng else plt.get_current_fig_manager()
@@ -39,18 +44,31 @@ def multiplot(metrics, fieldspec=None, fig=None, mng=None):
         try:
             array = getattr(metrics, name)
         except AttributeError:
-            array = metrics[name]
-        print("plotting '{}'".format(name))
-        artists.append(ax.plot(array, label=name)[0])  # , **plot_opts)
+            try:
+                array = metrics[name]
+            except ValueError:
+                log.warn("no row '{}' exists for '{}".format(name, metrics))
+                print("no row '{}' exists for '{}".format(name, metrics))
+                continue
+        log.info("plotting '{}'".format(name))
+        artists.append(
+            ax.plot(
+                array,
+                label=name,
+                # linewidth=2.0,
+            )[0]
+        )
         # set legend
-        ax.legend(loc='upper right')
+        ax.legend(loc='upper left', fontsize='large')
         # set titles
         # ax.set_title(name, fontdict={'size': 'small'})
-        ax.set_xlabel('Call Event Index', fontdict={'size': 'small'})
+        ax.set_xlabel('Call Event Index', fontdict={'size': 'large'})
 
     # show in a window full size
     fig.tight_layout()
     fig.show()
+    if getattr(metrics, 'title', None):
+        fig.suptitle(basename(metrics.title), fontsize=15)
     return mng, fig, artists
 
 
