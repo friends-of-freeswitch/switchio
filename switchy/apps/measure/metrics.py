@@ -37,9 +37,10 @@ class CappedArray(object):
     Wraps the numpy array as if it was subclassed by overloading the
     getattr iterface.
     """
-    def __init__(self, buf, mi):
+    def __init__(self, buf, mi, title=None):
         self._buf = buf
         self._mi = mi  # current row insertion-index
+        self.title = title
         # provide subscript access to the underlying buffer
         for attr in ('__getitem__', '__setitem__'):
             setattr(self.__class__, attr, getattr(self._buf, attr))
@@ -61,7 +62,7 @@ class CappedArray(object):
     def view(self):
         '''A new instance of an array view up to the last inserted entry
         '''
-        return type(self)(self._view, self._mi)
+        return type(self)(self._view, self._mi, self.title)
 
     @property
     def index(self):
@@ -168,9 +169,9 @@ else:
             self.mng, self.fig, self.artists = multiplot(view, fieldspec=[
                 ('time', None),  # this field will not be plotted
                 # latencies
-                ('invite_latency', (1, 1)),
                 ('answer_latency', (1, 1)),
                 ('call_setup_latency', (1, 1)),
+                ('invite_latency', (1, 1)),
                 ('originate_latency', (1, 1)),
                 # counts
                 ('num_sessions', (2, 1)),  # concurrent calls at creation time
@@ -193,7 +194,7 @@ def load(path, wrapper=CallMetrics):
     '''Load a pickeled numpy array from the filesystem into a metrics wrapper
     '''
     array = np.load(path)
-    return wrapper(array, array.size)
+    return wrapper(array, array.size, title=path)
 
 
 def load_from_dir(path='./*.pkl'):
