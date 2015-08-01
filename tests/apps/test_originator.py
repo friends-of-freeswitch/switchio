@@ -70,7 +70,12 @@ def test_convo_sim(get_orig):
 
     orig = get_orig(
         'doggy',
-        apps=[(players.PlayRec, {'rec_stereo': True, 'callback': count})]
+        apps=[
+            (players.PlayRec,
+             {'rec_stereo': True,
+              'callback': count,
+              'dynamic_rec_rate': True})
+        ]
     )
     # manual app reference retrieval
     playrec = orig.pool.nodes[0].client.apps.PlayRec
@@ -78,7 +83,7 @@ def test_convo_sim(get_orig):
     # verify dynamic load settings modify playrec settings
     orig.rate = 10
     orig.limit = orig.max_offered = 100
-    assert playrec.rec_rate == orig.rate
+    assert playrec.rec_rate == orig.rate * playrec.rec_period
     assert playrec.iterations * playrec.clip_length + playrec.tail == orig.duration
 
     orig.start()

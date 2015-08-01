@@ -95,7 +95,7 @@ def proxy_dp(ael, client):
         if sess['Call-Direction'] == 'inbound':
             sess.bridge(dest_url="${sip_req_uri}")
 
-    ev = "CHANNEL_PARK"
+    ev = "CHANNEL_PARK"  # no answer() is ever done...
     # add a failover callback to provide the dialplan
     ael.add_callback(ev, 'default', bridge2dest)
     # ensure callback was registered
