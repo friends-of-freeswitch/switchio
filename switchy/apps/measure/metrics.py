@@ -163,7 +163,7 @@ except ImportError:
         "Matplotlib must be installed for graphing support"
     )
 else:
-    def plot(self):
+    def plot(self, block=False):
             view = self.view
             view.sort(order='time')  # sort array by time stamp
             self.mng, self.fig, self.artists = multiplot(view, fieldspec=[
@@ -179,7 +179,7 @@ else:
                 # rates
                 ('inst_rate', (3, 1)),
                 ('wm_rate', (3, 1)),
-            ])
+            ], block=block)
     # attach a plot method
     CallMetrics.plot = plot
 
