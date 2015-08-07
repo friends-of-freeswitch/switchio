@@ -77,7 +77,7 @@ as it's first hop with a destination of ourselves using the default
 *external* profile and the *FreeSWITCH* built in *park* application for
 the outbound session's post-connect execution::
 
-    >>> originator.clients[0].set_orig_cmd(
+    >>> originator.pool.clients[0].set_orig_cmd(
         dest_url='doggy@hostnameA:5080,
         profile='external',
         app_name='park',
