@@ -242,12 +242,12 @@ class Originator(object):
     def __repr__(self):
         """Repr with [<state>] <load_settings> slapped in
         """
-        props = "rate limit max_offered duration".split()
+        props = "state total_originated_sessions rate limit max_offered duration".split()
         rep = type(self).__name__
-        return "<{0}: '{2}' active calls, state=[{1}], {3}>".format(
-            rep, self.state, self.pool.fast_count(),
+        return "<{}: active-calls={} {}>".format(
+            rep, self.pool.fast_count(),
             " ".join("{}={}".format(
-                attr, getattr(self, attr)) for attr in props)
+                attr.replace('_', '-'), getattr(self, attr)) for attr in props)
         )
 
     def _stop_on_none(self):
