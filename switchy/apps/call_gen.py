@@ -9,14 +9,13 @@ import time
 import sched
 import traceback
 from itertools import cycle, chain
-from collections import namedtuple, deque
+from collections import namedtuple, deque, Counter
 from threading import Thread
 import multiprocessing as mp
 from .. import utils
 from .. import marks
 from ..observe import EventListener, Client
 from ..distribute import SlavePool
-from bert import Bert
 
 
 def get_pool(contacts, **kwargs):
@@ -66,6 +65,47 @@ def limiter(pairs):
         yield pair
 
 
+class WeightedIterator(object):
+    """Pseudo weighted round robin iterator. Delivers items interleaved
+    in weighted order.
+    """
+    def __init__(self, counter=None):
+        self.weights = counter or Counter()
+        self.counts = self.weights.copy()
+        attr = '__getitem__'
+        setattr(self.__class__, attr, getattr(self.weights, attr))
+
+    def __repr__(self):
+        return '{}({})'.format(type(self).__name__, repr(self.weights))
+
+    def __setitem__(self, key, value):
+        self.weights[key] = value
+        self.counts = self.weights.copy()
+
+    def cycle(self):
+        """Endlessly iterates the most up to date keys in `counts`.
+        Allows for real-time weight updating from another thread.
+        """
+        while True:
+            if not self.weights:
+                raise StopIteration("no items in multiset")
+            for item in self.counts:
+                yield item
+
+    def __iter__(self):
+        """Iterate items in interleaved order until a particular item's weight
+        has been exhausted
+        """
+        for item in self.cycle():
+            if self.counts[item] > 0:
+                yield item
+                self.counts[item] -= 1
+
+            # all counts have expired so reset
+            if not any(self.counts.values()):
+                self.counts = self.weights.copy()
+
+
 class State(object):
     """Enumeration to represent the originator state machine
     """
@@ -98,7 +138,7 @@ class Originator(object):
     }
 
     def __init__(self, slavepool, debug=False, auto_duration=True,
-                 app_id=None, apps=(Bert,), **kwargs):
+                 app_id=None, apps=None, **kwargs):
         '''
         Parameters
         ----------
@@ -131,45 +171,28 @@ class Originator(object):
         self._max_rate = 250  # a realistic hard cps limit
         self.duration_offset = 5  # calls must be at least 5 secs
 
+        # attempt measurement capture setup
+        try:
+            from measure.metrics import new_array
+        except ImportError:
+            if not self.log.handlers:
+                utils.log_to_stderr()
+            self.log.warn(
+                "Numpy is not installed; no call metrics will be collected"
+            )
+            self.metrics = None
+        else:
+            self.metrics = new_array()  # shared by whole cluster
+
         # don't worry so much about call state for load testing
         self.pool.evals('listener.unsubscribe("CALL_UPDATE")')
         self.pool.evals('listener.connect()')
         self.pool.evals('client.connect()')
 
-        # register our sub-apps with the same id such that events pertaining to
-        # the above app are also handled by our locally defined callbacks
-        self.app_id = app_id or utils.uuid()
-        for app in apps:
-            try:
-                app, ppkwargs = app
-            except TypeError:
-                ppkwargs = {}
-            self.pool.evals(
-                'client.load_app(app, on_value=appid, **prepostkwargs)',
-                app=app, appid=self.app_id, prepostkwargs=ppkwargs)
-
-        self.pool.evals('client.load_app(Originator, on_value=appid)',
-                        Originator=self, appid=self.app_id)
-        try:
-            from measure import Metrics, new_array
-        except ImportError:
-            if not self.log.handlers:
-                utils.log_to_stderr()
-            self.log.warn(
-                "Numpy is not installed; no call metrics will be collected."
-            )
-        else:
-            self.metrics = new_array()  # shared by all slaves in the cluster
-            self.pool.evals(
-                ('''client.load_app(
-                        Metrics, on_value=appid, array=array, pool=pool
-                )'''),
-                Metrics=Metrics, array=self.metrics, appid=self.app_id,
-                pool=self.pool
-            )
-
-        # listener(s) startup
-        self.pool.evals('listener.start()')
+        self.app_weights = WeightedIterator()
+        if apps:
+            self.load_app(apps, with_metrics=True)
+        self.iterappids = iter(self.app_weights)
 
         # apply default load settings
         if len(kwargs):
@@ -181,11 +204,6 @@ class Originator(object):
 
         if len(kwargs):
             raise TypeError("Unsupported kwargs: {}".format(kwargs))
-
-        # delegate to listener stateful properties
-        # attrs = "bg_jobs sessions calls hangup_causes "\
-        #     "total_failed_sessions"
-        # utils.add_readonly_props(self._listener, self, attrs.split())
 
         # burst loop scheduler
         self.sched = sched.scheduler(time.time, time.sleep)
@@ -212,11 +230,45 @@ class Originator(object):
             self.pool.evals('client.api("fsctl loglevel warning")')
             self.pool.evals('client.api("console loglevel warning")')
 
-    def iterapps(self):
-        """Iterable over all contained subapps
+    def load_app(self, apps, app_id=None, weight=1, with_metrics=True):
+        """Load app(s) for use across all slaves in the cluster
         """
-        return (app for app in chain.from_iterable(
-                self.pool.evals('client._apps.values()')))
+        for app in apps:
+            try:
+                app, ppkwargs = app  # user can optionally pass doubles
+            except TypeError:
+                ppkwargs = {}
+
+            # load each app under a common id
+            app_id = self.pool.evals(
+                'client.load_app(app, on_value=appid, **prepostkwargs)',
+                app=app, appid=app_id, prepostkwargs=ppkwargs)[0]
+
+        # always register our local callbacks for each app
+        self.pool.evals('client.load_app(Originator, on_value=appid)',
+                        Originator=self, appid=app_id)
+
+        if with_metrics and self.metrics:
+                from measure import Metrics
+                self.pool.evals(
+                    ('''client.load_app(
+                            Metrics, on_value=appid, array=array, pool=pool
+                    )'''),
+                    Metrics=Metrics, array=self.metrics, appid=app_id,
+                    pool=self.pool
+                )
+
+        self.app_weights[app_id] = weight
+
+    def iterapps(self):
+        """Iterable over all unique contained subapps
+        """
+        return set(
+            app for app_map in chain.from_iterable(
+                self.pool.evals('client._apps.values()')
+            )
+            for app in app_map.values()
+        )
 
     @property
     def max_rate(self):
@@ -348,6 +400,7 @@ class Originator(object):
         '''
         originated = 0
         count_calls = self.count_calls
+        iterappids = self.iterappids
         num = min((self.limit - count_calls(), self.rate))
         self.log.debug("bursting num originates = {}".format(num))
         if num <= 0:
@@ -365,7 +418,7 @@ class Originator(object):
             self.log.debug("count calls = {}".format(count_calls()))
             # originate a call
             job = slave.client.originate(
-                app_id=self.app_id,
+                app_id=next(iterappids),
                 uuid_func=self.uuid_gen
             )
             originated += 1
@@ -455,6 +508,14 @@ class Originator(object):
 
         Change State INITIAL | STOPPED -> ORIGINATING
         """
+        if not any(self.pool.evals('listener.is_alive()')):
+            # Do listener(s) startup here so that additional apps
+            # can be loaded just prior. Currently there is a restriction
+            # since new event subscriptions (as required by most apps)
+            # must be issued *before* starting the observer event loop
+            # since the underlying connection is mutexed.
+            self.pool.evals('listener.start()')
+
         if self._thread is None or not self._thread.is_alive():
             self.log.debug("starting burst loop thread")
             self._thread = Thread(target=self._serve_forever,

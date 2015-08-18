@@ -43,5 +43,5 @@ def sync_caller(host, port='8021', password='ClueCon',
         caller.lookup_var = None
         caller.apps = client.apps
         caller.client = client
-        caller.app_names = [app.cid for app in client._apps.values()]
+        caller.app_names = client._apps.keys()
         yield caller

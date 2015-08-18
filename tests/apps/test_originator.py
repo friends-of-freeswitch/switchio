@@ -54,11 +54,13 @@ def test_dtmf_passthrough(get_orig):
     orig = get_orig('doggy', offer=1, apps=(dtmf.DtmfChecker,))
     orig.duration = 0
     orig.start()
-    checker = orig.pool.clients[0].apps.DtmfChecker
+    checker = orig.pool.clients[0].apps.DtmfChecker['DtmfChecker']
     time.sleep(checker.total_time + 1)
     orig.stop()
-    assert not any(orig.pool.evals('client.apps.DtmfChecker.incomplete'))
-    assert not any(orig.pool.evals('client.apps.DtmfChecker.failed'))
+    assert not any(
+        orig.pool.evals("client.apps.DtmfChecker['DtmfChecker'].incomplete"))
+    assert not any(
+        orig.pool.evals("client.apps.DtmfChecker['DtmfChecker'].failed"))
     assert orig.state == "STOPPED"
 
 
@@ -79,7 +81,7 @@ def test_convo_sim(get_orig):
         ]
     )
     # manual app reference retrieval
-    playrec = orig.pool.nodes[0].client.apps.PlayRec
+    playrec = orig.pool.nodes[0].client.apps.PlayRec['PlayRec']
 
     # verify dynamic load settings modify playrec settings
     orig.rate = 20

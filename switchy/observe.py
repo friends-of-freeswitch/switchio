@@ -44,7 +44,7 @@ def con_repr(self):
 class EventListener(object):
     '''ESL Listener which tracks FreeSWITCH state using an observer pattern.
     This implementation utilizes a background event loop (single thread)
-    and a receive-only esl connection.
+    and one `Connection`.
 
     The main purpose is to enable event oriented state tracking of various
     slave process objects and call entities.
@@ -105,8 +105,9 @@ class EventListener(object):
         self.consumers = {}  # callback chains, one for each event type
         self._waiters = {}  # holds events being waited on
         self._blockers = []  # holds cached events for reuse
-        # store up to the last 10k of each event type
+        # store up to the last 1k of each event type
         self.events = defaultdict(functools.partial(deque, maxlen=1e3))
+        self.sessions_per_app = Counter()
 
         # constants
         self.autorecon = autorecon
@@ -227,8 +228,8 @@ class EventListener(object):
 
     @property
     def uptime(self):
-        '''Uptime as per last received event time stamp'''
-        return (self._fs_time - self._epoch) / 3600.0
+        '''Uptime in minutes as per last received event time stamp'''
+        return (self._fs_time - self._epoch) / 60.0
 
     def block_jobs(self):
         '''Block the event loop from processing
@@ -274,7 +275,7 @@ class EventListener(object):
 
     def start(self):
         '''Start this listener's event loop in a thread to start tracking
-        the engine-server's state
+        the slave-server's state
         '''
         if not self._rx_con.connected():
             raise ConfigurationError("you must call 'connect' first")
@@ -421,20 +422,18 @@ class EventListener(object):
             ).append(callback)
         return True
 
-    def remove_callbacks(self, ident, last=False):
-        """Pop and return the stack of callback objects registered for
-        :var:`ident`. If none exists return False.
+    def remove_callback(self, evname, ident, callback):
+        """Remove the callback object registered under
+        :var:`evname` and :var:`ident`.
         """
-        if last:
-            # pop the last n callbacks
-            cbs = self.consumers.get(ident)
-            removed = []
-            if cbs:
-                for i in range(last):
-                    removed.append(cbs.pop())
-            return removed
-        else:
-            return self.consumers.pop(ident)
+        ev_map = self.consumers[ident]
+        cbs = ev_map[evname]
+        cbs.remove(callback)
+        # clean up maps if now empty
+        if len(cbs) == 0:
+            ev_map.pop(evname)
+        if len(ev_map) == 0:
+            self.consumers.pop(ident)
 
     def unsubscribe(self, events):
         '''Unsubscribe this listener from an events of a cetain type
@@ -816,6 +815,7 @@ class EventListener(object):
             self.log.debug("call created for session '{}'".format(call_uuid))
         sess.call = call
         self.sessions[uuid] = sess
+        self.sessions_per_app[sess.cid] += 1
         return True, sess
 
     @handler('CHANNEL_ORIGINATE')
@@ -877,6 +877,7 @@ class EventListener(object):
         sess.hungup = True
         cause = e.getHeader('Hangup-Cause')
         self.hangup_causes[cause] += 1  # count session causes
+        self.sessions_per_app[sess.cid] -= 1
 
         # try xheader first then channel var
         call_uuid = e.getHeader('variable_{}'.format(self.call_corr_xheader))
@@ -956,7 +957,7 @@ class Client(object):
         self._id = utils.uuid()
         self._orig_cmd = None
         self.log = logger or utils.get_logger(utils.pstr(self))
-        # generally speaking clients should only host one call app
+        # clients can host multiple "composed" apps
         self._apps = {}
         self.apps = type('apps', (), {})()
         self.apps.__dict__ = self._apps  # dot-access to `_apps` from `apps`
@@ -1005,79 +1006,102 @@ class Client(object):
 
         :param ns: A namespace-like object containing functions marked with
             @event_callback (can be a module, class or instance).
-        :params str on_value: id key to be used for registering app callbacks
-            with `EventListener`
+        :params str on_value: app group id key to be used for registering app
+            callbacks with the `EventListener`. This value will be inserted in
+            the `originate` command as an X-header and used to look up which
+            app callbacks should be invoked for each received event.
         """
         listener = self.listener
         name = utils.get_name(ns)
-        app = self._apps.get(name, None)
-        if not app:
-            # if handed a class, instantiate appropriately
-            app = ns() if isinstance(ns, type) else ns
-            prepost = getattr(app, 'prepost', False)
-            if prepost:
-                args, kwargs = utils.get_args(app.prepost)
-                funcargs = tuple(weakref.proxy(getattr(self, argname))
-                                 for argname in args if argname != 'self')
-                ret = prepost(*funcargs, **prepost_kwargs)
-                if inspect.isgenerator(ret):
-                    # run init step
-                    next(ret)
-                    app._finalize = ret
+        group_id = on_value or name or utils.uuid()
+        app_map = self._apps.get(group_id, None)
+        if app_map and name in app_map:
+            # only allow 1 app inst per group
+            raise ConfigurationError(
+                "an app instance with name '{}' already exists for app group "
+                "'{}'.\nIf you want multiple instances of the same app load "
+                "them using different `on_value` ids."
+                .format(name, group_id)
+            )
 
-            # assign a 'consumer id'
-            cid = on_value if on_value else utils.uuid()
-            self.log.info("Loading call app '{}' for listener '{}'"
-                          .format(name, listener))
-            icb, failed = 1, False
-            # insert handlers and callbacks
-            for ev_type, cb_type, obj in marks.get_callbacks(app):
-                if cb_type == 'handler':
-                    # TODO: similar unloading on failure here as above?
-                    listener.add_handler(ev_type, obj)
+        # if handed a class, instantiate appropriately
+        app = ns() if isinstance(ns, type) else ns
+        prepost = getattr(app, 'prepost', False)
+        if prepost:
+            args, kwargs = utils.get_args(app.prepost)
+            funcargs = tuple(weakref.proxy(getattr(self, argname))
+                             for argname in args if argname != 'self')
+            ret = prepost(*funcargs, **prepost_kwargs)
+            if inspect.isgenerator(ret):
+                # run init step
+                next(ret)
+                app._finalize = ret
 
-                elif cb_type == 'callback':
-                    # add default handler if none exists
-                    if ev_type not in listener._handlers:
-                        self.log.info(
-                            "adding default session lookup handler for event"
-                            " type '{}'".format(ev_type)
-                        )
-                        listener.add_handler(
-                            ev_type,
-                            listener.lookup_sess
-                        )
-                    added = listener.add_callback(ev_type, cid, obj)
-                    if not added:
-                        failed = obj
-                        listener.remove_callbacks(cid, last=icb)
-                        break
-                    icb += 1
-                    self.log.debug("'{}' event callback '{}' added for id '{}'"
-                                   .format(ev_type, obj.__name__, cid))
+        self.log.info(
+            "Loading call app '{}' with group id '{}' for listener '{}'"
+            .format(name, group_id, listener)
+        )
+        failed = False
+        cb_paths = []
+        # insert handlers and callbacks
+        for ev_type, cb_type, obj in marks.get_callbacks(app):
+            if cb_type == 'handler':
+                # TODO: similar unloading on failure here as above?
+                listener.add_handler(ev_type, obj)
 
-            if failed:
-                raise TypeError("app load failed since '{}' is not a valid"
-                                "callback type".format(failed))
-            # register locally
-            self._apps[name] = app
-            app.cid, app.name = cid, name
+            elif cb_type == 'callback':
+                # add default handler if none exists
+                if ev_type not in listener._handlers:
+                    self.log.info(
+                        "adding default session lookup handler for event"
+                        " type '{}'".format(ev_type)
+                    )
+                    listener.add_handler(
+                        ev_type,
+                        listener.lookup_sess
+                    )
+                added = listener.add_callback(ev_type, group_id, obj)
+                if not added:
+                    failed = obj
+                    for path in reversed(cb_paths):
+                        listener.remove_callback(*path)
+                    break
+                cb_paths.append((ev_type, group_id, obj))
+                self.log.debug("'{}' event callback '{}' added for id '{}'"
+                               .format(ev_type, obj.__name__, group_id))
 
-        return app.cid
+        if failed:
+            raise TypeError("app load failed since '{}' is not a valid"
+                            "callback type".format(failed))
+        # register locally
+        self._apps.setdefault(group_id, {})[name] = app
+        app.cid, app.name = group_id, name
+        return group_id
 
-    def unload_app(self, ns):
+    def unload_app(self, on_value, ns=None):
         """Unload all callbacks associated with a particular app
-        namespace object
+        `on_value` id.
+        If `ns` is provided unload only the callbacks from that particular
+        subapp.
         """
-        name = utils.get_name(ns)
-        app = self._apps.pop(name)
-        finalize = getattr(app, '_finalize', False)
-        if finalize:
-            try:
-                next(finalize)
-            except StopIteration:
-                pass
-        return self.listener.remove_callbacks(app.cid)
+        app_map = self._apps[on_value]
+        appkeys = [utils.get_name(ns)] if ns else app_map.keys()
+
+        for name in appkeys:
+            app = app_map.pop(name)
+            # run prepost teardown
+            finalize = getattr(app, '_finalize', False)
+            if finalize:
+                try:
+                    next(finalize)
+                except StopIteration:
+                    pass
+            # remove callbacks
+            for ev_type, cb_type, obj in marks.get_callbacks(app):
+                    self.listener.remove_callback(ev_type, on_value, obj)
+
+        if not app_map:
+            self._apps.pop(on_value)
 
     def disconnect(self):
         """Disconnect the client's underlying connection
@@ -1116,22 +1140,21 @@ class Client(object):
         '''
         return self.api(cmd).getBody().strip()
 
-    def hupall(self, name=None):
+    def hupall(self, group_id=None):
         """Hangup all calls associated with this client
         by iterating all managed call apps and hupall-ing
-        with the apps callback id. If :var:`name` is provided
+        with the apps callback id. If :var:`group_id` is provided
         look up the corresponding app an hang up calls for that
         specific app
         """
-        if not name:
+        if not group_id:
             # hangup all calls for all apps
-            for app in self._apps.values():
+            for group_id in self._apps:
                 self.api('hupall NORMAL_CLEARING {} {}'.format(
-                         self.id_var, app.cid))
+                         self.id_var, group_id))
         else:
-            app = self._apps[name]
             self.api('hupall NORMAL_CLEARING {} {}'.format(
-                     self.id_var, app.cid))
+                     self.id_var, group_id))
 
     def _assert_alive(self, listener=None):
         """Assert our listener is active and if so return it
@@ -1288,9 +1311,17 @@ def active_client(host, port='8021', auth='ClueCon',
     client.connect()
     # load app set
     if apps:
-        for value, app in apps.items():
-            client.load_app(app, on_value=value if value else
-                            utils.get_name(app))
+        for on_value, app in apps.items():
+            try:
+                app, ppkwargs = app  # user can optionally pass doubles
+            except TypeError:
+                ppkwargs = {}
+            # doesn't currently load "composed" apps
+            client.load_app(
+                app,
+                on_value=on_value,
+                **ppkwargs
+            )
     # client setup/teardown
     client.listener.start()
     yield client
@@ -1298,7 +1329,7 @@ def active_client(host, port='8021', auth='ClueCon',
     # unload app set
     if apps:
         for value, app in apps.items():
-            client.unload_app(app)
+            client.unload_app(value)
 
     client.listener.disconnect()
     client.disconnect()

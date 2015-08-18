@@ -34,6 +34,7 @@ def test_playrec(fsip):
     '''
     with sync_caller(fsip, apps={"PlayRec": PlayRec}) as caller:
         # have the external prof call itself by default
+        caller.apps.PlayRec['PlayRec'].rec_rate = 1
         sess, waitfor = caller(
             "doggy@{}:{}".format(caller.client.server, 5080),
             'PlayRec',
