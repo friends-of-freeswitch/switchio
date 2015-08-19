@@ -68,7 +68,7 @@ class Events(object):
     def pprint(self, index=0):
         """Print serialized event data in chronological order to stdout
         """
-        for ev in reversed(self._events):
+        for ev in reversed(list(self._events)[index:]):
             print(ev.serialize())
 
 
@@ -382,6 +382,15 @@ class Session(object):
         """Unmute the write buffer for this session
         """
         self.mute(level=0, **kwargs)
+
+    def respond(self, response):
+        """Respond immediately with the following `response` code.
+        see the FreeSWITCH `respond`_ dialplan application
+
+        .. _respond:
+            https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+respond
+        """
+        self.broadcast('respond::{}'.format(response))
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
