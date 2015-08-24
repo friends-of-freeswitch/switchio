@@ -214,9 +214,9 @@ class Originator(object):
 
     def _set_rate(self, value):
         burst_rate = float(min(self.max_rate, value))
-        # set the inter-burst-period
-        # account for surrounding processing latencies by small %
-        self.ibp = 1 / burst_rate * 0.99
+        # set the 'inter-burst-period' accounting for surrounding processing
+        # latencies by a small %
+        self.ibp = 1 / burst_rate * 0.90
         self._rate = value
         if self.auto_duration and hasattr(self, '_limit'):
             self.duration = self.limit / value + self.duration_offset
@@ -449,6 +449,12 @@ class Originator(object):
         # set stopped state - no further bursts will be scheduled
         self._change_state("STOPPED")
         self.pool.evals('client.hupall()')
+
+    def hard_hupall(self):
+        """Hangup all calls for all slaves, period, even if they weren't originated by
+        this instance.
+        """
+        return self.pool.evals("client.cmd('hupall')")
 
     def shutdown(self):
         '''Shutdown this originator instance and hanging up all

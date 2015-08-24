@@ -135,13 +135,21 @@ def compose(func_1, func_2):
     The function returned is a composition of f1 and f2.
     """
     if not callable(func_1):
-        raise TypeError("First argument to must be callable")
+        raise TypeError("First arg must be callable")
     if not callable(func_2):
-        raise TypeError("Second argument to must be callable")
+        raise TypeError("Second arg must be callable")
 
     def composition(*args, **kwargs):
         return func_1(func_2(*args, **kwargs))
     return composition
+
+
+def ncompose(*funcs):
+    """Perform n-function composition
+    """
+    return functools.reduce(
+        lambda f, g: lambda x: f(g(x)), funcs, lambda x: x
+    )
 
 
 def copy_attrs(src_ns, dest, methods, props=True):

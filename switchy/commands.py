@@ -50,6 +50,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
         'absolute_codec_string': abs_codec,
         # must fill this in using a format string placeholder
         'origination_uuid': uuid_str or '{uuid_str}',
+        'ignore_display_updates': 'true',
     }
 
     # set a proxy destination if provided (i.e. the first hop)
