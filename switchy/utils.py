@@ -12,6 +12,8 @@ import json
 import types
 import logging
 import uuid as mod_uuid
+import importlib
+import pkgutil
 
 
 class ESLError(Exception):
@@ -79,7 +81,7 @@ def log_to_stderr(level=None):
             )
         except ImportError:
             logging.warning("Colour logging not supported. Please install"
-                            "the colorlog module to enable")
+                            " the colorlog module to enable\n")
             formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
         handler.setFormatter(formatter)
         log.addHandler(handler)
@@ -226,3 +228,38 @@ class FastScheduler(sched.scheduler):
             if now >= time:
                 self.cancel(q[0])
                 action(*argument)
+
+
+# based on http://stackoverflow.com/questions/3365740/how-to-import-all-submodules
+def iter_import_submods(packages, recursive=False, imp_excs=()):
+    """Iteratively import all submodules of a module, including subpackages with optional
+    recursion.
+
+    :param package: package (name or actual module)
+    :type package: str | module
+    :rtype: (dict[str, types.ModuleType], dict[str, ImportError])
+    """
+    def try_import(package):
+        name = package.__name__ if not isinstance(package, basestring) else package
+        try:
+            return importlib.import_module(package)
+        except ImportError as ie:
+            dep = ie.message.split()[-1]
+            if dep in imp_excs:
+                return ie
+            else:
+                raise
+
+    for package in packages:
+
+        if isinstance(package, basestring):
+            package = try_import(package)
+            pkgpath = getattr(package, '__path__', None)
+
+        if pkgpath:
+            for loader, name, is_pkg in pkgutil.walk_packages(pkgpath):
+                full_name = package.__name__ + '.' + name
+                yield full_name, try_import(full_name)
+
+                if recursive and is_pkg:
+                    yield import_submodules(full_name)

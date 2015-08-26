@@ -6,9 +6,10 @@ Routing apps
 """
 from collections import Counter
 from ..marks import event_callback
+from ..apps import app
 from ..utils import get_logger
 
-
+@app
 class Bridger(object):
     '''Bridge sessions within a call an arbitrary number of times.
     '''

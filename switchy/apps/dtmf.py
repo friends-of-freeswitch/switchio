@@ -5,10 +5,11 @@
 Dtmf tools
 """
 from collections import deque, OrderedDict
+from ..apps import app
 from ..marks import event_callback
 from ..utils import get_logger
 
-
+@app
 class DtmfChecker(object):
     '''Play dtmf tones as defined by the iterable attr `sequence` with
     tone `duration`. Verify the rx sequence matches what was transmitted.
