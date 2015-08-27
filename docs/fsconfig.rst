@@ -77,7 +77,31 @@ to route SIP sessions back to the :term:`originator`::
 
 This could alternatively be implemented using a :ref:`Switchy app <proxyapp>`
 
-For more information see *FreeSWITCH* `dialplans`_
+When testing FreeSWITCH you will typically want to raise the max-sessions
+and sessions-per-second parameters in autoload_configs/switch.conf.xml::
+
+    <param name="max-sessions" value="20000"/>
+    <!--Most channels to create per second -->
+    <param name="sessions-per-second" value="1000"/>
+
+This avoids FreeSWITCH to start rejecting calls for high loads. However, if your intention
+is to see how FreeSWITCH behaves when reaches those parameters limits, you can set them to
+a value that suits those purposes.
+
+In order to reduce load due to logging it's recommended you reduce your core logging level. This is
+also done in autoload_configs/switch.conf.xml::
+
+    <!-- Default Global Log Level - value is one of debug,info,notice,warning,err,crit,alert -->
+    <param name="loglevel" value="warning"/>
+
+You will want to also raise the file descriptor count::
+
+  # ulimit -n 1000000
+
+You have to make this in the same shell where you start FreeSWITCH. This ensures FreeSWITCH will not
+run out of file descriptors when making hundreds of calls.
+
+For more information see *FreeSWITCH* `dialplans`_ and `performance`_
 
 Typically for load testing this is the recommended routing to employ and
 roughly diagrams to something like::
@@ -98,3 +122,5 @@ roughly diagrams to something like::
     https://freeswitch.org/confluence/display/FREESWITCH/Configuring+FreeSWITCH#ConfiguringFreeSWITCH-SIPProfiles
 .. _dialplans:
     https://freeswitch.org/confluence/display/FREESWITCH/Configuring+FreeSWITCH#ConfiguringFreeSWITCH-Dialplan
+.. _performance:
+    https://freeswitch.org/confluence/display/FREESWITCH/Performance+Testing+and+Configurations

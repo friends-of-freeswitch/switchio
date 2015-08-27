@@ -8,15 +8,17 @@ Measurement and plotting tools - numpy + mpl helpers
 #     - figure.tight_layout doesn't seem to work??
 #     - make legend malleable
 #     - consider a way to easily move lines to different axes and
+import sys
 from os.path import basename
 import matplotlib.pyplot as plt
 import numpy as np
+import pylab
 from ... import utils
 
 log = utils.get_logger(__name__)
 
 
-def multiplot(metrics, fieldspec=None, fig=None, mng=None):
+def multiplot(metrics, fieldspec=None, fig=None, mng=None, block=False):
     '''Plot all columns in appropriate axes on a figure
     (talk about reimplementing `pandas` like an dufus...)
     '''
@@ -66,9 +68,14 @@ def multiplot(metrics, fieldspec=None, fig=None, mng=None):
 
     # show in a window full size
     fig.tight_layout()
-    fig.show()
     if getattr(metrics, 'title', None):
         fig.suptitle(basename(metrics.title), fontsize=15)
+    if block or sys.platform.lower() == 'darwin':
+        # For MacOS only blocking mode is supported
+        # the fig.show() method throws exceptions
+        pylab.show()
+    else:
+        fig.show()
     return mng, fig, artists
 
 

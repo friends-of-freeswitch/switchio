@@ -1,6 +1,6 @@
 -e
 
-# docs gen
+# docs gen without requiring ESL.py
 mock
 
 # testing

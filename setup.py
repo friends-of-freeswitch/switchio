@@ -1,6 +1,5 @@
 #!/usr/bin/env python2.7
 from setuptools import setup
-import switchy
 
 
 with open('README.rst') as f:
@@ -8,14 +7,14 @@ with open('README.rst') as f:
 
 
 setup(
-    name="Switchy",
-    version=switchy.__version__,
+    name="switchy",
+    version='0.1.alpha',
     description='Switchy is a fast FreeSWITCH ESL control library with '
                 'an emphasis on load testing.',
     long_description=readme,
     license='Mozilla',
-    author=switchy.__author__[0],
-    author_email=switchy.__author__[1],
+    author='Sangoma Technologies',
+    author_email='qa@eng.sangoma.com',
     url='https://github.com/sangoma/switchy',
     platforms=['linux'],
     packages=[
@@ -24,6 +23,12 @@ setup(
         'switchy.apps.measure',
         # 'tests',
     ],
+    entry_points={
+        'console_scripts': [
+            'switchy = switchy.cli:cli',
+        ]
+    },
+    install_requires=['click'],
     package_data={
         'switchy': ['../conf/switchydp.xml']
     },

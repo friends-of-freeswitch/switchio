@@ -10,6 +10,7 @@ Fast FreeSWITCH ESL control with a focus on load testing.
 The `EventListener` was inspired from Moises Silva's
 'fs_test' project: https://github.com/moises-silva/fs_test
 """
+import apps
 from os import path
 from utils import get_logger, ESLError
 from observe import EventListener, Client, get_listener

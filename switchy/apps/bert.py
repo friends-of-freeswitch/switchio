@@ -5,10 +5,12 @@
 Bert testing
 """
 from collections import deque
+from ..apps import app
 from ..marks import event_callback
 from ..utils import get_logger
 
 
+@app
 class Bert(object):
     """Call application which runs the bert test application on both
     legs of a call

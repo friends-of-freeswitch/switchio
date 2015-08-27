@@ -6,10 +6,12 @@ Common testing call flows
 """
 import inspect
 from collections import OrderedDict, namedtuple
+from ..apps import app
 from ..marks import event_callback
 from ..utils import get_logger
 
 
+@app
 class TonePlay(object):
     """Play a 'milli-watt' tone on the outbound leg and echo it back
     on the inbound
@@ -33,6 +35,7 @@ class TonePlay(object):
 RecInfo = namedtuple("RecInfo", "host caller callee")
 
 
+@app
 class PlayRec(object):
     '''Play a recording to the callee and record it onto the local file system
 
