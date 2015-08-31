@@ -9,8 +9,9 @@ from functools import partial
 from ..models import Session
 from ..marks import event_callback
 from ..utils import get_logger
+from ..apps import app
 
-
+@app
 class CalleeBlockOnInvite(object):
     """Reject all inbound INVITES immediately
 
@@ -39,6 +40,7 @@ class CalleeBlockOnInvite(object):
             self.action(sess)
 
 
+@app
 class CalleeRingback(object):
     """Simulate calls which reach early media but never connect.
 
