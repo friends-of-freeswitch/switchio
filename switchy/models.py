@@ -5,7 +5,6 @@
 Models representing freeSWITCH entities
 """
 import time
-import weakref
 import utils
 from collections import deque
 from multiproc import mp
@@ -97,9 +96,8 @@ class Session(object):
         self.call = None
         self.hungup = False
         # time stamps
-        self.create_time = float('inf')
-        self.answer_time = float('inf')
-        self.originate_time = float('inf')
+        self.times = {}.fromkeys(
+            ('create', 'answer', 'req_originate', 'originate', 'hangup'))
 
     def __str__(self):
         return str(self.uuid)
@@ -144,22 +142,16 @@ class Session(object):
         """
         self.events.show()
 
-    # FIXME: should we keep weakrefs to a partner session interally?
-    # modify these props to utilize the partner session
-    @property
-    def invite_latency(self):
-        return self.create_time_bleg - self.create_time_aleg
-
-    @property
-    def answer_latency(self):
-        return self.answer_time_aleg - self.answer_time_bleg
-
     def __enter__(self, connection):
         self.con = connection
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.con = None
+
+    @property
+    def appname(self):
+        return self.get('variable_switchy_app')
 
     @property
     def time(self):
@@ -413,7 +405,7 @@ class Call(object):
         self.uuid = uuid
         self.sessions = deque()
         self.sessions.append(session)
-        self._firstref = weakref.ref(session)
+        self._firstref = session
         self._lastref = None
         # sub-namespace for apps to set/get state
         self.vars = {}
@@ -427,7 +419,7 @@ class Call(object):
         recently added session
         """
         self.sessions.append(sess)
-        self._lastref = weakref.ref(sess)
+        self._lastref = sess
 
     def hangup(self):
         """Hangup up this call
@@ -439,13 +431,13 @@ class Call(object):
     def last(self):
         '''A reference to the session making up the final leg of this call
         '''
-        return self._lastref()
+        return self._lastref
 
     @property
     def first(self):
         '''A reference to the session making up the initial leg of this call
         '''
-        return self._firstref()
+        return self._firstref
 
     def get_peer(self, sess):
         """Convenience helper which can determine whether `sess` is one of
