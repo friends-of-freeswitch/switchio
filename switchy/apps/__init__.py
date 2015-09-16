@@ -110,3 +110,66 @@ def load(packages=(), imp_excs=('numpy',)):
         else:
             apps_map[path] = app
     return apps_map
+
+
+class AppManager(object):
+    """Manage apps over a cluster/slavepool
+    """
+    def __init__(self, pool):
+        self.pool = pool
+        # attempt measurement apps setup (requires pandas)
+        try:
+            from measure.metrics import Measurers
+        except ImportError as ie:
+            if not self.log.handlers:
+                utils.log_to_stderr()
+            self.log.warn(ie.message)
+            self.measurers = None
+        else:
+            # shared by whole cluster
+            self.measurers = Measurers()
+
+    def load_multi_app(self, apps_iter, app_id=None, **kwargs):
+        for app in apps_iter:
+            try:
+                app, ppkwargs = app  # user can optionally pass doubles
+            except TypeError:
+                ppkwargs = {}
+
+            # load each app under a common id (i.e. rebind with the return val)
+            app_id = self.load_app(app, app_id=app_id, ppkwargs=ppkwargs,
+                                   **kwargs)
+
+        return app_id
+
+    def load_app(self, app, app_id=None, ppkwargs={}, with_measurers=()):
+        """Load and activate an app for use across all slaves in the cluster
+        """
+        app_id = self.pool.evals(
+            'client.load_app(app, on_value=appid, **prepostkwargs)',
+            app=app, appid=app_id, prepostkwargs=ppkwargs)[0]
+
+        if self.measurers and with_measurers:
+            for name, m in self.measurers.iteritems():
+                for client in self.pool.clients:
+                    if name not in client._apps[app_id]:
+                        storer = m.get_storer()
+                        client.load_app(
+                            m.app,
+                            on_value=app_id,
+                            storer=storer,
+                            **m.ppkwargs
+                        )
+                        self.measurers.add_storer(name, storer, app_id)
+
+        return app_id
+
+    def iterapps(self):
+        """Iterable over all unique contained subapps
+        """
+        return set(
+            app for app_map in itertools.chain.from_iterable(
+                self.pool.evals('client._apps.values()')
+            )
+            for app in app_map.values()
+        )
