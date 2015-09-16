@@ -2,23 +2,33 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-This module includes helpers for capturing measurements using numpy.
+This module includes helpers for capturing measurements using pandas.
 """
+import multiprocessing as mp
+import tempfile
+import pandas as pd
 import numpy as np
 from switchy import utils
+from functools import partial
+from collections import OrderedDict, namedtuple
+
+# use the entire screen width + wrapping
+pd.set_option('display.expand_frame_repr', False)
 
 
-# numpy ndarray template
-metric_dtype = np.dtype([
-    ('time', np.float64),
-    ('invite_latency', np.float64),
-    ('answer_latency', np.float64),
-    ('call_setup_latency', np.float64),
-    ('originate_latency', np.float64),
-    ('originate_to_invite_latency', np.float64),
-    ('num_failed_calls', np.uint32),
-    ('num_sessions', np.uint32),
-])
+def DictProxy(d, extra_attrs={}):
+    """A dictionary proxy object which provides attribute access to elements
+    """
+    attrs = [
+        '__repr__',
+        '__getitem__',
+        '__setitem__',
+    ]
+    attr_map = {attr: getattr(d, attr) for attr in attrs}
+    attr_map.update(extra_attrs)
+    proxy = type('DictProxy', (), attr_map)()
+    proxy.__dict__ = d
+    return proxy
 
 
 def moving_avg(x, n=100):
@@ -31,182 +41,296 @@ def moving_avg(x, n=100):
     return cs / n  # NOTE: first n-2 vals are not true means
 
 
-class CappedArray(object):
-    """A capped length Numpy buffer which rolls over a data insertion index
-    when insertions run past the end of the pre-allocated internal array.
+def plot_df(df, figspec, **kwargs):
+    from mpl_helpers import multiplot
+    return multiplot(df, figspec=figspec, **kwargs)
 
-    Wraps the numpy array as if it was subclassed by overloading the
-    getattr iterface.
-    """
-    def __init__(self, buf, mi, title=None):
-        self._buf = buf
-        self._mi = mi  # current row insertion-index
-        self.title = title
-        # provide subscript access to the underlying buffer
-        for attr in ('__getitem__', '__setitem__'):
-            setattr(self.__class__, attr, getattr(self._buf, attr))
 
-    def __dir__(self):
-        attrs = utils.dirinfo(self)
-        attrs.extend(self._buf.dtype.names)
-        attrs.extend(dir(self._buf))
-        return attrs
+class FrameFuncOp(object):
+    def __init__(self, storersdict, func):
+        self._sd = storersdict
+        self._func = func
+        setattr(self.__class__, '__getitem__',
+                getattr(self._sd, '__getitem__'))
+
+    def __get__(self, obj, type=None):
+        return self.merged
+
+    def __set__(self, obj, value):
+        raise AttributeError
 
     def __repr__(self):
-        return repr(self._view)
+        return repr(self._sd).replace(
+            type(self._sd).__name__, type(self).__name__)
+
+    def __call__(self, *args, **kwargs):
+        return self._func(*args, **kwargs)
+
+    def __dir__(self):
+        return utils.dirinfo(self) + self._sd.keys()
+
+    def __getattr__(self, key):
+        """Given a key to a storer (usually a call app name)
+        apply the dataframe operator function over the entire data set
+        """
+        return self._func(self._sd[key].data)
+
+    def get_merged(self, names=None):
+        """Merge multiple storer datas into a single frame
+        """
+        if names:
+            storers = (
+                storer for name, storer in
+                self._sd.items() if name in names
+            )
+        else:
+            storers = self._sd.values()
+
+        # XXX this won't work for multiple stores with non-unique column names
+        # Consider having this return a MultiIndexed df eventually?
+        return pd.concat(
+            map(self._func, (s.data for s in storers)),
+            axis=1,
+        )
+
+    merged = property(get_merged)
+
+
+Measurer = namedtuple("Measurer", 'app ppkwargs get_storer storers ops')
+
+
+class Measurers(object):
+    """A dict-like collection of measurement apps with
+    sub-references to each app's `DataStorer` and optional metrics
+    computing callables.
+
+    The purpose of this type is two-fold:
+    1) provide micro-management of apps which collect data/measurements
+    (measurers) such that they can be loaded and referenced as a group under
+    different scopes (eg. per call control app).
+    2) provide an interface for adding operator functions which process
+    a single pandas.DataFrame and provide a new frame output for analysis.
+
+    Each `Measurer` tuple can be accessed using dict-like subscript syntax.
+    """
+    def __init__(self):
+        self._apps = OrderedDict()
+        # delegate to `_apps` for subscript access
+        setattr(self.__class__, '__getitem__',
+                getattr(self._apps, '__getitem__'))
+
+        # add attr access for references to data frame operators
+        self._ops = OrderedDict()
+        self.ops = DictProxy(self._ops, {'plot': self.plot})
+        # do the same for figspecs
+        self._figspecs = OrderedDict()
+        self.figspecs = DictProxy(self._figspecs)
+
+    def __repr__(self):
+        return repr(self._apps).replace(
+            type(self._apps).__name__, type(self).__name__)
+
+    def add(self, app, name=None, storer_per_app=False, operators={},
+            **ppkwargs):
+        args, kwargs = utils.get_args(app.prepost)
+        if 'storer' not in kwargs:
+            raise TypeError("'{}' must define a 'storer' kwarg"
+                            .format(app.prepost))
+        name = name or utils.get_name(app)
+        factory = getattr(app, 'new_storer', None)
+        if not factory:
+            # app does not define a storer factory method
+            factory = partial(DataStorer, columns=app.fields)
+
+        if not storer_per_app:
+            # common storer is returned on each factory call
+            storer = factory()
+
+            def factory():
+                return storer
+
+        self._apps[name] = Measurer(app, ppkwargs, factory, {}, {})
+        # add any app defined operator functions
+        ops = getattr(app, 'operators', {})
+        ops.update(operators)
+        for opname, func in ops.iteritems():
+            self.add_operator(name, func, opname=opname)
+
+    def add_operator(self, mesurername, func, opname):
+        m = self._apps[mesurername]
+        m.ops[opname] = func
+        fo = FrameFuncOp(m.storers, func)
+        self._ops[opname] = fo
+        figspec = getattr(func, 'figspec', None)
+        if figspec:
+            self._figspecs[opname] = figspec
+        # provides descriptor protocol access for interactive work
+        setattr(self.ops.__class__, opname, fo)
+
+    def add_storer(self, measurername, storer, appid):
+        m = self._apps[measurername]
+        m.storers[appid] = storer
+
+    def iteritems(self):
+        return self._apps.iteritems()
+
+    def to_store(self, path):
+        """Dump all data + operator combinations to a hierarchical HDF store
+        on disk.
+        """
+        with pd.HDFStore(path) as store:
+            for name, app in self._apps.items():
+                for sname, storer in app.storers.items():
+                    store.append("{}/{}".format(name, sname), storer.data)
+                    for opname, op in app.ops.items():
+                        store.append(
+                            '{}/{}/{}'.format(name, sname, opname),
+                            op(storer.data),
+                            dropna=False,
+                        )
 
     @property
-    def _view(self):
-        return self._buf[:self._mi]
+    def merged_ops(self):
+        """Merge and return all function operator frames from all measurers
+        """
+        return pd.concat(
+            (opfunc.merged for opfunc in self._ops.values()),
+            axis=1,
+        )
+
+    def plot(self, **kwargs):
+        """Plot all figures specified in the `figspecs` dict.
+        """
+        return [
+            (figspec, plot_df(self.merged_ops, figspec, **kwargs))
+            for figspec in self._figspecs.values()
+        ]
+
+
+class DataStorer(object):
+    """Wraps a `pd.DataFrame` which buffers recent data in memory and
+    offloads excess to disk using the HDF5 format.
+    """
+    def __init__(self, data=None, columns=None, size=2**9,
+                 dtype=None, hdf_path=None):
+
+        self._df = pd.DataFrame(
+            data=data,
+            columns=columns,
+            index=range(size) if data is None else None,
+            dtype=dtype,
+        )
+        self._len = len(self._df)
+        # current row insertion-index
+        self._ri = 0 if data is None else len(self._df) - 1
+        # disk storage is normally
+        self._store = pd.HDFStore(
+            hdf_path or tempfile.mktemp() + '_switchy_data.h5'
+        )
+        self._store.open('a')
+        self._mutex = mp.Lock()
+
+    def __len__(self):
+        return len(self._df)
 
     @property
-    def view(self):
-        '''A new instance of an array view up to the last inserted entry
-        '''
-        return type(self)(self._view, self._mi, self.title)
+    def store(self):
+        """HDF5 Store for offloading data to disk
+        """
+        return self._store
+
+    @property
+    def buffer(self):
+        """The latest set of buffered data points not yet pushed to disk
+        """
+        return self._df[:self.findex].convert_objects()
+
+    @property
+    def data(self):
+        """Copy of the entire data set recorded thus far
+        """
+        if self._store.keys():
+            return pd.concat(
+                (self._store['data'], self.buffer),
+                ignore_index=True
+            )
+        return self.buffer
 
     @property
     def index(self):
-        '''Current entry index count
+        '''Current absolute row index
         '''
-        return self._mi
+        return self._ri
 
-    def __getattr__(self, name):
-        """Delegate all attribute access to the current view
+    @property
+    def findex(self):
+        """Current index of in mem frame buffer
         """
-        try:
-            # present the columns arrays as attributes
-            return self._view[name]
-        except ValueError:  # not one of the field names
-            return getattr(self._view, name)
+        return self._ri % self._len
 
-    def insert(self, value):
-        '''Insert `value` into the internal numpy array at the current index
-        and increment the index. Return a bool indicating whether the current
-        entry has caused a roll over to the beginning of the internal buffer.
+    def append_row(self, row=None, index=None):
+        '''Insert :var:`row` into the internal data frame at the current index
+        and increment. Return a boolean indicating whether the current entry
+        has caused a flush to disk. Empty rows are always written to disk
+        (keeps stores 'call-index-aligned').
         '''
-        # NOTE: consider using ndarray.itemset if we want to
-        # insert into only one column?
-        i = self._mi % self._buf.size
-        self._buf[i] = value
-        self._mi += 1
-        if self._mi > self._buf.size - 1 and i == 0:
-            return True
-        return False
+        # PyTables store is not thread safe + we don't want to flush
+        # more then once when there's raciness
+        with self._mutex:
+            flush = False
+            i = self.findex
+            if self._ri > self._len - 1 and i == 0:
+                # offload frame to disk
+                self._df = frame = self._df.convert_objects(
+                    convert_numeric=True)
+                self._store.append('data', frame, dropna=False)
+                self._store.flush(fsync=True)
+                flush = True
+            self._df.iloc[i, :] = row
+            self._ri += 1
+            return flush
 
 
-class CallMetrics(CappedArray):
-    """An array for computing and aggregating common call metrics
-    """
-    def seizure_fail_rate(self, start=0, end=-1):
-        '''Compute and return the average failed call rate between
-        indices `start` and `end` using the following formula:
-
-        sfr =   nfc[end] - nfc[start]
-               -----------------------
-                    end - start
-        where:
-            nfc        ::= number of failed calls array
-            start, end ::= array indices representing seizure index
-
-        The assumption is that nfc is a strictly monotonic linear sequence.
-
-        TODO:
-            for non linear failed call counts we need to look at
-            taking a discrete derivative...
-        '''
-        array = self.num_failed_calls
-        if end < 0:
-            end = array.size + end
-        num = float(array[end] - array[start])
-        denom = float(end - start)
-        return num / denom
-
-    sfr = seizure_fail_rate
-
-    def answer_seizure_ratio(self, start=0, end=-1):
-        '''Compute the answer seizure ratio using the following formula:
-
-        asr = 1 - sfr
-
-        where:
-            sfr ::= seizure fail rate
-        '''
-        return 1. - self.seizure_fail_rate(start, end)
-
-    asr = answer_seizure_ratio
-
-    @property
-    def inst_rate(self):
-        '''The instantaneous rate computed per call
-        '''
-        view = self.view
-        view.sort(order='time')  # sort array by time stamp
-        rates = 1. / (view['time'][1:] - self.view['time'][:-1])
-        # bound rate measures
-        rates[rates > 300] = 300
-        return rates
-
-    @property
-    def wm_rate(self):
-        '''The rolling average call rate windowed over 100 calls
-        '''
-        return moving_avg(self.inst_rate, n=100)
-
-
-try:
-    from mpl_helpers import multiplot
-except ImportError:
-    log = utils.get_logger()
-    if not log.handlers:
-        utils.log_to_stderr()
-    log.warn(
-        "Matplotlib must be installed for graphing support"
-    )
-else:
-    def plot(self, block=False):
-            view = self.view
-            view.sort(order='time')  # sort array by time stamp
-            self.mng, self.fig, self.artists = multiplot(view, fieldspec=[
-                ('time', None),  # this field will not be plotted
-                # latencies
-                ('answer_latency', (1, 1)),
-                ('call_setup_latency', (1, 1)),
-                ('invite_latency', (1, 1)),
-                ('originate_latency', (1, 1)),
-                ('originate_to_invite_latency', (1, 1)),
-                # counts
-                ('num_sessions', (2, 1)),  # concurrent calls at creation time
-                ('num_failed_calls', (2, 1)),
-                # rates
-                ('inst_rate', (3, 1)),
-                ('wm_rate', (3, 1)),
-            ], block=block)
-    # attach a plot method
-    CallMetrics.plot = plot
-
-
-def new_array(dtype=metric_dtype, size=2**20):
-    """Return a new capped numpy array
-    """
-    return CallMetrics(np.zeros(size, dtype=dtype), 0)
-
-
-def load(path, wrapper=CallMetrics):
-    '''Load a pickeled numpy array from the filesystem into a metrics wrapper
+def load(path, wrapper=pd.DataFrame):
+    '''Load a pickeled numpy array from the filesystem into a `DataStorer`
+    wrapper (Deprecated use `from_store` to load HDF files).
     '''
     array = np.load(path)
-    return wrapper(array, array.size, title=path)
+
+    # calc and assign rate info
+    def calc_rates(df):
+        df = df.sort(['time'])
+        mdf = pd.DataFrame(
+            df, index=range(len(df))).assign(hangup_index=df.index).assign(
+            inst_rate=lambda df: 1 / df['time'].diff()
+        ).assign(
+            wm_rate=lambda df: pd.rolling_mean(df['inst_rate'], 30)
+        )
+        return mdf
+
+    # adjust field spec to old record array record names
+    calc_rates.figspec = {
+        (1, 1): [
+            'call_setup_latency',
+            'answer_latency',
+            'invite_latency',
+            'originate_latency',
+        ],
+        (2, 1): [
+            'num_sessions',
+            'num_failed_calls',
+        ],
+        (3, 1): [
+            'inst_rate',
+            'wm_rate',  # why so many NaN?
+        ]
+    }
+
+    ds = DataStorer(wrapper(array), metrics_func=calc_rates)
+    return ds
 
 
-def load_from_dir(path='./*.pkl'):
-    '''Autoload all pickeled arrays from dir-glob `path` into Metric
-    instances and plot
-    '''
-    import glob
-    file_names = glob.glob(path)
-    tups = []
-    for f in file_names:
-        tup = plot(load(f))
-        tups.append(tup)
-    return tups
+def from_store(path):
+    """Load an HDF file from the into a `pandas.HDFStore`
+    """
+    return pd.HDFStore(path)

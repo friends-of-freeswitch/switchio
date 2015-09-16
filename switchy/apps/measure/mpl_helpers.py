@@ -7,59 +7,47 @@ Measurement and plotting tools - numpy + mpl helpers
 # TODO:
 #     - figure.tight_layout doesn't seem to work??
 #     - make legend malleable
-#     - consider a way to easily move lines to different axes and
 import sys
 from os.path import basename
 import matplotlib.pyplot as plt
 import numpy as np
 import pylab
 from ... import utils
+from collections import namedtuple
 
 log = utils.get_logger(__name__)
 
 
-def multiplot(metrics, fieldspec=None, fig=None, mng=None, block=False):
-    '''Plot all columns in appropriate axes on a figure
-    (talk about reimplementing `pandas` like an dufus...)
+plotitems = namedtuple('plotitems', 'mng fig axes artists')
+
+
+def multiplot(df, figspec, fig=None, mng=None, block=False):
+    '''Plot selected columns in appropriate axes on a figure using the pandas
+    plotting helpers where possible. `figspec` is a map of subplot location
+    tuples to column name iterables.
     '''
     fig = fig if fig else plt.figure()
     mng = mng if mng else plt.get_current_fig_manager()
-    if not fieldspec:
-        # place each array on a separate axes
-        fieldspec = [
-            (name, (i, 1)) for i, name in enumerate(metrics.dtype.fields)
-        ]
-    elif hasattr(fieldspec, 'items'):
-        fieldspec = fieldspec.items()
 
-    rows, cols = max(tup[1] for tup in fieldspec)
+    # figspec is a map of tuples like: {(row, column): [<column names>]}
+    rows, cols = max(figspec)
 
     # plot loop
-    artists = []  # store the artists for later use
-    for name, loc in fieldspec:
+    artist_map = {}
+    axes = {}
+    for loc, colnames in sorted(figspec.items()):
         if loc is None:
             continue
         else:
             row, col = loc
-        # generate plots
+        # generate axes
         ax = fig.add_subplot(rows, cols, row * col)
-        try:
-            array = getattr(metrics, name)
-        except AttributeError:
-            try:
-                array = metrics[name]
-            except ValueError:
-                log.warn("no row '{}' exists for '{}".format(name, metrics))
-                print("no row '{}' exists for '{}".format(name, metrics))
-                continue
-        log.info("plotting '{}'".format(name))
-        artists.append(
-            ax.plot(
-                array,
-                label=name,
-                # linewidth=2.0,
-            )[0]
-        )
+        log.info("plotting '{}'".format(colnames))
+        ax = df[colnames].plot(ax=ax)  # use the pandas plotter
+        axes[loc] = ax
+        artists, names = ax.get_legend_handles_labels()
+        artist_map[loc] = {
+            name: artist for name, artist in zip(names, artists)}
         # set legend
         ax.legend(loc='upper left', fontsize='large')
         # set titles
@@ -68,15 +56,19 @@ def multiplot(metrics, fieldspec=None, fig=None, mng=None, block=False):
 
     # show in a window full size
     fig.tight_layout()
-    if getattr(metrics, 'title', None):
-        fig.suptitle(basename(metrics.title), fontsize=15)
-    if block or sys.platform.lower() == 'darwin':
-        # For MacOS only blocking mode is supported
-        # the fig.show() method throws exceptions
-        pylab.show()
+    if getattr(df, 'title', None):
+        fig.suptitle(basename(df.title), fontsize=15)
+    if block:
+        if sys.platform.lower() == 'darwin':
+            # For MacOS only blocking mode is supported
+            # the fig.show() method throws exceptions
+            pylab.show()
+        else:
+            plt.ioff()
+            plt.show()
     else:
         fig.show()
-    return mng, fig, artists
+    return plotitems(mng, fig, axes, artist_map)
 
 
 def gen_hist(arr, col='invite_latency'):
