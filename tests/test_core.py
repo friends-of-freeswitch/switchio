@@ -103,7 +103,7 @@ def proxy_dp(ael, client):
 
     # attempt to add measurement collection
     try:
-        from switchy.apps.measure import Metrics
+        from switchy.apps.measure import CallTimes
     except ImportError:
         print("WARNING: numpy measurements not available")
     else:
@@ -111,10 +111,10 @@ def proxy_dp(ael, client):
         client.listener = ael
         # assigning a listener overrides it's call lookup var so restore it
         client.listener.call_id_var = 'variable_call_uuid'
-        # insert the `Metrics` app
-        assert 'default' == client.load_app(Metrics, on_value="default")
-        app = client.apps.default['Metrics']
-        ael.metrics = app
+        # insert the `CallTimes` app
+        assert 'default' == client.load_app(CallTimes, on_value="default")
+        app = client.apps.default['CallTimes']
+        ael.call_times = app
     # sanity
     assert ael.connected()
     assert ael.is_alive()
@@ -246,8 +246,8 @@ class TestListener:
             time.sleep(duration + 1.05)
             assert ael.count_calls() == 0
 
-        if hasattr(ael, 'metrics'):  # check metrics tracking
-            assert ael.metrics.array.size == cps
+        if hasattr(ael, 'call_times'):  # check call_times tracking
+            assert len(ael.call_times.storer.data) == cps
 
     def test_track_1kcapacity(self, ael, proxy_dp, scenario, cps):
         '''load fs with up to 1000 simultaneous calls
@@ -273,8 +273,8 @@ class TestListener:
             time.sleep(duration + 1.5)
             assert ael.count_calls() == 0
 
-        if hasattr(ael, 'metrics'):
-            assert ael.metrics.array.size == limit
+        if hasattr(ael, 'call_times'):
+            assert len(ael.call_times.storer.data) == limit
 
 
 class TestClient:
