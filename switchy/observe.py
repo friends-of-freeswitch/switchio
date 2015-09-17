@@ -19,7 +19,7 @@ import functools
 import weakref
 from contextlib import contextmanager
 from threading import Thread, current_thread
-from collections import deque, OrderedDict, defaultdict, Counter
+from collections import deque, OrderedDict, defaultdict, Counter, namedtuple
 
 # NOTE: the import order matters here!
 import utils
@@ -787,7 +787,7 @@ class EventListener(object):
         sess.cid = self.get_id(e, 'default')
         # note the start time and current load
         # TODO: move this to Session __init__??
-        sess.create_time = get_event_time(e)
+        sess.times['create'] = get_event_time(e)
 
         # Use our special Xheader to try and associate sessions into calls
         # (assumes that x-headers are forwarded by the proxy/B2BUA)
@@ -797,7 +797,7 @@ class EventListener(object):
         if call_uuid is None:
             call_uuid = e.getHeader(self.call_corr_var)  # could be 'None'
             if not call_uuid:
-                self.log.warn("Unable to associate session '{}' into calls"
+                self.log.warn("Unable to associate session '{}' with a call"
                               .format(sess.uuid))
 
         # associate sessions into a call
@@ -828,8 +828,8 @@ class EventListener(object):
         if sess:
             sess.update(e)
             # store local time stamp for originate
-            sess.originate_event_time = get_event_time(e)
-            sess.originate_time = time.time()
+            sess.times['originate'] = get_event_time(e)
+            sess.times['req_originate'] = time.time()
             self.total_originated_sessions += 1
             return True, sess
         return False, sess
@@ -853,7 +853,7 @@ class EventListener(object):
                            .format(uuid,  e.getHeader('Call-Direction')))
             sess.answered = True
             self.total_answered_sessions += 1
-            sess.answer_time = get_event_time(e)
+            sess.times['answer'] = get_event_time(e)
             sess.update(e)
             return True, sess
         else:
@@ -875,6 +875,7 @@ class EventListener(object):
             return False, None
         sess.update(e)
         sess.hungup = True
+        sess.times['hangup'] = get_event_time(e)
         cause = e.getHeader('Hangup-Cause')
         self.hangup_causes[cause] += 1  # count session causes
         self.sessions_per_app[sess.cid] -= 1
@@ -889,18 +890,25 @@ class EventListener(object):
             self.log.warn("No call found for session '{}'"
                           .format(sess.uuid))
         else:
-            call = self.calls.get(call_uuid, None)
+            # XXX seems like sometimes FS changes the `call_uuid`
+            # between create and hangup oddly enough
+            call = self.calls.get(call_uuid, sess.call)
             if call:
                 if sess in call.sessions:
                     self.log.debug("hungup session '{}' for call '{}'".format(
                                    uuid, call.uuid))
                     call.sessions.remove(sess)
+                else:
+                    self.log.warn("no call for session '{}'".format(sess.uuid))
+
                 # all sessions hungup
-                if len(call.sessions) == 0 or call_uuid == sess.uuid:
+                if len(call.sessions) == 0:
                     self.log.debug("all sessions for call '{}' were hung up"
                                    .format(call_uuid))
                     # remove call from our set
-                    self.calls.pop(call_uuid)
+                    self.calls.pop(call.uuid)
+            else:
+                self.log.warn("no call was found for '{}'".format(call_uuid))
         self.log.debug("handling HANGUP for call_uuid: {}".format(call_uuid))
 
         # pop any corresponding job
@@ -1333,3 +1341,23 @@ def active_client(host, port='8021', auth='ClueCon',
 
     client.listener.disconnect()
     client.disconnect()
+
+
+def get_pool(contacts, **kwargs):
+    """Construct and return a slave pool from a sequence of
+    contact information
+    """
+    from .distribute import SlavePool
+    SlavePair = namedtuple("SlavePair", "client listener")
+    pairs = deque()
+
+    # instantiate all pairs
+    for contact in contacts:
+        if isinstance(contact, (basestring)):
+            contact = (contact,)
+        # create pairs
+        listener = EventListener(*contact, **kwargs)
+        client = Client(*contact, listener=listener)
+        pairs.append(SlavePair(client, listener))
+
+    return SlavePool(pairs)
