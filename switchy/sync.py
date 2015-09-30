@@ -31,8 +31,8 @@ def sync_caller(host, port='8021', password='ClueCon',
             job.wait(timeout)
             if not job.successful():
                 raise job.result
-            call = client.listener.calls[job.sess_uuid]
-            orig_sess = call.sessions[0]  # first sess is the originator
+            call = client.listener.sessions[job.sess_uuid].call
+            orig_sess = call.first  # first sess is the originator
             if waitfor:
                 var, time = waitfor
                 client.listener.waitfor(orig_sess, var, time)
