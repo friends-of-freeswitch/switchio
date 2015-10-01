@@ -57,7 +57,7 @@ class EventListener(object):
                  session_map=None,
                  bg_jobs=None,
                  rx_con=None,
-                 call_lookup_var_name='variable_call_uuid',
+                 call_id_var='variable_call_uuid',
                  autorecon=30,
                  max_limit=float('inf'),
                  # proxy_mng=None,
@@ -71,7 +71,7 @@ class EventListener(object):
             Port on which the FS server is offering an esl connection
         auth : string
             Authentication password for connecting via esl
-        call_lookup_var_name : string
+        call_id_var : string
             Name of the freeswitch variable (including the 'variable_' prefix)
             to use for associating sessions into calls (see `_handle_create`).
 
@@ -81,7 +81,7 @@ class EventListener(object):
 
             NOTE: in order for this association mechanism to work the
             intermediary device must be configured to forward the Xheaders
-            it recieves.
+            it receives.
         autorecon : int, bool
             Enable reconnection attempts on server disconnect. An integer
             value specifies the of number seconds to spend re-trying the
@@ -108,7 +108,7 @@ class EventListener(object):
         # constants
         self.autorecon = autorecon
         self._call_var = None
-        self.call_corr_var = call_lookup_var_name
+        self.call_id_var = call_id_var
         self.max_limit = max_limit
         self._id = utils.uuid()
 
@@ -189,13 +189,13 @@ class EventListener(object):
                 yield name, attr
 
     @property
-    def call_corr_var(self):
+    def call_id_var(self):
         """Channel variable used for associating sip legs into a 'call'
         """
         return self._call_var
 
-    @call_corr_var.setter
-    def call_corr_var(self, var_name):
+    @call_id_var.setter
+    def call_id_var(self, var_name):
         """Set the channel variable to use for associating sessions into calls
         """
         self._call_var = var_name
@@ -768,14 +768,14 @@ class EventListener(object):
         # TODO: move this to Session __init__??
         sess.times['create'] = get_event_time(e)
 
-        # Use our specified "call correlation variable" to try and associate
+        # Use our specified "call identification variable" to try and associate
         # sessions into calls. By default the 'variable_call_uuid' channel
         # variable is used for tracking locally bridged calls
-        call_uuid = e.getHeader(self.call_corr_var)  # could be 'None'
+        call_uuid = e.getHeader(self.call_id_var)  # could be 'None'
         if not call_uuid:
             self.log.warn(
                 "Unable to associate session '{}' with a call using "
-                "variable '{}'".format(sess.uuid, self.call_corr_var))
+                "variable '{}'".format(sess.uuid, self.call_id_var))
 
         # associate sessions into a call
         # (i.e. set the relevant sessions to reference each other)
@@ -858,7 +858,7 @@ class EventListener(object):
         self.sessions_per_app[sess.cid] -= 1
 
         # if possible lookup the relevant call
-        call_uuid = e.getHeader(self.call_corr_var)
+        call_uuid = e.getHeader(self.call_id_var)
         if not call_uuid:
             self.log.warn(
                 "handling HANGUP for session '{}' which can not be associated "
@@ -929,7 +929,7 @@ class Client(object):
     id_var = 'switchy_app'
     id_xh = utils.xheaderify(id_var)
     # works under the assumption that x-headers are forwarded by the proxy/B2BUA
-    call_corr_var = 'sip_h_X-switchy_originating_session'
+    call_id_var = 'sip_h_X-switchy_originating_session'
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
                  listener=None,
@@ -968,9 +968,9 @@ class Client(object):
         # add our con to the listener's set so that it will be
         # managed on server disconnects
         if inst:
-            self._listener.call_corr_var = 'variable_{}'.format(self.call_corr_var)
+            self._listener.call_id_var = 'variable_{}'.format(self.call_id_var)
             self.log.debug("set call lookup variable to '{}'".format(
-                self._listener.call_corr_var))
+                self._listener.call_id_var))
             inst._client_con = weakref.proxy(self._con)
 
     listener = property(get_listener, set_listener,
@@ -1222,7 +1222,7 @@ class Client(object):
             cmd_str = build_originate_cmd(
                 dest_url,
                 uuid_str,
-                xheaders={self.call_corr_var: uuid_str,
+                xheaders={self.call_id_var: uuid_str,
                           self.id_xh: app_id or self._id},
                 # extra_params={self.id_var: app_id or self._id},
                 **origkwds
@@ -1249,7 +1249,7 @@ class Client(object):
         # currently this inserts a couple placeholders which can be replaced
         # at run time by a format(uuid_str='blah', app_id='foo') call
         if self.listener:
-            user_xh[self.call_corr_var] = '{uuid_str}'
+            user_xh[self.call_id_var] = '{uuid_str}'
         user_xh[self.id_xh] = '{app_id}'
         origparams = {self.id_var: '{app_id}'}
         origparams.update(kwargs)
