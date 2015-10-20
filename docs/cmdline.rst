@@ -52,7 +52,7 @@ For example you can list the applications available (*apps* determine call flows
     `Bridger`: Bridge sessions within a call an arbitrary number of times.  
 
 
-The applications listed can be used with the `--app` option to the `run` sub-command.
+The applications listed can be used with the `app` option to the `run` sub-command.
 `run` is the main sub-command used to start a load test. Here is the help::
 
     $ switchy run --help
@@ -80,12 +80,12 @@ The applications listed can be used with the `--app` option to the `run` sub-com
 
 
 The `SLAVES` argument can be one or more IP's or hostnames for each configured FreeSWITCH :term:`slave`
-used to originate traffic. The `--proxy` option is required and must be the IP address or hostname
+used to originate traffic. The `proxy` option is required and must be the IP address or hostname
 of the device you are testing. All slaves will direct traffic to the specified proxy.
 
 The other options are not strictly required but typically you will want to at least specify a given call rate
-using the `--rate` option, max number of concurrent calls (erlangs) with `--limit` and possibly max number of
-calls offered with `--max-offered`.
+using the `rate` option, max number of concurrent calls (erlangs) with `limit` and possibly max number of
+calls offered with `max-offered`.
 
 For example, to start a test using an slave located at `1.1.1.1` to test device at `2.2.2.2` with a maximum of
 `2000` calls at `30` calls per second and stopping after placing `100,000` calls you can do::
@@ -96,12 +96,12 @@ For example, to start a test using an slave located at `1.1.1.1` to test device 
     Starting load test for server 2.2.2.2 at 30cps using 1 slaves
     ...
 
-Note that the `--profile` option is also important and the profile must exist already for all specified slaves.
+Note that the `profile` option is also important and the profile must exist already for all specified slaves.
 
 In this case the call duration would be automatically calculated to sustain that call rate and that max calls
-exactly, but you can tweak the call duration in seconds using the `--duration` option.
+exactly, but you can tweak the call duration in seconds using the `duration` option.
 
-Additionally you can use the `--metrics-file` option to store call metrics in a file.
+Additionally you can use the `metrics-file` option to store call metrics in a file.
 You can then use the `plot` sub-command to generate graphs of the collected data using
 `matplotlib` if installed.
 

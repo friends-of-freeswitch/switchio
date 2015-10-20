@@ -7,22 +7,22 @@
 
 Quick-Start - Originating a single call
 =======================================
-| Assuming you've gone through the required :doc:`deployment steps
-  <fsconfig>` to setup at least one slave, initiating a call becomes
-  very simple using the switchy command line::
+Assuming you've gone through the required :doc:`deployment steps
+<fsconfig>` to setup at least one slave, initiating a call becomes
+very simple using the switchy command line::
 
-    $ switchy run slave.host1 slave.host2 --profile external --proxy sip-device-host --rate 1 --limit 1 --max-offered 1
+    $ switchy run vm-host sip-cannon --profile external --proxy dut-008 --rate 1 --limit 1 --max-offered 1  --duration 5
 
-    ...probably some call generator setup related logging...
+    ...
 
     Aug 26 21:59:01 [INFO] switchy cli.py:114 : Slave sip-cannon.qa.sangoma.local SIP address is at 10.10.8.19:5080
     Aug 26 21:59:01 [INFO] switchy cli.py:114 : Slave vm-host.qa.sangoma.local SIP address is at 10.10.8.21:5080
     Aug 26 21:59:01 [INFO] switchy cli.py:120 : Starting load test for server dut-008.qa.sangoma.local at 1cps using 2 slaves
-    <Originator: active-calls=0 state=INITIAL total-originated-sessions=0 rate=1 limit=1 max-offered=1 duration=30>
+    <Originator: active-calls=0 state=INITIAL total-originated-sessions=0 rate=1 limit=1 max-offered=1 duration=5>
 
-    ...call generator state machine logging...
+    ...
 
-    <Originator: active-calls=1 state=STOPPED total-originated-sessions=1 rate=1 limit=1 max-offered=1 duration=30>
+    <Originator: active-calls=1 state=STOPPED total-originated-sessions=1 rate=1 limit=1 max-offered=1 duration=5>
     Waiting on 1 active calls to finish
     Waiting on 1 active calls to finish
     Waiting on 1 active calls to finish
@@ -33,23 +33,37 @@ Quick-Start - Originating a single call
 | The switchy `run` sub-command takes several options and a list
   of slaves (or at least one) IP address or hostname. In this
   example switchy connected to the specified slaves, found the specified SIP
-  profile and initiated a single call with a duration fo 30 seconds to the
-  device under test (set with the `--proxy` option).
+  profile and initiated a single call with a duration of 5 seconds to the
+  device under test (set with the `proxy` option).
 
-| For more information on the switchy command line see :doc:`command line <cmdline>`.
+| For more information on the switchy command line see :doc:`here <cmdline>`.
 
 Originating a single call programatically from Python
 =====================================================
-| Making a call with Switchy is quite simple using the built-in
-  :py:func:`~switchy.sync.sync_caller` context manager.
-| Assuming you've gone through the required :doc:`deployment steps
-  <fsconfig>`, initiating a call becomes as simple as 2 lines of python
-  code.
+Making a call with switchy is quite simple using the built-in
+:py:func:`~switchy.sync.sync_caller` context manager.
+Again, if you've gone through the required :doc:`deployment steps
+<fsconfig>`, initiating a call becomes as simple as a few lines of python
+code::
+
+  from switchy import sync_caller
+  from switchy.apps.players import TonePlay
+
+  # here '192.168.0.10' would be the address of the server running an FS process
+  with sync_caller('192.168.0.10', apps={"tone": TonePlay}) as caller:
+
+      # initiates a call to the originating profile on port 5080
+      # and block until answered / the originate job completes
+      sess, waitfor = caller('Fred@{}:{}'.format(caller.client.host, 5080), "tone")
+      # let the tone play a bit
+      time.sleep(5)
+      # tear down the call
+      sess.hangup()
 
 
 Example source code
 -------------------
-An example is found in the unit tests sources :
+Some more extensive examples are found in the unit tests sources :
 
 .. literalinclude:: ../tests/test_sync_call.py
     :caption: test_sync_call.py
