@@ -5,7 +5,7 @@
 handy utilities
 """
 import sys
-import sched
+import time
 import inspect
 import functools
 import json
@@ -215,51 +215,41 @@ def get_event_time(event, epoch=0.0):
     return float(value) / 1e6 - epoch
 
 
-class FastScheduler(sched.scheduler):
+class Timer(object):
+    """Simple timer that reports an elapsed duration since the last reset.
+    """
+    def __init__(self, timer=None):
+        self.time = timer or time
+        self._last = 0
 
-    def next_event_time_delta(self):
-        """Return the time delta in seconds for the next event
-        to become ready for execution
+    def elapsed(self):
+        """Returns the elapsed time since the last reset
         """
-        q = self.queue
-        if self.empty():
-            return 0
-        time, priority, action, argument = q[0]
-        now = self.timefunc()
-        if time > now:
-            return time - now
-        return 0
+        return self.time.time() - self._last
 
-    def fast_run(self):
+    def reset(self):
+        """Reset the timer start point to now
         """
-        Try to run events that are ready only and return immediately
-        It is assumed that the callbacks will not block and the time
-        is only retrieved once (when entering the function) and not
-        before executing each event, so there is a chance an event
-        that becomes ready while looping will not get executed
-        """
-        q = self.queue
-        now = self.timefunc()
-        while q:
-            time, priority, action, argument = q[0]
-            if now < time:
-                return now - time
-            if now >= time:
-                self.cancel(q[0])
-                action(*argument)
+        self._last = self.time.time()
+
+    @property
+    def last_time(self):
+        '''Last time the timer was reset
+        '''
+        return self._last
 
 
-# based on http://stackoverflow.com/questions/3365740/how-to-import-all-submodules
+# based on
+# http://stackoverflow.com/questions/3365740/how-to-import-all-submodules
 def iter_import_submods(packages, recursive=False, imp_excs=()):
-    """Iteratively import all submodules of a module, including subpackages with optional
-    recursion.
+    """Iteratively import all submodules of a module, including subpackages
+    with optional recursion.
 
     :param package: package (name or actual module)
     :type package: str | module
     :rtype: (dict[str, types.ModuleType], dict[str, ImportError])
     """
     def try_import(package):
-        name = package.__name__ if not isinstance(package, basestring) else package
         try:
             return importlib.import_module(package)
         except ImportError as ie:
@@ -273,7 +263,7 @@ def iter_import_submods(packages, recursive=False, imp_excs=()):
 
         if isinstance(package, basestring):
             package = try_import(package)
-            pkgpath = getattr(package, '__path__', None)
+        pkgpath = getattr(package, '__path__', None)
 
         if pkgpath:
             for loader, name, is_pkg in pkgutil.walk_packages(pkgpath):
@@ -281,4 +271,7 @@ def iter_import_submods(packages, recursive=False, imp_excs=()):
                 yield full_name, try_import(full_name)
 
                 if recursive and is_pkg:
-                    yield import_submodules(full_name)
+                    for res in iter_import_submods(
+                        [full_name], recursive=recursive, imp_excs=imp_excs
+                    ):
+                        yield res

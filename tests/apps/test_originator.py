@@ -8,8 +8,10 @@
     these tests assume that the `external` sip profile's context
     has been assigned to the switchy dialplan.
 '''
+from __future__ import division
 import pytest
 import time
+import math
 from switchy.apps import dtmf, players
 from switchy import get_originator
 
@@ -73,27 +75,28 @@ def test_convo_sim(get_orig):
         apps=[
             (players.PlayRec,
              {'rec_stereo': True,
-              'callback': count,
-              'dynamic_rec_rate': True})
+              'callback': count})
         ]
     )
     # manual app reference retrieval
     playrec = orig.pool.nodes[0].client.apps.PlayRec
 
     # verify dynamic load settings modify playrec settings
-    orig.rate = 10
+    orig.rate = 20
     orig.limit = orig.max_offered = 100
-    assert playrec.rec_rate == orig.rate * playrec.rec_period
+    playrec.rec_period = 2.0
     assert playrec.iterations * playrec.clip_length + playrec.tail == orig.duration
 
     orig.start()
     # ensure calls are set up fast enough
+    start = time.time()
     time.sleep(float(orig.limit / orig.rate) + 1.0)
+    stop = time.time()
     assert orig.pool.count_calls() == orig.limit
 
     # wait for all calls to end
     while not orig.stopped() or orig.pool.count_calls():
         time.sleep(1)
 
-    # ensure number of calls recorded matches the rec rate
-    assert len(recs) == int(orig.max_offered / playrec.rec_rate)
+    # ensure number of calls recorded matches the rec period
+    assert float(len(recs)) == math.floor((stop - start)/ playrec.rec_period)

@@ -6,9 +6,9 @@ Common testing call flows
 """
 import inspect
 from collections import OrderedDict, namedtuple
+from .. import utils
 from ..apps import app
 from ..marks import event_callback
-from ..utils import get_logger
 
 
 @app
@@ -44,6 +44,8 @@ class PlayRec(object):
     that ${FS_CONFIG_ROOT}/${sound_prefix}/<category>/<filename> points to a
     valid wave file.
     '''
+    timer = utils.Timer()
+
     def prepost(
         self,
         client,
@@ -53,9 +55,7 @@ class PlayRec(object):
         sample_rate=8000,
         iterations=1,  # number of times the speech clip will be played
         callback=None,
-        rec_rate=None,  # in calls/rec (i.e. 10 is 1 recording per 10 calls)
-        dynamic_rec_rate=False,
-        rec_period=3.0,
+        rec_period=5.0,  # in seconds (i.e. 1 recording per period)
         rec_stereo=False,
     ):
         self.filename = filename
@@ -66,15 +66,13 @@ class PlayRec(object):
             assert inspect.isfunction(callback), 'callback must be a function'
             assert len(inspect.getargspec(callback)[0]) == 1
         self.callback = callback
-        self.dynamic_rec_rate = dynamic_rec_rate
         self.rec_period = rec_period
-        self.rec_rate = rec_rate if rec_rate else float('inf')
         self.stereo = rec_stereo
-        self.log = get_logger(self.__class__.__name__)
+        self.log = utils.get_logger(self.__class__.__name__)
         self.silence = 'silence_stream://0'  # infinite silence stream
         self.iterations = iterations
         self.tail = 1.0
-        self.call_count = 0
+
         # slave specific
         self.soundsdir = client.cmd('global_getvar sound_prefix')
         self.recsdir = client.cmd('global_getvar recordings_dir')
@@ -95,14 +93,6 @@ class PlayRec(object):
         if self.tail < 1.0:
             self.tail = 1.0
 
-    def __setrate__(self, value):
-        """Called when an originator changes it's `rate` attribute
-        """
-        if self.dynamic_rec_rate:
-            # keep the rec rate at approx 1 rec / rec_period
-            # (useful for load testing)
-            self.rec_rate = value * self.rec_period
-
     @event_callback("CHANNEL_PARK")
     def on_park(self, sess):
         if sess.is_inbound():
@@ -112,21 +102,17 @@ class PlayRec(object):
     def on_answer(self, sess):
         call = sess.call
         if sess.is_inbound():
-            self.call_count += 1
-
             # rec the callee stream
-            count, rate = self.call_count, self.rec_rate
-            # XXX could this be rate limit logic which determines the time
-            # since last rec instead?
-            if not (count % rate):
+            elapsed = self.timer.elapsed()
+            if elapsed >= self.rec_period:
                 filename = '{}/callee_{}.wav'.format(self.recsdir, sess.uuid)
                 sess.start_record(filename, stereo=self.stereo)
                 self.call2recs.setdefault(call.uuid, {})['callee'] = filename
                 call.vars['record'] = True
-                self.call_count = 0
                 # mark all rec calls to NOT be hung up automatically
                 # (see the `Originator`'s bj callback)
                 call.vars['noautohangup'] = True
+                self.timer.reset()
 
             # set call length
             call.vars['iterations'] = self.iterations
