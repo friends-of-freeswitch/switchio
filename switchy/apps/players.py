@@ -6,9 +6,9 @@ Common testing call flows
 """
 import inspect
 from collections import OrderedDict, namedtuple
+from .. import utils
 from ..apps import app
 from ..marks import event_callback
-from ..utils import get_logger
 
 
 @app
@@ -21,15 +21,15 @@ class TonePlay(object):
         if sess.is_inbound():
             sess.answer()
 
-        # play infinite tones on calling leg
-        if sess.is_outbound():
-            sess.broadcast('playback::{loops=-1}tone_stream://%(251,0,1004)')
-
     @event_callback("CHANNEL_ANSWER")
     def on_answer(self, sess):
         # inbound leg simply echos back the tone
         if sess.is_inbound():
-            sess.broadcast('echo::')
+            sess.echo()
+
+        # play infinite tones on calling leg
+        if sess.is_outbound():
+            sess.broadcast('playback::{loops=-1}tone_stream://%(251,0,1004)')
 
 
 RecInfo = namedtuple("RecInfo", "host caller callee")
@@ -44,37 +44,54 @@ class PlayRec(object):
     that ${FS_CONFIG_ROOT}/${sound_prefix}/<category>/<filename> points to a
     valid wave file.
     '''
-    def __init__(
+    timer = utils.Timer()
+
+    def prepost(
         self,
+        client,
         filename='ivr-founder_of_freesource.wav',
         category='ivr',
-        rate=8000,
+        clip_length=4.25,  # measured empirically for the clip above
+        sample_rate=8000,
         iterations=1,  # number of times the speech clip will be played
         callback=None,
-        rec_rate=1,  # in calls/recording (i.e. 10 is 1 recording per 10 calls)
+        rec_period=5.0,  # in seconds (i.e. 1 recording per period)
         rec_stereo=False,
     ):
         self.filename = filename
         self.category = category
-        self.rate = rate
+        self.framerate = sample_rate
+        self.clip_length = clip_length
         if callback:
             assert inspect.isfunction(callback), 'callback must be a function'
             assert len(inspect.getargspec(callback)[0]) == 1
         self.callback = callback
-        self.rec_rate = rec_rate
+        self.rec_period = rec_period
         self.stereo = rec_stereo
-        self.log = get_logger(self.__class__.__name__)
+        self.log = utils.get_logger(self.__class__.__name__)
         self.silence = 'silence_stream://0'  # infinite silence stream
         self.iterations = iterations
-        self.call_count = 0
+        self.tail = 1.0
 
-    def prepost(self, client):
+        # slave specific
         self.soundsdir = client.cmd('global_getvar sound_prefix')
         self.recsdir = client.cmd('global_getvar recordings_dir')
         self.audiofile = '{}/{}/{}/{}'.format(
-            self.soundsdir, self.category, self.rate, self.filename)
+            self.soundsdir, self.category, self.framerate, self.filename)
         self.call2recs = OrderedDict()
         self.host = client.host
+
+        # self.stats = OrderedDict()
+
+    def __setduration__(self, value):
+        """Called when an originator changes it's `duration` attribute
+        """
+        if value == float('inf'):
+            self.iterations, self.tail = value, 1.0
+        else:
+            self.iterations, self.tail = divmod(value, self.clip_length)
+        if self.tail < 1.0:
+            self.tail = 1.0
 
     @event_callback("CHANNEL_PARK")
     def on_park(self, sess):
@@ -83,30 +100,41 @@ class PlayRec(object):
 
     @event_callback("CHANNEL_ANSWER")
     def on_answer(self, sess):
+        call = sess.call
         if sess.is_inbound():
-            self.call_count += 1
             # rec the callee stream
-            if not (self.call_count % self.rec_rate):
+            elapsed = self.timer.elapsed()
+            if elapsed >= self.rec_period:
                 filename = '{}/callee_{}.wav'.format(self.recsdir, sess.uuid)
                 sess.start_record(filename, stereo=self.stereo)
-                self.call2recs.setdefault(sess.call.uuid, {})['callee'] = filename
-                sess.call.vars['record'] = True
-                self.call_count = 0
+                self.call2recs.setdefault(call.uuid, {})['callee'] = filename
+                call.vars['record'] = True
+                # mark all rec calls to NOT be hung up automatically
+                # (see the `Originator`'s bj callback)
+                call.vars['noautohangup'] = True
+                self.timer.reset()
+
+            # set call length
+            call.vars['iterations'] = self.iterations
+            call.vars['tail'] = self.tail
 
         if sess.is_outbound():
-            if sess.call.vars.get('record'):
+            if call.vars.get('record'):  # call is already recording
                 # rec the caller stream
                 filename = '{}/caller_{}.wav'.format(self.recsdir, sess.uuid)
                 sess.start_record(filename, stereo=self.stereo)
-                self.call2recs.setdefault(sess.call.uuid, {})['caller'] = filename
+                self.call2recs.setdefault(call.uuid, {})['caller'] = filename
             else:
                 self.trigger_playback(sess)
+
+        # always enable a jitter buffer
+        # sess.broadcast('jitterbuffer::60')
 
     @event_callback("PLAYBACK_START")
     def on_play(self, sess):
         fp = sess['Playback-File-Path']
-        self.log.info("Playing file '{}' for session '{}'"
-                      .format(fp, sess.uuid))
+        self.log.debug("Playing file '{}' for session '{}'"
+                       .format(fp, sess.uuid))
 
         self.log.debug("fp is '{}'".format(fp))
         if fp == self.audiofile:
@@ -115,33 +143,39 @@ class PlayRec(object):
             # if playing silence tell the peer to start playing a signal
             sess.vars['clip'] = 'silence'
             peer = sess.call.get_peer(sess)
-            peer.breakapp()
-            peer.playback(self.audiofile)
+            if peer:  # may have already been hungup
+                peer.breakmedia()
+                peer.playback(self.audiofile)
 
     @event_callback("PLAYBACK_STOP")
     def on_stop(self, sess):
-        '''Hangup up the session once playback completes
+        '''On stop either trigger a new playing of the signal if more
+        iterations are required or hangup the call.
+        If the current call is being recorded schedule the recordings to stop
+        and expect downstream callbacks to schedule call teardown.
         '''
-        self.log.info("Finished playing '{}' for session '{}'".format(
+        self.log.debug("Finished playing '{}' for session '{}'".format(
                       sess['Playback-File-Path'], sess.uuid))
         if sess.vars['clip'] == 'signal':
             vars = sess.call.vars
             vars['playback_count'] += 1
 
-            if vars['playback_count'] < self.iterations:
+            if vars['playback_count'] < vars['iterations']:
                 sess.playback(self.silence)
             else:
-                if sess.call.vars.get('record'):
-                    # stop recording both ends
-                    sess.stop_record(delay=2)
-                    # kill the peer's app
+                # no more clips are expected to play
+                if vars.get('record'):  # stop recording both ends
+                    tail = vars['tail']
+                    sess.stop_record(delay=tail)
                     peer = sess.call.get_peer(sess)
-                    peer.breakapp()
-                    peer.stop_record(delay=2)
+                    if peer:  # may have already been hungup
+                        # infinite silence must be manually killed
+                        peer.breakmedia()
+                        peer.stop_record(delay=tail)
                 else:
                     # hangup calls not being recorded immediately
-                    self.log.info("sending hangup for session '{}'"
-                                  .format(sess.uuid))
+                    self.log.debug("sending hangup for session '{}'"
+                                   .format(sess.uuid))
                     sess.sched_hangup(0.5)  # delay hangup slightly
 
     def trigger_playback(self, sess):
@@ -158,19 +192,20 @@ class PlayRec(object):
 
     @event_callback("RECORD_START")
     def on_rec(self, sess):
-        self.log.info("Recording file '{}' for session '{}'".format(
-            sess['Record-File-Path'], sess.uuid))
+        self.log.debug("Recording file '{}' for session '{}'".format(
+            sess['Record-File-Path'], sess.uuid)
+        )
         # mark this session as "currently recording"
         sess.vars['recorded'] = False
-        sess.setvar('timer_name', 'soft')
+        # sess.setvar('timer_name', 'soft')
 
-        # start playback from the caller side
+        # start signal playback on the caller
         if sess.is_outbound():
             self.trigger_playback(sess)
 
     @event_callback("RECORD_STOP")
     def on_recstop(self, sess):
-        self.log.info("Finished recording file '{}' for session '{}'".format(
+        self.log.debug("Finished recording file '{}' for session '{}'".format(
             sess['Record-File-Path'], sess.uuid))
         # mark as recorded so user can block with `EventListener.waitfor`
         sess.vars['recorded'] = True
@@ -178,10 +213,99 @@ class PlayRec(object):
             self.log.warn(
                 "sess '{}' was already hungup prior to recording completion?"
                 .format(sess.uuid))
+
+        # if sess.call.vars.get('record'):
+        #     self.stats[sess.uuid] = sess.con.api(
+        #         'json {{"command": "mediaStats", "data": {{"uuid": "{0}"}}}}'
+        #         .format(sess.uuid)
+        #     ).getBody()
+
         # if the far end has finished recording then hangup the call
         if sess.call.get_peer(sess).vars.get('recorded', True):
-            self.log.info("sending hangup for session '{}'".format(sess.uuid))
+            self.log.debug("sending hangup for session '{}'".format(sess.uuid))
             sess.sched_hangup(0.5)  # delay hangup slightly
             recs = self.call2recs[sess.call.uuid]
+
+            # invoke callback for each recording
             if self.callback:
-                self.callback(RecInfo(self.host, recs['caller'], recs['callee']))
+                self.callback(
+                    RecInfo(self.host, recs['caller'], recs['callee'])
+                )
+
+
+class MutedPlayRec(PlayRec):
+
+    def trigger_playback(self, sess):
+        '''
+        1) Mute the peer session
+        2) Trigger endless clip playback on both sessions
+        '''
+        peer = sess.call.get_peer(sess)
+        # mute seems racey so do it twice
+        peer.mute()
+        peer.mute()
+        # start counting number of clips played
+        sess.call.vars['playback_count'] = 0
+        sess.vars['playback_count'] = 0
+        peer.vars['playback_count'] = 0
+        # stash mute states
+        sess.call.vars['muted'] = peer
+        sess.call.vars['unmuted'] = sess
+        # start endless playback
+        sess.playback(self.audiofile, endless=True)
+        peer.playback(self.audiofile, endless=True)
+
+    @event_callback("PLAYBACK_START")
+    def on_play(self, sess):
+        fp = sess['Playback-File-Path']
+        self.log.debug("Playing file '{}' for session '{}'"
+                       .format(fp, sess.uuid))
+
+        self.log.debug("fp is '{}'".format(fp))
+        muted = sess is sess.call.vars['muted']
+        self.log.debug(
+            "session '{}' is {}muted"
+            .format(sess.uuid, '' if muted else 'un')
+        )
+
+    @event_callback("PLAYBACK_STOP")
+    def on_stop(self, sess):
+        '''On stop either swap the mute state of the channels if more
+        iterations are required or hangup the call.
+        If the current call is being recorded schedule the recordings to stop
+        and expect downstream callbacks to schedule call teardown.
+        '''
+        self.log.debug("Finished playing '{}' for session '{}'".format(
+                      sess['Playback-File-Path'], sess.uuid))
+
+        sess.vars['playback_count'] += 1
+        vars = sess.call.vars
+        # on the first session to finish playing back (i.e. once per playback)
+        # do a mute swap
+        if sess.vars['playback_count'] > vars['playback_count']:
+            vars['playback_count'] += 1
+            # swap mute states
+            last_muted = vars['muted']
+            vars['unmuted'].mute()
+            vars['muted'] = vars['unmuted']
+            vars['unmuted'] = last_muted
+
+            if vars['playback_count'] < vars['iterations']:
+                last_muted.unmute()
+            else:  # no more clips are expected to play
+                if vars.get('record'):
+                    # stop recording both ends
+                    self.log.debug("stopping recording for session '{}'"
+                                   .format(sess.uuid))
+                    sess.record('stop', 'all')
+                    # sess.breakmedia()  # triggers a bug in FS slave...
+                    peer = sess.call.get_peer(sess)
+                    if peer:  # may have already been hungup
+                        # infinite silence must be manually killed
+                        peer.record('stop', 'all')
+                        # peer.breakmedia()  # triggers a bug in FS slave...
+                else:
+                    # hangup calls not being recorded immediately
+                    self.log.debug("sending hangup for session '{}'"
+                                   .format(sess.uuid))
+                    sess.sched_hangup(0.5)  # delay hangup slightly

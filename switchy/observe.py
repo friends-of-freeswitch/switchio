@@ -22,8 +22,8 @@ from threading import Thread, current_thread
 from collections import deque, OrderedDict, defaultdict, Counter
 
 # NOTE: the import order matters here!
-from utils import ConfigurationError, ESLError, CommandError
-from utils import get_logger
+import utils
+from utils import ConfigurationError, ESLError, CommandError, get_event_time
 from models import Session, Job, Call
 from commands import build_originate_cmd
 import multiproc
@@ -31,7 +31,6 @@ import marks
 from marks import handler
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
-import utils
 from connection import Connection, ConnectionError
 
 
@@ -40,17 +39,6 @@ def con_repr(self):
     rep = object.__repr__(self).strip('<>')
     return "<{} [{}]>".format(
         rep, "connected" if self.connected() else "disconnected")
-
-
-def get_event_time(event, epoch=0.0):
-    '''Return micro-second time stamp value in seconds
-    '''
-    value = event.getHeader('Event-Date-Timestamp')
-    if value is None:
-        get_logger().warning("Event '{}' has no timestamp!?".format(
-                             event.getHeader("Event-Name")))
-        return None
-    return float(value) / 1e6 - epoch
 
 
 class EventListener(object):
@@ -710,6 +698,7 @@ class EventListener(object):
         error = False
         consumed = False
         resp = None
+        sess = None
         ok = '+OK '
         err = '-ERR'
         job_uuid = e.getHeader('Job-UUID')
@@ -735,7 +724,7 @@ class EventListener(object):
             # if the job returned an error, report it and remove the job
             if error:
                 # if this job corresponds to a tracked session then
-                # remove that session
+                # remove it as well
                 if job.sess_uuid:
                     self.log.error(
                         "Job '{}' corresponding to session '{}'"
@@ -765,15 +754,17 @@ class EventListener(object):
                 resp = body.strip(ok + '\n')
 
                 # special case: the bg job event returns an originated
-                # session's uuid in the ev body
-                if resp in self.sessions:
+                # session's uuid in its body
+                sess = self.sessions.get(resp, None)
+                if sess:
                     if job.sess_uuid:
                         assert str(job.sess_uuid) == str(resp), \
                             ("""Session uuid '{}' <-> BgJob uuid '{}' mismatch!?
                              """.format(job.sess_uuid, resp))
 
                     # reference this job in the corresponding session
-                    self.sessions[resp].bg_job = job
+                    # self.sessions[resp].bg_job = job
+                    sess.bg_job = job
                     self.log.debug("Job '{}' was sucessful".format(
                                    job_uuid))
                 # run the job's callback
@@ -781,7 +772,7 @@ class EventListener(object):
             else:
                 self.log.warning("Received unexpected job message:\n{}"
                                  .format(body))
-        return consumed, job
+        return consumed, sess, job
 
     @handler('CHANNEL_CREATE')
     def _handle_create(self, e):
@@ -817,7 +808,7 @@ class EventListener(object):
             self.log.debug("session '{}' is bridged to call '{}'".format(
                            uuid, call.uuid))
             # append this session to the call's set
-            call.sessions.append(sess)
+            call.append(sess)
 
         else:  # this sess is not yet tracked so use its id as the 'call' id
             call = Call(call_uuid, sess)
@@ -968,7 +959,7 @@ class Client(object):
         # generally speaking clients should only host one call app
         self._apps = {}
         self.apps = type('apps', (), {})()
-        self.apps.__dict__ = self._apps  # dot-access to apps from 'apps' attr
+        self.apps.__dict__ = self._apps  # dot-access to `_apps` from `apps`
         self.client = self  # for app funcarg insertion
 
         # WARNING: order of these next steps matters!
@@ -1019,7 +1010,8 @@ class Client(object):
         """
         listener = self.listener
         name = utils.get_name(ns)
-        if name not in self._apps:
+        app = self._apps.get(name, None)
+        if not app:
             # if handed a class, instantiate appropriately
             app = ns() if isinstance(ns, type) else ns
             prepost = getattr(app, 'prepost', False)
@@ -1070,7 +1062,8 @@ class Client(object):
             # register locally
             self._apps[name] = app
             app.cid, app.name = cid, name
-            return cid
+
+        return app.cid
 
     def unload_app(self, ns):
         """Unload all callbacks associated with a particular app
@@ -1151,7 +1144,8 @@ class Client(object):
             )
         return listener
 
-    def bgapi(self, cmd, listener=None, callback=None, **kwargs):
+    def bgapi(self, cmd, listener=None, callback=None, client_id=None,
+              **jobkwargs):
         '''Execute a non blocking api call and handle it to completion
 
         Parameters
@@ -1173,8 +1167,10 @@ class Client(object):
             ev = self._con.bgapi(cmd)
             if ev:
                 bj = listener.register_job(
-                    ev, callback=callback, client_id=self._id,
-                    **kwargs)
+                    ev, callback=callback,
+                    client_id=client_id or self._id,
+                    **jobkwargs
+                )
             else:
                 if not self._con.connected():
                     raise ConnectionError("local connection down on '{}'!?"
@@ -1189,8 +1185,8 @@ class Client(object):
     def originate(self, dest_url=None,
                   uuid_func=utils.uuid,
                   app_id=None,
-                  bgapi_kwargs={},
                   listener=None,
+                  bgapi_kwargs={},
                   **orig_kwargs):
         # TODO: add a 'block' arg to determine whether api or bgapi is used
         '''Originate a call using FreeSWITCH 'originate' command.
@@ -1227,8 +1223,12 @@ class Client(object):
                 app_id=app_id or self._id
             )
 
-        return self.bgapi(cmd_str, listener, sess_uuid=uuid_str,
-                          **bgapi_kwargs)
+        return self.bgapi(
+            cmd_str, listener,
+            sess_uuid=uuid_str,
+            client_id=app_id,
+            **bgapi_kwargs
+        )
 
     @functools.wraps(build_originate_cmd)
     def set_orig_cmd(self, *args, **kwargs):

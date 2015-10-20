@@ -5,13 +5,13 @@
 Models representing freeSWITCH entities
 """
 import time
-from utils import dirinfo
+import weakref
+import utils
 from collections import deque
 from multiproc import mp
-from utils import ESLError
 
 
-class JobError(ESLError):
+class JobError(utils.ESLError):
     pass
 
 
@@ -107,7 +107,7 @@ class Session(object):
     def __dir__(self):
         # TODO: use a transform func to provide __getattr__
         # access to event data
-        return dirinfo(self)
+        return utils.dirinfo(self)
 
     def __getattr__(self, name):
         if 'variable' in name:
@@ -160,6 +160,12 @@ class Session(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.con = None
+
+    @property
+    def time(self):
+        """Time stamp for the most recent received event
+        """
+        return utils.get_event_time(self.events[0])
 
     # call control / 'mod_commands' methods
     # TODO: dynamically add @decorated functions to this class
@@ -260,7 +266,7 @@ class Session(object):
             '{app}::{varset}{streams}{start} {leg}'.format(
                 app=app,
                 streams=delim.join(args),
-                start='@@{}'.format(start_sample if start_sample else ''),
+                start='@@{}'.format(start_sample) if start_sample else '',
                 leg=leg,
                 varset='{{{vars}}}'.format(','.join(pairs)) if pairs else '',
             )
@@ -282,7 +288,7 @@ class Session(object):
         self.setvar('record_sample_rate', '{}'.format(rate))
         self.broadcast('record_session::{}'.format(path))
 
-    def stop_record(self, path='all', delay=1):
+    def stop_record(self, path='all', delay=0):
         '''Stop recording audio from this session to a local file on the slave
         filesystem using the `stop_record_session`_ cmd
 
@@ -320,11 +326,6 @@ class Session(object):
             self.con.api('uuid_media off {}'.format(self.uuid))
         else:
             self.con.api('uuid_media {}'.format(self.uuid))
-
-    def app_break(self):
-        '''Stop playback of media on this session and move on in the dialplan
-        '''
-        self.con.api('uuid_break {}'.format(self.uuid))
 
     def start_amd(self, delay=None):
         self.con.api('avmd {} start'.format(self.uuid))
@@ -370,8 +371,29 @@ class Session(object):
             )
         )
 
-    def breakapp(self):
+    def breakmedia(self):
+        '''Stop playback of media on this session and move on in the dialplan
+        '''
         self.con.api('uuid_break {}'.format(self.uuid))
+
+    def mute(self, direction='write', level=1):
+        """Mute the current session. `level` determines the degree of comfort
+        noise to generate if > 1.
+        """
+        self.con.api(
+            'uuid_audio {uuid} {cmd} {direction} mute {level}'
+            .format(
+                uuid=self.uuid,
+                cmd='start',
+                direction=direction,
+                level=1 if level else 0,
+            )
+        )
+
+    def unmute(self, **kwargs):
+        """Unmute the write buffer for this session
+        """
+        self.mute(level=0, **kwargs)
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
@@ -391,6 +413,8 @@ class Call(object):
         self.uuid = uuid
         self.sessions = deque()
         self.sessions.append(session)
+        self._firstref = weakref.ref(session)
+        self._lastref = None
         # sub-namespace for apps to set/get state
         self.vars = {}
 
@@ -398,28 +422,42 @@ class Call(object):
         return "<{}({}, {} sessions)>".format(
             type(self).__name__, self.uuid, len(self.sessions))
 
+    def append(self, sess):
+        """Append a session to this call and update the ref to the last
+        recently added session
+        """
+        self.sessions.append(sess)
+        self._lastref = weakref.ref(sess)
+
     def hangup(self):
-        self.sessions[0].hangup()
+        """Hangup up this call
+        """
+        if self.first:
+            self.first.hangup()
 
     @property
-    def callee(self):
+    def last(self):
         '''A reference to the session making up the final leg of this call
         '''
-        return self.sessions[-1] if len(self.sessions) > 1 else None
+        return self._lastref()
 
     @property
-    def caller(self):
-        '''A reference to the session making up the final leg of this call
+    def first(self):
+        '''A reference to the session making up the initial leg of this call
         '''
-        return self.sessions[0] if len(self.sessions) else None
+        return self._firstref()
 
     def get_peer(self, sess):
-        if sess is self.caller:
-            return self.callee
-        elif sess is self.callee:
-            return self.caller
-        else:
-            return None
+        """Convenience helper which can determine whether `sess` is one of
+        `first` or `last` and returns the other when the former is true
+        """
+        if sess:
+            if sess is self.first:
+                return self.last
+            elif sess is self.last:
+                return self.first
+
+        return None
 
 
 class Job(object):

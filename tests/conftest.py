@@ -102,7 +102,7 @@ def el(fshost):
     assert not el.is_alive()
 
 
-@pytest.yield_fixture(scope='class')
+@pytest.yield_fixture
 def client(fshost):
     """Deliver a core.Client connected to fshost
     """
