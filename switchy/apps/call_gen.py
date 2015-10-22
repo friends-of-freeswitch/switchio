@@ -224,6 +224,9 @@ class Originator(object):
             with_measurers=with_metrics
         )
         self.app_weights[appid] = weight
+        # refresh load settings
+        for attr in 'duration rate limit'.split():
+            setattr(self, attr, getattr(self, attr))
         return app_id
 
     @property
@@ -405,7 +408,6 @@ class Originator(object):
         try:
             while not self._exit.is_set():
                 # block until start cmd recieved
-                self.log.info("Waiting for start command...")
                 self._start.wait()
                 # check again for exit event just after start trigger
                 if self._exit.is_set():
@@ -542,3 +544,15 @@ class Originator(object):
         """Originate str used for making calls
         """
         return self.pool.evals('client.originate_cmd')
+
+    def _clearall(self):
+        """Clear all observer model collections.
+        (Handy if a bunch of stale calls are present)
+        """
+        self.pool.evals('listener.sessions.clear()')
+        self.pool.evals('listener.calls.clear()')
+        self.pool.evals('listener.bg_jobs.clear()')
+
+    def _reset_connections(self):
+        self.pool.evals('listener.disconnect()')
+        self.pool.evals('listener.connect()')
