@@ -158,6 +158,7 @@ class AppManager(object):
                             m.app,
                             on_value=app_id,
                             storer=storer,
+                            prepend=True,  # give measurers highest priority
                             **m.ppkwargs
                         )
                         self.measurers.add_storer(name, storer, app_id)
