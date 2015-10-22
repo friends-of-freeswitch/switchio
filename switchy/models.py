@@ -95,9 +95,11 @@ class Session(object):
         self.answered = False
         self.call = None
         self.hungup = False
+
         # time stamps
         self.times = {}.fromkeys(
             ('create', 'answer', 'req_originate', 'originate', 'hangup'))
+        self.times['create'] = utils.get_event_time(event)
 
     def __str__(self):
         return str(self.uuid)
@@ -158,6 +160,12 @@ class Session(object):
         """Time stamp for the most recent received event
         """
         return utils.get_event_time(self.events[0])
+
+    @property
+    def uptime(self):
+        """Time elapsed since the `create_ev` to the most recent received event
+        """
+        return self.time - self.times['create']
 
     # call control / 'mod_commands' methods
     # TODO: dynamically add @decorated functions to this class
@@ -474,13 +482,13 @@ class Job(object):
         self.sess_uuid = sess_uuid
         self.launch_time = time.time()
         self.cid = client_id  # placeholder for client ident
-        self._sig = mp.Event()  # signal/sync job completion
 
         # when the job returns use this callback
         self._cb = callback
         self.kwargs = kwargs
         self._result = None
         self._failed = False
+        self._ev = None  # signal/sync job completion
 
     @property
     def result(self):
@@ -488,13 +496,22 @@ class Job(object):
         '''
         return self.get()
 
+    @property
+    def _sig(self):
+        if not self._ev:
+            self._ev = mp.Event()  # signal/sync job completion
+            if self._result:
+                self._ev.set()
+        return self._ev
+
     def __call__(self, resp, *args, **kwargs):
         if self._cb:
             self.kwargs.update(kwargs)
             self._result = self._cb(resp, *args, **self.kwargs)
         else:
             self._result = resp
-        self._sig.set()  # signal job completion
+        if self._ev:  # don't allocate an event if unused
+            self._ev.set()  # signal job completion
         return self._result
 
     def fail(self, resp, *args, **kwargs):
