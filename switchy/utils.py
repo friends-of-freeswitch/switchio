@@ -41,7 +41,7 @@ def get_root_log():
     global _log
     if not _log:
         _log = logging.getLogger('switchy')
-        _log.info("creating new logger")
+        _log.debug("creating new logger")
         _log.propagate = True
     return _log
 

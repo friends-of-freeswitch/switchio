@@ -95,7 +95,7 @@ class EventListener(object):
         self._bg_jobs = bg_jobs or OrderedDict()
         self._calls = OrderedDict()  # maps aleg uuids to Sessions instances
         self.hangup_causes = Counter()  # record of causes by category
-        self.failed_sessions = OrderedDict()
+        self.failed_sessions = OrderedDict()  # store last 1k failed sessions
         self._handlers = self.default_handlers  # active handler set
         self._unsub = ()
         self.consumers = {}  # callback chains, one for each event type
@@ -160,7 +160,9 @@ class EventListener(object):
     def count_failed(self):
         '''Return the failed session count
         '''
-        return sum(map(len, self.failed_sessions.values()))
+        return sum(
+            self.hangup_causes.values()
+        ) - self.hangup_causes['NORMAL_CLEARING']
 
     @property
     def bg_jobs(self):
@@ -389,15 +391,14 @@ class EventListener(object):
         args, kwargs : initial arguments which will be partially applied to
             callback right now
         '''
+        prepend = kwargs.pop('prepend', False)
         # TODO: need to check outputs and error on signature mismatch!
         if not utils.is_callback(callback):
             return False
         if args or kwargs:
             callback = functools.partial(callback, *args, **kwargs)
-        self.consumers.setdefault(
-            ident, {}).setdefault(
-                evname, deque()
-            ).append(callback)
+        d = self.consumers.setdefault(ident, {}).setdefault(evname, deque())
+        getattr(d, 'appendleft' if prepend else 'append')(callback)
         return True
 
     def remove_callback(self, evname, ident, callback):
@@ -557,8 +558,11 @@ class EventListener(object):
                 self.log.warning("Caught ESL error for event '{}':\n{}"
                                  .format(evname, traceback.format_exc()))
             except Exception:
-                self.log.error("Failed to process event '{}':\n{}"
-                               .format(evname, traceback.format_exc()))
+                self.log.error(
+                    "Failed to process event '{}' with uid '{}':\n{}"
+                    .format(evname, e.getHeader('Unique-ID'),
+                            traceback.format_exc())
+                )
             return consumed
         else:
             self.log.error("Unknown event '{}'".format(evname))
@@ -712,14 +716,17 @@ class EventListener(object):
                     # session may already have been popped in hangup handler?
                     # TODO make a special method for popping sessions?
                     sess = self.sessions.pop(job.sess_uuid, None)
-                    if not sess:
-                        self.log.debug("No session corresponding to bj "
-                                       "'{}'".format(job_uuid))
-                    # remove any call repr by this sess
-                    call = self.calls.pop(job.sess_uuid, None)
-                    if not call:
-                        self.log.debug("No call corresponding to uuid "
-                                       "'{}'".format(call))
+                    if sess:
+                        # remove any call containing this session
+                        call = sess.call
+                        if call:
+                            call = self.calls.pop(call.uuid, None)
+                        else:
+                            self.log.debug("No Call containing Session "
+                                           "'{}'".format(sess.uuid))
+                    else:
+                        self.log.warn("No session corresponding to bj '{}'"
+                                      .format(job_uuid))
                 job.fail(resp)  # fail the job
                 # always pop failed jobs
                 self.bg_jobs.pop(job_uuid)
@@ -771,9 +778,6 @@ class EventListener(object):
         # allocate a session model
         sess = Session(e, uuid=uuid, con=con)
         sess.cid = self.get_id(e, 'default')
-        # note the start time and current load
-        # TODO: move this to Session __init__??
-        sess.times['create'] = get_event_time(e)
 
         # Use our specified "call identification variable" to try and associate
         # sessions into calls. By default the 'variable_call_uuid' channel
@@ -826,11 +830,10 @@ class EventListener(object):
                            .format(uuid,  e.getHeader('Call-Direction')))
             sess.answered = True
             self.total_answered_sessions += 1
-            sess.times['answer'] = get_event_time(e)
             sess.update(e)
             return True, sess
         else:
-            self.log.info('skipping answer of {}'.format(uuid))
+            self.log.warn('Skipping answer of {}'.format(uuid))
             return False, None
 
     @handler('CHANNEL_HANGUP')
@@ -848,7 +851,6 @@ class EventListener(object):
             return False, None
         sess.update(e)
         sess.hungup = True
-        sess.times['hangup'] = get_event_time(e)
         cause = e.getHeader('Hangup-Cause')
         self.hangup_causes[cause] += 1  # count session causes
         self.sessions_per_app[sess.cid] -= 1
@@ -865,18 +867,22 @@ class EventListener(object):
             call = self.calls.get(call_uuid, sess.call)
             if call:
                 if sess in call.sessions:
-                    self.log.debug("hungup session '{}' for call '{}'".format(
+                    self.log.debug("hungup Session '{}' for Call '{}'".format(
                                    uuid, call.uuid))
                     call.sessions.remove(sess)
                 else:
-                    self.log.warn("no call for session '{}'".format(sess.uuid))
+                    self.log.warn("no call for Session '{}'".format(sess.uuid))
 
                 # all sessions hungup
                 if len(call.sessions) == 0:
-                    self.log.debug("all sessions for call '{}' were hung up"
+                    self.log.debug("all sessions for Call '{}' were hung up"
                                    .format(call_uuid))
                     # remove call from our set
-                    self.calls.pop(call.uuid)
+                    call = self.calls.pop(call.uuid, None)
+                    if not call:
+                        self.log.warn(
+                            "Call with id '{}' containing Session '{}' was "
+                            "already removed".format(call.uuid, sess.uuid))
             else:
                 self.log.warn("no call was found for '{}'".format(call_uuid))
         self.log.debug("handling HANGUP for call_uuid: {}".format(call_uuid))
@@ -892,7 +898,7 @@ class EventListener(object):
             self.failed_sessions.setdefault(
                 cause, deque(maxlen=1e3)).append(sess)
 
-        self.log.debug("hungup session '{}'".format(uuid))
+        self.log.debug("hungup Session '{}'".format(uuid))
         # hangups are always consumed
         return True, sess, job
 
@@ -924,7 +930,7 @@ class Client(object):
     '''
     id_var = 'switchy_app'
     id_xh = utils.xheaderify(id_var)
-    # works under the assumption that x-headers are forwarded by the proxy/B2BUA
+    # works under the assumption that x-headers are forwarded by the proxy
     call_id_var = 'sip_h_X-switchy_originating_session'
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
@@ -983,7 +989,7 @@ class Client(object):
 
     loglevel = property(get_loglevel, set_loglevel)
 
-    def load_app(self, ns, on_value=None, **prepost_kwargs):
+    def load_app(self, ns, on_value=None, prepend=False, **prepost_kwargs):
         """Load annotated callbacks and from a namespace and add them
         to this client's listener's callback chain.
 
@@ -1043,7 +1049,8 @@ class Client(object):
                         ev_type,
                         listener.lookup_sess
                     )
-                added = listener.add_callback(ev_type, group_id, obj)
+                added = listener.add_callback(
+                    ev_type, group_id, obj, prepend=prepend)
                 if not added:
                     failed = obj
                     for path in reversed(cb_paths):
