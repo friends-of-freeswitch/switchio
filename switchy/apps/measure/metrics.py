@@ -4,13 +4,15 @@
 """
 This module includes helpers for capturing measurements using pandas.
 """
-import multiprocessing as mp
+import threading
+from Queue import Queue
 import tempfile
 import pandas as pd
 import numpy as np
 from switchy import utils
 from functools import partial
 from collections import OrderedDict, namedtuple
+import time
 
 # use the entire screen width + wrapping
 pd.set_option('display.expand_frame_repr', False)
@@ -211,9 +213,20 @@ class DataStorer(object):
     """Wraps a `pd.DataFrame` which buffers recent data in memory and
     offloads excess to disk using the HDF5 format.
     """
-    def __init__(self, data=None, columns=None, size=2**9,
+    class Terminate(object):
+        "A unique type to trigger writer thread terminatation"
+
+    def __init__(self, data=None, columns=None, size=2**10,
                  dtype=None, hdf_path=None):
 
+        self.queue = Queue()
+        self._writer = threading.Thread(
+            target=self._writedf,
+            args=(),
+            name='frame_writer'
+        )
+        self._writer.daemon = True  # die with parent
+        self._writer.start()
         self._df = pd.DataFrame(
             data=data,
             columns=columns,
@@ -228,7 +241,7 @@ class DataStorer(object):
             hdf_path or tempfile.mktemp() + '_switchy_data.h5'
         )
         self._store.open('a')
-        self._mutex = mp.Lock()
+        self.log = utils.get_logger(type(self).__name__)
 
     def __len__(self):
         return len(self._df)
@@ -268,27 +281,36 @@ class DataStorer(object):
         """
         return self._ri % self._len
 
-    def append_row(self, row=None, index=None):
-        '''Insert :var:`row` into the internal data frame at the current index
-        and increment. Return a boolean indicating whether the current entry
+    def append_row(self, row=None):
+        # PyTables store is not thread safe so push a row
+        self.queue.put(row)
+
+    def stop(self):
+        """Trigger the background writer thread to terminate
+        """
+        self.queue.put(self.Terminate)
+
+    def _writedf(self):
+        '''Insert :var:`row` pushed onto the queue into the internal data
+        frame at the current index and increment.
+        Return a boolean indicating whether the current entry
         has caused a flush to disk. Empty rows are always written to disk
         (keeps stores 'call-index-aligned').
         '''
-        # PyTables store is not thread safe + we don't want to flush
-        # more then once when there's raciness
-        with self._mutex:
-            flush = False
+        for row in iter(self.queue.get, self.Terminate):
             i = self.findex
+            now = time.time()
             if self._ri > self._len - 1 and i == 0:
-                # offload frame to disk
+                # write frame to disk
                 self._df = frame = self._df.convert_objects(
                     convert_numeric=True)
                 self._store.append('data', frame, dropna=False)
                 self._store.flush(fsync=True)
-                flush = True
+                self.log.info("disk write took '{}'".format(time.time() - now))
             self._df.iloc[i, :] = row
             self._ri += 1
-            return flush
+            self.log.debug("pandas insert took '{}'".format(time.time() - now))
+        self.log.debug("terminating writer thread")
 
 
 def load(path, wrapper=pd.DataFrame):
