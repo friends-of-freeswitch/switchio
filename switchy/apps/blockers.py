@@ -57,12 +57,18 @@ class CalleeRingback(object):
         callee_hup_after=float('inf'),
         caller_hup_after=float('inf'),
         ring_response='pre_answer',  # or could be 'ring_ready' for 180
+        auto_duration=False,
     ):
         self.ringback = ringback
         self.callee_hup_after = callee_hup_after
+        self.auto_duration = auto_duration,
         self.caller_hup_after = caller_hup_after
         self.ring_response = ring_response
         self.log = get_logger(self.__class__.__name__)
+
+    def __setduration__(self, value):
+        if self.auto_duration:
+            self.callee_hup_after = value
 
     @event_callback("CHANNEL_CALLSTATE")
     def on_cs(self, sess):
@@ -71,7 +77,7 @@ class CalleeRingback(object):
 
         if sess['Channel-Call-State'] == 'RINGING':
             if sess.is_inbound():
-                # trigger 183
+                # send ring response
                 sess.broadcast("{}::".format(self.ring_response))
 
                 # playback US ring tones
@@ -80,7 +86,7 @@ class CalleeRingback(object):
 
                 # hangup after a delay
                 if self.callee_hup_after < float('inf'):
-                    sess.sched_hangup(self.callee_hup_after)
+                    sess.sched_hangup(self.callee_hup_after - sess.uptime)
 
             # hangup caller after a delay
             if sess.is_outbound() and self.caller_hup_after < float('inf'):
