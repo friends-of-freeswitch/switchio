@@ -15,7 +15,7 @@ of click_. The program is installed as `switchy`::
       run
 
 A few sub-commands are provided.
-For example you can list the applications available (*apps* determine call flows)::
+For example you can list the applications available (:doc:`apps` determine call flows)::
 
     $ switchy list-apps
     Collected 5 built-in apps from 7 modules:

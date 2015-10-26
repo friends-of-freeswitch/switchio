@@ -142,10 +142,10 @@ completion synchronously::
         dp_exten=9197,
         proxy='intermediary_hostname:5060
     )
-    >>> result = job.get(timeout=30)  # block up to 30 seconds waiting for result
+    >>> job.get(timeout=30)  # block up to 30 seconds waiting for result
     '4d9b4128-bd0f-11e4-9d26-74d02bc595d7'  # the originated session uuid
 
-    >>> job.sess_uuid   # a special attr which is always reserved for originate results
+    >>> job.sess_uuid   # a special attr which is always reserved for originate results (i.e. session ids)
     '4d9b4128-bd0f-11e4-9d26-74d02bc595d7'
 
     >>> client.hupall()  # hangup the call

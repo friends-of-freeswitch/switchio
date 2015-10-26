@@ -1,4 +1,4 @@
-Observer components
+Connection wrappers
 -------------------
 .. automodule:: switchy.connection
     :members:

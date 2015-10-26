@@ -25,7 +25,7 @@ def list_apps(module):
         click.echo('{}:\n'.format(mod))
         for name, app in apps:
             click.echo('`{}`: {}'.format(
-                name, app.__doc__ or '(No help for app {})'.format(name))
+                name, app.__doc__ or '(No help for app {})\n'.format(name))
             )
 
 
@@ -38,7 +38,7 @@ def plot(file_name):
     from switchy.apps.measure import metrics
     m = metrics.load(file_name)
     click.echo('Plotting {} ...\n'.format(file_name))
-    m.plot()
+    m.plot(block=True)
 
 
 @cli.command()
