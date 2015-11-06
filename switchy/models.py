@@ -147,6 +147,13 @@ class Session(object):
         return self.get('variable_switchy_app')
 
     @property
+    def host(self):
+        '''Return the hostname/ip address for the host which this session is
+        currently active
+        '''
+        return self.con.host
+
+    @property
     def time(self):
         """Time stamp for the most recent received event
         """
