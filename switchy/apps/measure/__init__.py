@@ -5,6 +5,7 @@
 Measurements app for collecting call latency and performance stats.
 """
 import weakref
+import itertools
 import time
 from switchy.marks import event_callback
 from switchy import utils
@@ -13,7 +14,7 @@ from .metrics import pd, DataStorer
 
 def call_metrics(df):
     """Default call measurements computed from data retrieved by
-    the `SessionTimes` app.
+    the `CallTimes` app.
     """
     # sort by create time
     df = df.sort(columns=['caller_create'])
@@ -107,6 +108,7 @@ class CallTimes(object):
 
     def __init__(self):
         self.log = utils.get_logger(__name__)
+        self._call_counter = itertools.count(0)
 
     def new_storer(self):
         return DataStorer(columns=self.fields)
@@ -126,8 +128,12 @@ class CallTimes(object):
     def on_create(self, sess):
         """Store total (cluster) session count at channel create time
         """
+        call_vars = sess.call.vars
+        # call number tracking
+        if not call_vars.get('call_index', None):
+            call_vars['call_index'] = next(self._call_counter)
         # capture the current erlangs / call count
-        sess.call.vars['session_count'] = self.pool.count_sessions()
+        call_vars['session_count'] = self.pool.count_sessions()
 
     @event_callback('CHANNEL_ORIGINATE')
     def on_originate(self, sess):
