@@ -56,6 +56,8 @@ class FrameFuncOp(object):
                 getattr(self._sd, '__getitem__'))
 
     def __get__(self, obj, type=None):
+        """Return the merged set when accessed as an instance var
+        """
         return self.merged
 
     def __set__(self, obj, value):
@@ -98,7 +100,7 @@ class FrameFuncOp(object):
     merged = property(get_merged)
 
 
-Measurer = namedtuple("Measurer", 'app ppkwargs get_storer storers ops')
+Measurer = namedtuple("Measurer", 'app ppkwargs storer ops')
 
 
 class Measurers(object):
@@ -123,8 +125,11 @@ class Measurers(object):
 
         # add attr access for references to data frame operators
         self._ops = OrderedDict()
-        self.ops = DictProxy(self._ops, {'plot': self.plot})
-        # do the same for figspecs
+        self.ops = DictProxy(self._ops)
+        # do the same for data stores
+        self._stores = OrderedDict()
+        self.stores = DictProxy(self._stores)
+        # same for figspecs
         self._figspecs = OrderedDict()
         self.figspecs = DictProxy(self._figspecs)
 
@@ -132,36 +137,40 @@ class Measurers(object):
         return repr(self._apps).replace(
             type(self._apps).__name__, type(self).__name__)
 
-    def add(self, app, name=None, storer_per_app=False, operators={},
-            **ppkwargs):
+    def add(self, app, name=None, operators={}, **ppkwargs):
         args, kwargs = utils.get_args(app.prepost)
         if 'storer' not in kwargs:
             raise TypeError("'{}' must define a 'storer' kwarg"
                             .format(app.prepost))
-        name = name or utils.get_name(app)
+
+        # acquire storer factory
         factory = getattr(app, 'new_storer', None)
         if not factory:
             # app does not define a storer factory method
             factory = partial(DataStorer, columns=app.fields)
+        # create an instance
+        storer = factory()
 
-        if not storer_per_app:
-            # common storer is returned on each factory call
-            storer = factory()
+        name = name or utils.get_name(app)
+        self._apps[name] = Measurer(app, ppkwargs, storer, {})
+        # provide attr access off `self.stores`
+        self._stores[name] = storer
+        setattr(
+            self.stores.__class__,
+            name,
+            property(partial(storer.__class__.data.__get__, storer))
+        )
 
-            def factory():
-                return storer
-
-        self._apps[name] = Measurer(app, ppkwargs, factory, {}, {})
         # add any app defined operator functions
         ops = getattr(app, 'operators', {})
         ops.update(operators)
-        for opname, func in ops.iteritems():
+        for opname, func in ops.items():
             self.add_operator(name, func, opname=opname)
 
-    def add_operator(self, mesurername, func, opname):
-        m = self._apps[mesurername]
+    def add_operator(self, measurername, func, opname):
+        m = self._apps[measurername]
         m.ops[opname] = func
-        fo = FrameFuncOp(m.storers, func)
+        fo = FrameFuncOp({measurername: m.storer}, func)
         self._ops[opname] = fo
         figspec = getattr(func, 'figspec', None)
         if figspec:
@@ -169,25 +178,25 @@ class Measurers(object):
         # provides descriptor protocol access for interactive work
         setattr(self.ops.__class__, opname, fo)
 
-    def add_storer(self, measurername, storer, appid):
-        m = self._apps[measurername]
-        m.storers[appid] = storer
-
-    def iteritems(self):
-        return self._apps.iteritems()
+    def items(self):
+        return list(reversed(self._apps.items()))
 
     def to_store(self, path):
         """Dump all data + operator combinations to a hierarchical HDF store
         on disk.
         """
         with pd.HDFStore(path) as store:
-            for name, app in self._apps.items():
-                for sname, storer in app.storers.items():
-                    store.append("{}/{}".format(name, sname), storer.data)
-                    for opname, op in app.ops.items():
+            # append raw data sets
+            for name, m in self._apps.items():
+                data = m.storer.data
+                if len(data):
+                    store.append("{}".format(name), data)
+
+                    # append processed (metrics) data sets
+                    for opname, op in m.ops.items():
                         store.append(
-                            '{}/{}/{}'.format(name, sname, opname),
-                            op(storer.data),
+                            '{}/{}'.format(name, opname),
+                            op(data),
                             dropna=False,
                         )
 
@@ -197,7 +206,7 @@ class Measurers(object):
         """
         return pd.concat(
             (opfunc.merged for opfunc in self._ops.values()),
-            axis=1,
+            axis=1,  # concat along the columns
         )
 
     def plot(self, **kwargs):
@@ -307,9 +316,12 @@ class DataStorer(object):
                 self._store.append('data', frame, dropna=False)
                 self._store.flush(fsync=True)
                 self.log.info("disk write took '{}'".format(time.time() - now))
+
+            # insert by row int-index
             self._df.iloc[i, :] = row
             self._ri += 1
             self.log.debug("pandas insert took '{}'".format(time.time() - now))
+
         self.log.debug("terminating writer thread")
 
 

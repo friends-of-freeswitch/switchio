@@ -150,19 +150,19 @@ class AppManager(object):
             app=app, appid=app_id, prepostkwargs=ppkwargs)[0]
 
         if self.measurers and with_measurers:
-            for name, m in self.measurers.iteritems():
+            # measurers are loaded in reverse order such that those which were
+            # added first take the highest precendence in the observer
+            # callback chain. see `Measurers.items()`
+            for name, m in self.measurers.items():
                 for client in self.pool.clients:
                     if name not in client._apps[app_id]:
-                        storer = m.get_storer()
                         client.load_app(
                             m.app,
                             on_value=app_id,
-                            storer=storer,
+                            storer=m.storer,
                             prepend=True,  # give measurers highest priority
                             **m.ppkwargs
                         )
-                        self.measurers.add_storer(name, storer, app_id)
-
         return app_id
 
     def iterapps(self):

@@ -8,7 +8,7 @@ from __future__ import division
 import time
 import sched
 import traceback
-from itertools import cycle, count
+from itertools import cycle
 from collections import Counter
 from threading import Thread
 import multiprocessing as mp
@@ -159,9 +159,7 @@ class Originator(object):
             from measure import CallTimes
             self.measurers.add(
                 CallTimes(),
-                # 'CallMetrics',
                 pool=self.pool,
-                # store_per_app=True,
             )
 
         # don't worry so much about call state for load testing
@@ -188,7 +186,6 @@ class Originator(object):
         self.setup()
         # counters
         self._total_originated_sessions = 0
-        self._call_counter = count(1)
 
     # XXX: instead make this a `prepost` hook?
     def setup(self):
@@ -228,10 +225,6 @@ class Originator(object):
         for attr in 'duration rate limit'.split():
             setattr(self, attr, getattr(self, attr))
         return app_id
-
-    @property
-    def metrics(self):
-        return self.measurers.ops
 
     @property
     def max_rate(self):
@@ -332,11 +325,6 @@ class Originator(object):
     @marks.event_callback("CHANNEL_HANGUP")
     def _handle_hangup(self, *args):
         self._stop_on_none()
-
-    @marks.event_callback("CHANNEL_CREATE")
-    def _on_create(self, sess):
-        if sess.is_outbound():
-            sess.call.vars['call_index'] = next(self._call_counter)
 
     @marks.event_callback("CHANNEL_ORIGINATE")
     def _handle_originate(self, sess):
@@ -526,8 +514,9 @@ class Originator(object):
 
     def hard_hupall(self):
         """Hangup all calls for all slaves, period, even if they weren't originated by
-        this instance.
+        this instance and stop the burst loop.
         """
+        self.stop()
         return self.pool.evals("client.cmd('hupall')")
 
     def shutdown(self):
