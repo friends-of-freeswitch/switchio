@@ -17,13 +17,14 @@ def call_metrics(df):
     the `CallTimes` app.
     """
     # sort by create time
-    df = df.sort(columns=['caller_create'])
+    df = df.sort_values(by=['caller_create'])
     cr = 1 / df['caller_create'].diff()  # compute instantaneous call rates
     clippedcr = cr.clip(upper=1000)
 
     mdf = pd.DataFrame(
         data={
             'switchy_app': df['switchy_app'],
+            'hangup_cause': df['hangup_cause'],
             'hangup_index': df.index,
             'invite_latency': df['callee_create'] - df['caller_create'],
             'answer_latency': df['caller_answer'] - df['callee_answer'],
@@ -39,15 +40,26 @@ def call_metrics(df):
         # data will be sorted by 'caller_create` but re-indexed
         index=range(len(df)),
     ).assign(answer_seizure_ratio=lambda df: 1 - df['seizure_fail_rate'])
-
     return mdf
+
+
+# def hcm(df):
+#     ''''Hierarchical indexed call metrics
+#     '''
+#     cm = call_metrics(df)
+#     return pd.DataFrame(
+#         cm.values,
+#         index=pd.MultiIndex.from_arrays(
+#             [df['switchy_app'], df['hangup_cause'], cm.index]),
+#         columns=cm.columns,
+#     )
 
 
 def call_types(df, figspec=None):
     """Hangup-cause and app plotting annotations
     """
     # sort by create time
-    df = df.sort(columns=['caller_create'])
+    df = df.sort_values(by=['caller_create'])
     ctdf = pd.DataFrame(
         data={
             'hangup_cause': df['hangup_cause'],
@@ -104,6 +116,7 @@ class CallTimes(object):
     operators = {
         'call_metrics': call_metrics,
         'call_types': call_types,
+        # 'hcm': hcm,
     }
 
     def __init__(self):
