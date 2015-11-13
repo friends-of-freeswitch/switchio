@@ -48,58 +48,6 @@ def plot_df(df, figspec, **kwargs):
     return multiplot(df, figspec=figspec, **kwargs)
 
 
-class FrameFuncOp(object):
-    def __init__(self, storersdict, func):
-        self._sd = storersdict
-        self._func = func
-        setattr(self.__class__, '__getitem__',
-                getattr(self._sd, '__getitem__'))
-
-    def __get__(self, obj, type=None):
-        """Return the merged set when accessed as an instance var
-        """
-        return self.merged
-
-    def __set__(self, obj, value):
-        raise AttributeError
-
-    def __repr__(self):
-        return repr(self._sd).replace(
-            type(self._sd).__name__, type(self).__name__)
-
-    def __call__(self, *args, **kwargs):
-        return self._func(*args, **kwargs)
-
-    def __dir__(self):
-        return utils.dirinfo(self) + self._sd.keys()
-
-    def __getattr__(self, key):
-        """Given a key to a storer (usually a call app name)
-        apply the dataframe operator function over the entire data set
-        """
-        return self._func(self._sd[key].data)
-
-    def get_merged(self, names=None):
-        """Merge multiple storer datas into a single frame
-        """
-        if names:
-            storers = (
-                storer for name, storer in
-                self._sd.items() if name in names
-            )
-        else:
-            storers = self._sd.values()
-
-        # XXX this won't work for multiple stores with non-unique column names
-        # Consider having this return a MultiIndexed df eventually?
-        return pd.concat(
-            map(self._func, (s.data for s in storers)),
-            axis=1,
-        )
-
-    merged = property(get_merged)
-
-
 Measurer = namedtuple("Measurer", 'app ppkwargs storer ops')
 
 
@@ -170,13 +118,19 @@ class Measurers(object):
     def add_operator(self, measurername, func, opname):
         m = self._apps[measurername]
         m.ops[opname] = func
-        fo = FrameFuncOp({measurername: m.storer}, func)
-        self._ops[opname] = fo
+
+        def operator(self, storer):
+            return storer.data.pipe(func)
+
+        # provides descriptor protocol access for interactive work
+        self._ops[opname] = func
+        setattr(self.ops.__class__, opname,
+                property(partial(operator, storer=m.storer)))
+
+        # append any figure specification
         figspec = getattr(func, 'figspec', None)
         if figspec:
             self._figspecs[opname] = figspec
-        # provides descriptor protocol access for interactive work
-        setattr(self.ops.__class__, opname, fo)
 
     def items(self):
         return list(reversed(self._apps.items()))
@@ -204,9 +158,10 @@ class Measurers(object):
     def merged_ops(self):
         """Merge and return all function operator frames from all measurers
         """
+        # concat along the columns
         return pd.concat(
-            (opfunc.merged for opfunc in self._ops.values()),
-            axis=1,  # concat along the columns
+            (getattr(self.ops, name) for name in self._ops),
+            axis=1
         )
 
     def plot(self, **kwargs):
@@ -226,16 +181,18 @@ class DataStorer(object):
         "A unique type to trigger writer thread terminatation"
 
     def __init__(self, data=None, columns=None, size=2**10,
-                 dtype=None, hdf_path=None):
+                 dtype=None, hdf_path=None, writer_thread=True):
 
         self.queue = Queue()
-        self._writer = threading.Thread(
-            target=self._writedf,
-            args=(),
-            name='frame_writer'
-        )
-        self._writer.daemon = True  # die with parent
-        self._writer.start()
+        if writer_thread:
+            self._writer = threading.Thread(
+                target=self._writedf,
+                args=(),
+                name='frame_writer'
+            )
+            self._writer.daemon = True  # die with parent
+            self._writer.start()
+
         self._df = pd.DataFrame(
             data=data,
             columns=columns,
@@ -265,7 +222,7 @@ class DataStorer(object):
     def buffer(self):
         """The latest set of buffered data points not yet pushed to disk
         """
-        return self._df[:self.findex].convert_objects()
+        return self._df[:self.findex].apply(lambda df: df.astype('object'))
 
     @property
     def data(self):
@@ -311,8 +268,8 @@ class DataStorer(object):
             now = time.time()
             if self._ri > self._len - 1 and i == 0:
                 # write frame to disk
-                self._df = frame = self._df.convert_objects(
-                    convert_numeric=True)
+                self._df = frame = self._df.apply(
+                    lambda df: df.astype('object'))
                 self._store.append('data', frame, dropna=False)
                 self._store.flush(fsync=True)
                 self.log.info("disk write took '{}'".format(time.time() - now))
@@ -327,7 +284,9 @@ class DataStorer(object):
 
 def load(path, wrapper=pd.DataFrame):
     '''Load a pickeled numpy array from the filesystem into a `DataStorer`
-    wrapper (Deprecated use `from_store` to load HDF files).
+    wrapper.
+
+    WARNING: Deprecated use `from_store` to load HDF files.
     '''
     array = np.load(path)
 
@@ -360,8 +319,7 @@ def load(path, wrapper=pd.DataFrame):
         ]
     }
 
-    ds = DataStorer(wrapper(array), metrics_func=calc_rates)
-    return ds
+    return DataStorer(wrapper(array), metrics_func=calc_rates)
 
 
 def from_store(path):
