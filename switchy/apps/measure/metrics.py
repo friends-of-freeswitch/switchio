@@ -16,6 +16,8 @@ import time
 
 # use the entire screen width + wrapping
 pd.set_option('display.expand_frame_repr', False)
+# app names should generally be shorter then this...
+min_size = 30
 
 
 def DictProxy(d, extra_attrs={}):
@@ -140,18 +142,19 @@ class Measurers(object):
         on disk.
         """
         with pd.HDFStore(path) as store:
-            # append raw data sets
+            # raw data sets
             for name, m in self._apps.items():
                 data = m.storer.data
                 if len(data):
-                    store.append("{}".format(name), data)
+                    store.append("{}".format(name), data, min_itemsize=min_size)
 
-                    # append processed (metrics) data sets
+                    # processed (metrics) data sets
                     for opname, op in m.ops.items():
                         store.append(
                             '{}/{}'.format(name, opname),
                             op(data),
                             dropna=False,
+                            min_itemsize=min_size,
                         )
 
     @property
@@ -270,7 +273,7 @@ class DataStorer(object):
                 # write frame to disk
                 self._df = frame = self._df.apply(
                     lambda df: df.astype('object'))
-                self._store.append('data', frame, dropna=False)
+                self._store.append('data', frame, dropna=False, min_itemsize=min_size)
                 self._store.flush(fsync=True)
                 self.log.info("disk write took '{}'".format(time.time() - now))
 
