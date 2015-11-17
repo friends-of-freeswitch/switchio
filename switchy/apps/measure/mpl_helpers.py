@@ -17,7 +17,6 @@ from collections import namedtuple
 
 log = utils.get_logger(__name__)
 
-
 plotitems = namedtuple('plotitems', 'mng fig axes artists')
 
 
@@ -26,11 +25,18 @@ def multiplot(df, figspec, fig=None, mng=None, block=False):
     plotting helpers where possible. `figspec` is a map of subplot location
     tuples to column name iterables.
     '''
-    fig = fig if fig else plt.figure()
-    mng = mng if mng else plt.get_current_fig_manager()
-
     # figspec is a map of tuples like: {(row, column): [<column names>]}
     rows, cols = max(figspec)
+
+    # generate fig and axes set
+    fig, axes_arr = plt.subplots(
+        rows,
+        cols,
+        sharex=True,
+        squeeze=False,
+        tight_layout=True,
+    )
+    mng = mng if mng else plt.get_current_fig_manager()
 
     # plot loop
     artist_map = {}
@@ -39,9 +45,9 @@ def multiplot(df, figspec, fig=None, mng=None, block=False):
         if loc is None:
             continue
         else:
-            row, col = loc
-        # generate axes
-        ax = fig.add_subplot(rows, cols, row * col)
+            row, col = loc[0] - 1, loc[1] - 1
+
+        ax = axes_arr[row, col]
         log.info("plotting '{}'".format(colnames))
         ax = df[colnames].plot(ax=ax)  # use the pandas plotter
         axes[loc] = ax
@@ -49,15 +55,16 @@ def multiplot(df, figspec, fig=None, mng=None, block=False):
         artist_map[loc] = {
             name: artist for name, artist in zip(names, artists)}
         # set legend
-        ax.legend(loc='upper left', fontsize='large')
+        ax.legend(
+            loc='upper left', fontsize='large', fancybox=True, framealpha=0.5
+        )
         # set titles
         # ax.set_title(name, fontdict={'size': 'small'})
         ax.set_xlabel('Call Event Index', fontdict={'size': 'large'})
 
-    # show in a window full size
-    fig.tight_layout()
     if getattr(df, 'title', None):
         fig.suptitle(basename(df.title), fontsize=15)
+
     if block:
         if sys.platform.lower() == 'darwin':
             # For MacOS only blocking mode is supported
