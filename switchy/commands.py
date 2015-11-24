@@ -12,6 +12,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
                         # dp app
                         dp_exten=None, dp_type='xml', dp_context='default',
                         proxy=None,  # first hop uri
+                        endpoint='sofia',
                         timeout=60,
                         caller_id='Mr_Switchy',
                         codec='PCMU',
@@ -78,7 +79,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
         app_part = '&{}({})'.format(app_name, app_arg_str)
 
     # render final cmd str
-    call_url = 'sofia/{}/{}{}'.format(profile, dest_url, dest_str)
+    call_url = '{}/{}/{}{}'.format(endpoint, profile, dest_url, dest_str)
     if not uuid_str:
         prefix_vars = '{{{{{params}}}}}'.format(params=','.join(pairs))
     else:
