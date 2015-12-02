@@ -17,15 +17,19 @@ import pkgutil
 
 
 class ESLError(Exception):
-    pass
+    """An error pertaining to the connection"""
+
+
+class TimeoutError(Exception):
+    """Timing error"""
 
 
 class ConfigurationError(Exception):
-    pass
+    """Config error"""
 
 
 class CommandError(ESLError):
-    pass
+    """Console command error"""
 
 
 # fs-like log format
@@ -275,3 +279,22 @@ def iter_import_submods(packages, recursive=False, imp_excs=()):
                         [full_name], recursive=recursive, imp_excs=imp_excs
                     ):
                         yield res
+
+
+def waitwhile(predicate, timeout=float('inf'), period=0.1):
+    """Block until `predicate` evaluates to `False`.
+
+    :param predicate: predicate function
+    :type predicate: function
+    :param float timeout: time to wait in seconds for predicate to eval False
+    :param float period: poll loop sleep period in seconds
+    :raises TimeoutError: if predicate does not eval to False within `timeout`
+    """
+    start = time.time()
+    while predicate():
+        time.sleep(period)
+        if time.time() - start > timeout:
+            raise TimeoutError(
+                "'{}' failed to be True".format(
+                    predicate)
+            )
