@@ -19,6 +19,7 @@ def call_metrics(df):
     # sort by create time
     df = df.sort_values(by=['caller_create'])
     cr = 1 / df['caller_create'].diff()  # compute instantaneous call rates
+    # any more and the yaxis scale becomes a bit useless
     clippedcr = cr.clip(upper=1000)
 
     mdf = pd.DataFrame(
@@ -124,7 +125,7 @@ class CallTimes(object):
         self._call_counter = itertools.count(0)
 
     def new_storer(self):
-        return DataStorer(columns=self.fields)
+        return DataStorer(self.__class__.__name__, columns=self.fields)
 
     def prepost(self, listener, storer=None, pool=None, orig=None):
         self.listener = listener
@@ -189,6 +190,7 @@ class CallTimes(object):
 
         pool = self.pool
         job = getattr(call, 'job', None)
+        # NOTE: the entries here correspond to the listed `CallTimes.fields`
         rollover = self._ds.append_row((
             caller.appname,
             caller['Hangup-Cause'],

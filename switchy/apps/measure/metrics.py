@@ -4,14 +4,17 @@
 """
 This module includes helpers for capturing measurements using pandas.
 """
-import threading
-from Queue import Queue
+import traceback
+import signal
+import atexit
 import tempfile
 import pandas as pd
 import numpy as np
 from switchy import utils
 from functools import partial
 from collections import OrderedDict, namedtuple
+import multiprocessing as mp
+from multiprocessing.queues import SimpleQueue
 import time
 
 # use the entire screen width + wrapping
@@ -92,16 +95,17 @@ class Measurers(object):
         if 'storer' not in kwargs:
             raise TypeError("'{}' must define a 'storer' kwarg"
                             .format(app.prepost))
+        name = name or utils.get_name(app)
 
         # acquire storer factory
         factory = getattr(app, 'new_storer', None)
-        if not factory:
-            # app does not define a storer factory method
-            factory = partial(DataStorer, columns=app.fields)
-        # create an instance
-        storer = factory()
+        storer_kwargs = getattr(app, 'storer_kwargs', {})
+        # app may not define a storer factory method
+        storer = DataStorer(
+                name, columns=app.fields,
+                **storer_kwargs
+        ) if not factory else factory()
 
-        name = name or utils.get_name(app)
         self._apps[name] = Measurer(app, ppkwargs, storer, {})
         # provide attr access off `self.stores`
         self._stores[name] = storer
@@ -146,7 +150,8 @@ class Measurers(object):
             for name, m in self._apps.items():
                 data = m.storer.data
                 if len(data):
-                    store.append("{}".format(name), data, min_itemsize=min_size)
+                    store.append(
+                        "{}".format(name), data, min_itemsize=min_size)
 
                     # processed (metrics) data sets
                     for opname, op in m.ops.items():
@@ -176,113 +181,164 @@ class Measurers(object):
         ]
 
 
+def mkhdf(path=None, mode='a'):
+    # disk storage via HDF
+    path = path or tempfile.mktemp() + '_switchy_data.h5'
+    store = pd.HDFStore(path, mode)
+    return store
+
+
+class Terminate(Exception):
+    """"A unique error type to trigger writer proc termination
+    """
+
+
 class DataStorer(object):
     """Wraps a `pd.DataFrame` which buffers recent data in memory and
     offloads excess to disk using the HDF5 format.
     """
-    class Terminate(object):
-        "A unique type to trigger writer thread terminatation"
-
-    def __init__(self, data=None, columns=None, size=2**10,
-                 dtype=None, hdf_path=None, writer_thread=True):
-
-        self.queue = Queue()
-        if writer_thread:
-            self._writer = threading.Thread(
-                target=self._writedf,
-                args=(),
-                name='frame_writer'
-            )
-            self._writer.daemon = True  # die with parent
-            self._writer.start()
-
+    def __init__(
+        self, name, data=None, columns=None, buf_size=2**10,
+        dtype=None, hdf_path=None, bg_writer=True
+    ):
+        self.name = name
         self._df = pd.DataFrame(
             data=data,
             columns=columns,
-            index=range(size) if data is None else None,
+            index=range(buf_size) if data is None else None,
             dtype=dtype,
         )
         self._len = len(self._df)
-        # current row insertion-index
-        self._ri = 0 if data is None else len(self._df) - 1
-        # disk storage is normally
-        self._store = pd.HDFStore(
-            hdf_path or tempfile.mktemp() + '_switchy_data.h5'
-        )
-        self._store.open('a')
         self.log = utils.get_logger(type(self).__name__)
+        # shared current row insertion-index
+        self._iput = 0
+        self._ri = mp.Value('i', 0 if data is None else len(self._df) - 1,
+                            lock=False,)
 
-    def __len__(self):
-        return len(self._df)
+        # parent proc read-only access to disk store
+        self._store = mkhdf(hdf_path)
+        self._store.close()
+
+        # setup bg writer
+        self.queue = SimpleQueue()
+        if bg_writer:
+            # disable SIGINT while we spawn
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            self._writer = mp.Process(
+                target=_consume_and_write,
+                args=(self.queue, self._store.filename, self._ri, self._df),
+                name='{}_frame_writer'.format(self.name),
+            )
+            self._writer.start()
+            # re-enable SIGINT
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+
+        # kill subproc on exit
+        atexit.register(self.stop)
 
     @property
     def store(self):
         """HDF5 Store for offloading data to disk
         """
+        self._store.open('r')
         return self._store
 
     @property
     def buffer(self):
         """The latest set of buffered data points not yet pushed to disk
         """
-        return self._df[:self.findex].apply(lambda df: df.astype('object'))
+        return self._df[:self.bindex].apply(lambda df: df.astype('object'))
 
     @property
     def data(self):
         """Copy of the entire data set recorded thus far
         """
-        if self._store.keys():
+        if self.store.keys():
             return pd.concat(
-                (self._store['data'], self.buffer),
+                (self.store['data'], self.buffer),
                 ignore_index=True
             )
         return self.buffer
 
     @property
-    def index(self):
+    def rindex(self):
         '''Current absolute row index
         '''
-        return self._ri
+        return self._ri.value
 
     @property
-    def findex(self):
+    def bindex(self):
         """Current index of in mem frame buffer
         """
-        return self._ri % self._len
+        return self._ri.value % self._len
 
     def append_row(self, row=None):
-        # PyTables store is not thread safe so push a row
+        """Push a row of data onto the consumer queue
+        """
+        start = time.time()
         self.queue.put(row)
+        self._iput += 1
+        diff = time.time() - start
+        if diff > 0.005:  # any more then 5ms warn the user
+            self.log.warn("queue.put took '{}' seconds".format(diff))
 
     def stop(self):
-        """Trigger the background writer thread to terminate
+        """Trigger the background frame writer to terminate
         """
-        self.queue.put(self.Terminate)
+        self.queue.put(Terminate)
 
-    def _writedf(self):
-        '''Insert :var:`row` pushed onto the queue into the internal data
-        frame at the current index and increment.
-        Return a boolean indicating whether the current entry
-        has caused a flush to disk. Empty rows are always written to disk
-        (keeps stores 'call-index-aligned').
-        '''
-        for row in iter(self.queue.get, self.Terminate):
-            i = self.findex
-            now = time.time()
-            if self._ri > self._len - 1 and i == 0:
-                # write frame to disk
-                self._df = frame = self._df.apply(
-                    lambda df: df.astype('object'))
-                self._store.append('data', frame, dropna=False, min_itemsize=min_size)
-                self._store.flush(fsync=True)
-                self.log.info("disk write took '{}'".format(time.time() - now))
 
-            # insert by row int-index
-            self._df.iloc[i, :] = row
-            self._ri += 1
-            self.log.debug("pandas insert took '{}'".format(time.time() - now))
+def _consume_and_write(queue, path, rowindex, df):
+    '''Insert :var:`row` pushed onto the queue into the internal data
+    frame at the current index and increment.
+    Return a boolean indicating whether the current entry
+    has caused a flush to disk. Empty rows are always written to disk
+    (keeps stores 'call-index-aligned').
+    '''
+    proc = mp.current_process()
+    slog = utils.get_logger(proc.name)
+    log = mp.log_to_stderr(slog.getEffectiveLevel())
+    log.info("hdf path is '{}'".format(path))
+    log.info("starting frame writer '{}'".format(proc.name))
 
-        self.log.debug("terminating writer thread")
+    # set up child process HDF store
+    store = mkhdf(path)
+    store.open('a')
+    _len = len(df)
+
+    def writedf(row, frame, store, ri):
+        now = time.time()
+        i = ri.value % _len
+        if ri.value > _len - 1 and i == 0:
+            # write frame to disk on buffer fill
+            log.debug('writing with pytables...')
+            try:
+                store.append('data', frame, dropna=False,
+                             min_itemsize=min_size)
+                store.flush(fsync=True)
+            except ValueError:
+                log.error(traceback.format_exc())
+            log.debug("disk write took '{}'".format(time.time() - now))
+
+        # insert by row int-index
+        frame.iloc[i, :] = row
+        log.debug("pandas insert took '{}'".format(time.time() - now))
+        ri.value += 1  # increment row insertion index
+
+    # use first data point
+    row = queue.get()
+
+    if row is not Terminate:
+        writedf(row, df, store, rowindex)
+        # infer dtypes using first row
+        df = df.apply(lambda df: df.astype('object'))
+
+        # consume and process
+        for row in iter(queue.get, Terminate):
+            writedf(row, df, store, rowindex)
+
+    store.close()
+    log.debug("terminating frame writer '{}'".format(proc.name))
 
 
 def load(path, wrapper=pd.DataFrame):
@@ -322,7 +378,7 @@ def load(path, wrapper=pd.DataFrame):
         ]
     }
 
-    return DataStorer(wrapper(array), metrics_func=calc_rates)
+    return DataStorer(path, wrapper(array), metrics_func=calc_rates)
 
 
 def from_store(path):

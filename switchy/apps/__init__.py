@@ -121,9 +121,7 @@ class AppManager(object):
         try:
             from measure.metrics import Measurers
         except ImportError as ie:
-            if not self.log.handlers:
-                utils.log_to_stderr()
-            self.log.warn(ie.message)
+            utils.log_to_stderr().warn(ie.message)
             self.measurers = None
         else:
             # shared by whole cluster
