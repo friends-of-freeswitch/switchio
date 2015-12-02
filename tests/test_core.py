@@ -136,7 +136,7 @@ def monitor(el):
     from datetime import datetime
     calls = el.count_calls()
     while calls:
-        print("[{1}] call count is '{0}'".format(calls, datetime.now()))
+        el.log.info("[{1}] call count is '{0}'".format(calls, datetime.now()))
         calls = el.count_calls()
 
 
