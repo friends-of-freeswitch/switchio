@@ -8,6 +8,8 @@ from __future__ import division
 import time
 import sched
 import traceback
+import functools
+import inspect
 from itertools import cycle
 from collections import Counter
 from threading import Thread
@@ -545,3 +547,34 @@ class Originator(object):
     def _reset_connections(self):
         self.pool.evals('listener.disconnect()')
         self.pool.evals('listener.connect()')
+
+    def waitwhile(
+        self,
+        state_or_predicate=lambda orig:
+            orig.count_calls() or not orig.stopped(),
+        timeout=30,
+        period=0.1,
+    ):
+        """If `state_or_predicate' is a func, block until it evaluates to `False`.
+        If it is a `str` block until the internal state matches that value.
+        The default predicate waits for all calls to end and for activation of
+        the "STOPPED" state.
+        See `switchy.utils.waitwhile` for more details on predicate usage.
+        """
+        if isinstance(state_or_predicate, str):
+            getattr(State, state_or_predicate)  # ensure state exists
+            predicate = functools.partial(self.check_state, state_or_predicate)
+        else:
+            predicate = state_or_predicate
+            assert inspect.isfunction(
+                predicate), "{} must be a state str or func".format(predicate)
+            numargs = len(utils.get_args(state_or_predicate)[0][:1])
+            if numargs == 1:
+                predicate = functools.partial(predicate, self)
+            elif numargs > 1:
+                raise TypeError(
+                    "func '{}' must accept at most one argument"
+                    .format(state_or_predicate)
+                )
+        # poll for predicate to eval False
+        utils.waitwhile(predicate=predicate, timeout=timeout, period=period)
