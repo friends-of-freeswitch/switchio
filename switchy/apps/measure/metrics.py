@@ -7,14 +7,16 @@ This module includes helpers for capturing measurements using pandas.
 import traceback
 import signal
 import atexit
+import itertools
 import tempfile
 import pandas as pd
 import numpy as np
+import shmarray
 from switchy import utils
 from functools import partial
 from collections import OrderedDict, namedtuple
 import multiprocessing as mp
-from multiprocessing.queues import SimpleQueue
+from multiprocessing import queues
 import time
 
 # use the entire screen width + wrapping
@@ -49,6 +51,8 @@ def moving_avg(x, n=100):
 
 
 def plot_df(df, figspec, **kwargs):
+    """Plot a pandas data frame according to the provided `figspec`
+    """
     from mpl_helpers import multiplot
     return multiplot(df, figspec=figspec, **kwargs)
 
@@ -102,8 +106,7 @@ class Measurers(object):
         storer_kwargs = getattr(app, 'storer_kwargs', {})
         # app may not define a storer factory method
         storer = DataStorer(
-                name, columns=app.fields,
-                **storer_kwargs
+                name, dtype=app.fields, **storer_kwargs
         ) if not factory else factory()
 
         self._apps[name] = Measurer(app, ppkwargs, storer, {})
@@ -197,44 +200,50 @@ class DataStorer(object):
     """Wraps a `pd.DataFrame` which buffers recent data in memory and
     offloads excess to disk using the HDF5 format.
     """
-    def __init__(
-        self, name, data=None, columns=None, buf_size=2**10,
-        dtype=None, hdf_path=None, bg_writer=True
-    ):
+    def __init__(self, name, dtype, data=None, buf_size=2**10, hdf_path=None,
+                 bg_writer=True):
         self.name = name
-        self._df = pd.DataFrame(
-            data=data,
-            columns=columns,
-            index=range(buf_size) if data is None else None,
-            dtype=dtype,
-        )
-        self._len = len(self._df)
+        try:
+            self.dtype = np.dtype(dtype)
+        except TypeError:
+            # set all columns to float64
+            self.dtype = np.dtype(zip(dtype, itertools.repeat(np.float64)))
+
+        if data is None:
+            # allocated a shared mem np structured array
+            self._shmarr = shmarray.create(buf_size, dtype=self.dtype)
+        else:
+            # whatever array was passed in (eg. loaded data)
+            self._shmarr = np.array(data)
+            bg_writer = False
+
+        self._len = len(self._shmarr)
         self.log = utils.get_logger(type(self).__name__)
         # shared current row insertion-index
         self._iput = 0
-        self._ri = mp.Value('i', 0 if data is None else len(self._df) - 1,
-                            lock=False,)
+        self._ri = mp.Value('i', 0 if data is None else self._len, lock=False)
 
         # parent proc read-only access to disk store
         self._store = mkhdf(hdf_path)
         self._store.close()
 
         # setup bg writer
-        self.queue = SimpleQueue()
+        self.queue = queues.SimpleQueue()
         if bg_writer:
             # disable SIGINT while we spawn
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             self._writer = mp.Process(
                 target=_consume_and_write,
-                args=(self.queue, self._store.filename, self._ri, self._df),
+                args=(
+                    self.queue, self._store.filename, self._ri,
+                    self._shmarr),
                 name='{}_frame_writer'.format(self.name),
             )
             self._writer.start()
             # re-enable SIGINT
             signal.signal(signal.SIGINT, signal.default_int_handler)
-
-        # kill subproc on exit
-        atexit.register(self.stop)
+            # kill subproc on exit
+            atexit.register(self._stopwriter)
 
     @property
     def store(self):
@@ -247,7 +256,7 @@ class DataStorer(object):
     def buffer(self):
         """The latest set of buffered data points not yet pushed to disk
         """
-        return self._df[:self.bindex].apply(lambda df: df.astype('object'))
+        return pd.DataFrame.from_records(self._shmarr[:self.buflen])
 
     @property
     def data(self):
@@ -261,14 +270,22 @@ class DataStorer(object):
         return self.buffer
 
     @property
+    def buflen(self):
+        """Current buffer length up the last inserted data point
+        """
+        bi = self.bindex
+        return bi if bi else self._len
+
+    @property
     def rindex(self):
-        '''Current absolute row index
+        '''Current absolute row insertion index
         '''
         return self._ri.value
 
     @property
     def bindex(self):
-        """Current index of in mem frame buffer
+        """Current insertion index of in mem frame buffer
+        (i.e. the index where the next value should be inserted)
         """
         return self._ri.value % self._len
 
@@ -282,13 +299,13 @@ class DataStorer(object):
         if diff > 0.005:  # any more then 5ms warn the user
             self.log.warn("queue.put took '{}' seconds".format(diff))
 
-    def stop(self):
+    def _stopwriter(self):
         """Trigger the background frame writer to terminate
         """
         self.queue.put(Terminate)
 
 
-def _consume_and_write(queue, path, rowindex, df):
+def _consume_and_write(queue, path, ri, sharr):
     '''Insert :var:`row` pushed onto the queue into the internal data
     frame at the current index and increment.
     Return a boolean indicating whether the current entry
@@ -304,38 +321,35 @@ def _consume_and_write(queue, path, rowindex, df):
     # set up child process HDF store
     store = mkhdf(path)
     store.open('a')
-    _len = len(df)
+    _len = len(sharr)
 
-    def writedf(row, frame, store, ri):
+    # consume and process
+    for row in iter(queue.get, Terminate):
         now = time.time()
         i = ri.value % _len
         if ri.value > _len - 1 and i == 0:
             # write frame to disk on buffer fill
             log.debug('writing with pytables...')
             try:
-                store.append('data', frame, dropna=False,
-                             min_itemsize=min_size)
+                store.append(
+                    'data',
+                    pd.DataFrame.from_records(sharr),
+                    dropna=False,
+                    min_itemsize=min_size,
+                )
                 store.flush(fsync=True)
             except ValueError:
                 log.error(traceback.format_exc())
             log.debug("disk write took '{}'".format(time.time() - now))
-
-        # insert by row int-index
-        frame.iloc[i, :] = row
-        log.debug("pandas insert took '{}'".format(time.time() - now))
-        ri.value += 1  # increment row insertion index
-
-    # use first data point
-    row = queue.get()
-
-    if row is not Terminate:
-        writedf(row, df, store, rowindex)
-        # infer dtypes using first row
-        df = df.apply(lambda df: df.astype('object'))
-
-        # consume and process
-        for row in iter(queue.get, Terminate):
-            writedf(row, df, store, rowindex)
+        try:
+            # insert into numpy structured array by row int-index
+            sharr[i] = row
+            log.debug("shmarray insert took '{}'".format(time.time() - now))
+            # increment row insertion index for the next entry (this means
+            # the last entry is at now at i - 1)
+            ri.value += 1
+        except ValueError:
+            log.error(traceback.format_exc())
 
     store.close()
     log.debug("terminating frame writer '{}'".format(proc.name))
@@ -378,7 +392,9 @@ def load(path, wrapper=pd.DataFrame):
         ]
     }
 
-    return DataStorer(path, wrapper(array), metrics_func=calc_rates)
+    ds = DataStorer(path, dtype=array.dtype, data=array)
+    ds.plot = partial(plot_df, ds.data, calc_rates.figspec)
+    return ds
 
 
 def from_store(path):
