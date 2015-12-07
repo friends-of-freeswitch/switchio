@@ -31,7 +31,7 @@ def fshosts(request):
     argstring = request.config.option.fshost
     if not argstring:
         pytest.skip("the '--fshost' option is required to determine the "
-                    "FreeSWITCH slave server(s) under test")
+                    "FreeSWITCH slave server(s) to connect to for testing")
     # construct a list if passed as arg
     if '[' in argstring:
         fshosts = eval(argstring)
