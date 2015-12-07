@@ -325,8 +325,14 @@ class Originator(object):
         self._stop_on_none()
 
     @marks.event_callback("CHANNEL_HANGUP")
-    def _handle_hangup(self, *args):
+    def _handle_hangup(self, sess, job):
         self._stop_on_none()
+        # if sess.call.sessions and sess.is_outbound():
+        #     # we normally expect that the caller hangs up
+        #     self.log.warn(
+        #         'received hangup for inbound session {}'
+        #         .format(sess.uuid)
+        #     )
 
     @marks.event_callback("CHANNEL_ORIGINATE")
     def _handle_originate(self, sess):

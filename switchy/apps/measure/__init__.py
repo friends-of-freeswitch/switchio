@@ -9,7 +9,7 @@ import itertools
 import time
 from switchy.marks import event_callback
 from switchy import utils
-from .metrics import pd, DataStorer
+from .metrics import pd, DataStorer, np
 
 
 def call_metrics(df):
@@ -99,19 +99,21 @@ class CallTimes(object):
     for per call metrics computations.
     """
     fields = [
-        'switchy_app',
-        'hangup_cause',
-        'caller_create',
-        'caller_answer',
-        'caller_req_originate',
-        'caller_originate',
-        'caller_hangup',
-        'job_launch',
-        'callee_create',
-        'callee_answer',
-        'callee_hangup',
-        'failed_calls',
-        'active_sessions',
+        # since we're mixing numeric and str types we must be explicit
+        # about each field
+        ('switchy_app', 'S50'),
+        ('hangup_cause', 'S50'),
+        ('caller_create', np.float64),
+        ('caller_answer',  np.float64),
+        ('caller_req_originate', np.float64),
+        ('caller_originate', np.float64),
+        ('caller_hangup', np.float64),
+        ('job_launch', np.float64),
+        ('callee_create', np.float64),
+        ('callee_answer', np.float64),
+        ('callee_hangup', np.float64),
+        ('failed_calls', np.uint32),
+        ('active_sessions', np.uint32),
     ]
 
     operators = {
@@ -125,7 +127,7 @@ class CallTimes(object):
         self._call_counter = itertools.count(0)
 
     def new_storer(self):
-        return DataStorer(self.__class__.__name__, columns=self.fields)
+        return DataStorer(self.__class__.__name__, dtype=self.fields)
 
     def prepost(self, listener, storer=None, pool=None, orig=None):
         self.listener = listener
@@ -171,19 +173,15 @@ class CallTimes(object):
             call.callee = call.last
             if job:
                 call.job = job
-            return
+            return  # stop now since more sessions are expected to hangup
 
         # all other sessions have been hungup so store all measurements
         caller = getattr(call, 'caller', None)
         if not caller:
             # most likely only one leg was established and the call failed
             # (i.e. call.caller was never assigned above)
-            if not sess.is_outbound():
-                self.log.warn(
-                    'received hangup for inbound session {}'
-                    .format(sess.uuid)
-                )
             caller = sess
+
         callertimes = caller.times
         callee = getattr(call, 'callee', None)
         calleetimes = callee.times if callee else None
