@@ -109,9 +109,11 @@ def proxy_dp(ael, client):
     else:
         client.connect()
         client.listener = ael
-        # insert the metrics app
+        # assigning a listener overrides it's call lookup var so restore it
+        client.listener.call_id_var = 'variable_call_uuid'
+        # insert the `Metrics` app
         assert 'default' == client.load_app(Metrics, on_value="default")
-        app = client.apps.Metrics
+        app = client.apps.default['Metrics']
         ael.metrics = app
     # sanity
     assert ael.connected()
@@ -297,20 +299,29 @@ class TestClient:
         from switchy.marks import get_callbacks, event_callback
         from switchy import utils
         with pytest.raises(AttributeError):
+            # need an observer assigned first
             client.load_app(TonePlay)
-        client.listener = el  # assign listener manually
+        client.listener = el  # assign observer manually
         assert client.listener is el
 
         # loading
         client.load_app(TonePlay)
         name = utils.get_name(TonePlay)
+        # group id is by default the name of the first app
         assert name in client._apps
         # app should be an instance of the app type
-        app = client._apps[name]
+        app = client._apps[name][name]
         assert isinstance(app, TonePlay)
-        # reloading the same app shouldn't overwrite the original
-        client.load_app(TonePlay)
-        assert app is client._apps[name]
+
+        # reloading the same app is not allowed without specifying
+        # a new `on_value` / group id
+        with pytest.raises(utils.ConfigurationError):
+            client.load_app(TonePlay)
+        # load with an alt id
+        client.load_app(TonePlay, 'TonePlay2')
+        # and therefore shouldn't overwrite the original
+        assert app is client._apps[name][name]
+        assert app is not client._apps['TonePlay2'][name]
 
         # check that callbacks are registered with listener
         cbmap = client.listener.consumers[app.cid]
@@ -328,14 +339,14 @@ class TestClient:
         bid = client.load_app(Bert)
 
         # verify unload
-        client.unload_app(TonePlay)
-        assert TonePlay not in client._apps
+        client.unload_app(app.cid)
+        assert app.cid not in client._apps
         with pytest.raises(KeyError):
             client.listener.consumers[app.cid]
 
-        # 2nd should still be there
-        assert utils.get_name(Bert) in client._apps
-        cbs = client.listener.consumers[client.apps.Bert.cid]
+        # Bert should still be there
+        assert bid in client._apps
+        cbs = client.listener.consumers[client.apps.Bert['Bert'].cid]
         assert cbs
         cbcount = len(cbs)
 
@@ -349,16 +360,16 @@ class TestClient:
             def h1(self, sess):
                 pass
 
+            # non-function marked obj
+            @event_callback('CHANNEL_PARK')
             class noncb(object):
                 pass
-
-            # non-function marked obj
-            fack = event_callback('CHANNEL_PARK')(noncb)
 
         with pytest.raises(TypeError):
             client.load_app(DumbApp, ident=bid)
         name = utils.get_name(DumbApp)
         assert name not in client._apps
+        assert name not in client.apps.Bert
         # Bert cbs should still be active
         assert len(client.listener.consumers[bid]) == cbcount
 

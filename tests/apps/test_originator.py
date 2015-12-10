@@ -36,7 +36,7 @@ def get_orig(request, fsip):
         # to avoid dependency on another server
         orig.pool.evals(
             ("""client.set_orig_cmd('{}@{}:{}'.format(
-             userpart, client.server, port), app_name='park')"""),
+             userpart, client.server, port))"""),
             userpart=userpart,
             port=port,
         )
@@ -48,17 +48,56 @@ def get_orig(request, fsip):
         orig.shutdown()
 
 
+def test_rep_fields(get_orig):
+    """Test replacement fields within originate commands
+    """
+    ret = {'field': 'kitty'}
+    orig = get_orig(
+        '{field}',
+        apps=[players.TonePlay],
+        rep_fields_func=lambda: ret
+    )
+    orig.duration = 0  # don't auto-hangup
+    # check userpart passthrough
+    assert 'sofia/external/{field}' in orig.originate_cmd[0]
+    assert orig.rep_fields_func() == ret
+
+    # verify invalid field causes failure
+    orig.rep_fields_func = lambda: {'invalidname': 'kitty'}
+    orig.start()
+    time.sleep(0.05)
+    # burst loop thread should fail due to missing 'field' kwarg to str.format
+    assert orig.stopped()
+
+    # verify field replacement func
+    client = orig.pool.clients[0]
+    listener = orig.pool.listeners[0]
+    # set dest url and call associating xheader to our replaceable field
+    ident = "{}@{}:{}".format('doggy', client.host, 5080)
+    client.set_orig_cmd('{field}', xheaders={client.call_id_var: "{field}"})
+    orig.rep_fields_func = lambda: {'field': ident}
+    orig.max_offered += 1
+    orig.start()
+    time.sleep(0.05)
+    assert ident in listener.calls  # since we replaced the call id xheader
+    listener.calls[ident].hangup()
+    time.sleep(0.05)
+    assert orig.count_calls() == 0
+
+
 def test_dtmf_passthrough(get_orig):
     '''Test the dtmf app in coordination with the originator
     '''
     orig = get_orig('doggy', offer=1, apps=(dtmf.DtmfChecker,))
     orig.duration = 0
     orig.start()
-    checker = orig.pool.clients[0].apps.DtmfChecker
+    checker = orig.pool.clients[0].apps.DtmfChecker['DtmfChecker']
     time.sleep(checker.total_time + 1)
     orig.stop()
-    assert not any(orig.pool.evals('client.apps.DtmfChecker.incomplete'))
-    assert not any(orig.pool.evals('client.apps.DtmfChecker.failed'))
+    assert not any(
+        orig.pool.evals("client.apps.DtmfChecker['DtmfChecker'].incomplete"))
+    assert not any(
+        orig.pool.evals("client.apps.DtmfChecker['DtmfChecker'].failed"))
     assert orig.state == "STOPPED"
 
 
@@ -79,7 +118,7 @@ def test_convo_sim(get_orig):
         ]
     )
     # manual app reference retrieval
-    playrec = orig.pool.nodes[0].client.apps.PlayRec
+    playrec = orig.pool.nodes[0].client.apps.PlayRec['PlayRec']
 
     # verify dynamic load settings modify playrec settings
     orig.rate = 20

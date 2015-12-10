@@ -5,7 +5,6 @@
 Models representing freeSWITCH entities
 """
 import time
-import weakref
 import utils
 from collections import deque
 from multiproc import mp
@@ -79,14 +78,10 @@ class Session(object):
     create_ev = 'CHANNEL_CREATE'
 
     # TODO: eventually uuid should be removed
-    def __init__(self, uuid=None, event=None, con=None):
-
+    def __init__(self, event, uuid=None, con=None):
         self.events = Events(event)
-        self.uuid = self.events['Unique-ID']
-        if uuid:
-            self.uuid = uuid
+        self.uuid = uuid or self.events['Unique-ID']
         self.con = con
-
         # sub-namespace for apps to set/get state
         self.vars = {}
 
@@ -96,10 +91,11 @@ class Session(object):
         self.answered = False
         self.call = None
         self.hungup = False
+
         # time stamps
-        self.create_time = float('inf')
-        self.answer_time = float('inf')
-        self.originate_time = float('inf')
+        self.times = {}.fromkeys(
+            ('create', 'answer', 'req_originate', 'originate', 'hangup'))
+        self.times['create'] = utils.get_event_time(event)
 
     def __str__(self):
         return str(self.uuid)
@@ -144,16 +140,6 @@ class Session(object):
         """
         self.events.show()
 
-    # FIXME: should we keep weakrefs to a partner session interally?
-    # modify these props to utilize the partner session
-    @property
-    def invite_latency(self):
-        return self.create_time_bleg - self.create_time_aleg
-
-    @property
-    def answer_latency(self):
-        return self.answer_time_aleg - self.answer_time_bleg
-
     def __enter__(self, connection):
         self.con = connection
         return self
@@ -162,10 +148,20 @@ class Session(object):
         self.con = None
 
     @property
+    def appname(self):
+        return self.get('variable_switchy_app')
+
+    @property
     def time(self):
         """Time stamp for the most recent received event
         """
         return utils.get_event_time(self.events[0])
+
+    @property
+    def uptime(self):
+        """Time elapsed since the `create_ev` to the most recent received event
+        """
+        return self.time - self.times['create']
 
     # call control / 'mod_commands' methods
     # TODO: dynamically add @decorated functions to this class
@@ -413,7 +409,7 @@ class Call(object):
         self.uuid = uuid
         self.sessions = deque()
         self.sessions.append(session)
-        self._firstref = weakref.ref(session)
+        self._firstref = session
         self._lastref = None
         # sub-namespace for apps to set/get state
         self.vars = {}
@@ -427,7 +423,7 @@ class Call(object):
         recently added session
         """
         self.sessions.append(sess)
-        self._lastref = weakref.ref(sess)
+        self._lastref = sess
 
     def hangup(self):
         """Hangup up this call
@@ -439,13 +435,13 @@ class Call(object):
     def last(self):
         '''A reference to the session making up the final leg of this call
         '''
-        return self._lastref()
+        return self._lastref
 
     @property
     def first(self):
         '''A reference to the session making up the initial leg of this call
         '''
-        return self._firstref()
+        return self._firstref
 
     def get_peer(self, sess):
         """Convenience helper which can determine whether `sess` is one of
@@ -482,13 +478,13 @@ class Job(object):
         self.sess_uuid = sess_uuid
         self.launch_time = time.time()
         self.cid = client_id  # placeholder for client ident
-        self._sig = mp.Event()  # signal/sync job completion
 
         # when the job returns use this callback
         self._cb = callback
         self.kwargs = kwargs
         self._result = None
         self._failed = False
+        self._ev = None  # signal/sync job completion
 
     @property
     def result(self):
@@ -496,13 +492,22 @@ class Job(object):
         '''
         return self.get()
 
+    @property
+    def _sig(self):
+        if not self._ev:
+            self._ev = mp.Event()  # signal/sync job completion
+            if self._result:
+                self._ev.set()
+        return self._ev
+
     def __call__(self, resp, *args, **kwargs):
         if self._cb:
             self.kwargs.update(kwargs)
             self._result = self._cb(resp, *args, **self.kwargs)
         else:
             self._result = resp
-        self._sig.set()  # signal job completion
+        if self._ev:  # don't allocate an event if unused
+            self._ev.set()  # signal job completion
         return self._result
 
     def fail(self, resp, *args, **kwargs):

@@ -34,6 +34,7 @@ def test_playrec(fsip):
     '''
     with sync_caller(fsip, apps={"PlayRec": PlayRec}) as caller:
         # have the external prof call itself by default
+        caller.apps.PlayRec['PlayRec'].rec_rate = 1
         sess, waitfor = caller(
             "doggy@{}:{}".format(caller.client.server, 5080),
             'PlayRec',
@@ -44,3 +45,30 @@ def test_playrec(fsip):
         assert sess.call.vars['record']
         time.sleep(1)
         assert sess.hungup
+
+
+def test_alt_call_id_var(fsip):
+    '''Test that an alternate `EventListener.call_id_var` (in this case using the
+    'Caller-Destination-Number' channel variable) can be used to associate sessions
+    into calls.
+    '''
+    with sync_caller(fsip) as caller:
+        # use the destination number as the call association var
+        caller.client.listener.call_id_var = 'Caller-Destination-Number'
+        dest = 'doggy'
+        # have the external prof call itself by default
+        sess, waitfor = caller(
+            "{}@{}:{}".format(dest, caller.client.server, 5080),
+            'TonePlay',  # the default app
+            timeout=3,
+        )
+        assert sess.is_outbound()
+        # call should be indexed by the req uri username
+        assert dest in caller.client.listener.calls
+        call = caller.client.listener.calls[dest]
+        time.sleep(1)
+        assert call.first is sess
+        assert call.last
+        call.hangup()
+        time.sleep(0.1)
+        assert caller.client.listener.count_calls() == 0

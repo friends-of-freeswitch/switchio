@@ -19,7 +19,7 @@ import functools
 import weakref
 from contextlib import contextmanager
 from threading import Thread, current_thread
-from collections import deque, OrderedDict, defaultdict, Counter
+from collections import deque, OrderedDict, defaultdict, Counter, namedtuple
 
 # NOTE: the import order matters here!
 import utils
@@ -44,14 +44,11 @@ def con_repr(self):
 class EventListener(object):
     '''ESL Listener which tracks FreeSWITCH state using an observer pattern.
     This implementation utilizes a background event loop (single thread)
-    and a receive-only esl connection.
+    and one `Connection`.
 
     The main purpose is to enable event oriented state tracking of various
     slave process objects and call entities.
     '''
-    id_var = 'switchy_app'
-    id_xh = utils.xheaderify(id_var)
-
     HOST = '127.0.0.1'
     PORT = '8021'
     AUTH = 'ClueCon'
@@ -60,8 +57,7 @@ class EventListener(object):
                  session_map=None,
                  bg_jobs=None,
                  rx_con=None,
-                 call_corr_var_name='variable_call_uuid',
-                 call_corr_xheader_name='originating_session_uuid',
+                 call_id_var='variable_call_uuid',
                  autorecon=30,
                  max_limit=float('inf'),
                  # proxy_mng=None,
@@ -75,17 +71,17 @@ class EventListener(object):
             Port on which the FS server is offering an esl connection
         auth : string
             Authentication password for connecting via esl
-        call_corr_var_name : string
-            Name of the freeswitch variable (without the 'variable_' prefix)
-            to use for associating sessions into calls (see _handle_create).
-        call_corr_xheader_name : string
-            Name of an Xheader which can be used to associate sessions into
-            calls.
-            This is useful if an intermediary device such as a B2BUA is being
-            tested and is the first hop receiving requests. Note in
-            order for this association mechanism to work the intermediary
-            device must be configured to forward the Xheaders it recieves.
-            (see `self._handle_create` for more details)
+        call_id_var : string
+            Name of the freeswitch variable (including the 'variable_' prefix)
+            to use for associating sessions into calls (see `_handle_create`).
+
+            It is common to set this to an Xheader variable if attempting
+            to track calls "through" an intermediary device (i.e. the first
+            hop receiving requests) such as a B2BUA.
+
+            NOTE: in order for this association mechanism to work the
+            intermediary device must be configured to forward the Xheaders
+            it receives.
         autorecon : int, bool
             Enable reconnection attempts on server disconnect. An integer
             value specifies the of number seconds to spend re-trying the
@@ -105,14 +101,14 @@ class EventListener(object):
         self.consumers = {}  # callback chains, one for each event type
         self._waiters = {}  # holds events being waited on
         self._blockers = []  # holds cached events for reuse
-        # store up to the last 10k of each event type
+        # store up to the last 1k of each event type
         self.events = defaultdict(functools.partial(deque, maxlen=1e3))
+        self.sessions_per_app = Counter()
 
         # constants
         self.autorecon = autorecon
         self._call_var = None
-        self.call_corr_var = call_corr_var_name
-        self.set_xheader_var(call_corr_xheader_name)
+        self.call_id_var = call_id_var
         self.max_limit = max_limit
         self._id = utils.uuid()
 
@@ -193,32 +189,16 @@ class EventListener(object):
                 yield name, attr
 
     @property
-    def call_corr_var(self):
+    def call_id_var(self):
         """Channel variable used for associating sip legs into a 'call'
         """
         return self._call_var
 
-    @call_corr_var.setter
-    def call_corr_var(self, var_name):
+    @call_id_var.setter
+    def call_id_var(self, var_name):
         """Set the channel variable to use for associating sessions into calls
         """
         self._call_var = var_name
-
-    @property
-    def call_corr_xheader(self):
-        """X-header used for associating sip legs into calls
-        """
-        return self._call_xheader
-
-    def set_xheader_var(self, xheader_name):
-        """Set the X-header variable to use to use for associating sessions
-        into calls
-        """
-        xheader_prefix = 'sip_h_X-'
-        if xheader_prefix in xheader_name:
-            self._call_xheader = xheader_name
-        else:
-            self._call_xheader = '{}{}'.format(xheader_prefix, xheader_name)
 
     @property
     def epoch(self):
@@ -227,8 +207,8 @@ class EventListener(object):
 
     @property
     def uptime(self):
-        '''Uptime as per last received event time stamp'''
-        return (self._fs_time - self._epoch) / 3600.0
+        '''Uptime in minutes as per last received event time stamp'''
+        return (self._fs_time - self._epoch) / 60.0
 
     def block_jobs(self):
         '''Block the event loop from processing
@@ -269,12 +249,11 @@ class EventListener(object):
         self.log.debug('resetting all stats...')
         self.hangup_causes.clear()
         self.failed_jobs = Counter()
-        self.total_originated_sessions = 0
         self.total_answered_sessions = 0
 
     def start(self):
         '''Start this listener's event loop in a thread to start tracking
-        the engine-server's state
+        the slave-server's state
         '''
         if not self._rx_con.connected():
             raise ConfigurationError("you must call 'connect' first")
@@ -421,20 +400,18 @@ class EventListener(object):
             ).append(callback)
         return True
 
-    def remove_callbacks(self, ident, last=False):
-        """Pop and return the stack of callback objects registered for
-        :var:`ident`. If none exists return False.
+    def remove_callback(self, evname, ident, callback):
+        """Remove the callback object registered under
+        :var:`evname` and :var:`ident`.
         """
-        if last:
-            # pop the last n callbacks
-            cbs = self.consumers.get(ident)
-            removed = []
-            if cbs:
-                for i in range(last):
-                    removed.append(cbs.pop())
-            return removed
-        else:
-            return self.consumers.pop(ident)
+        ev_map = self.consumers[ident]
+        cbs = ev_map[evname]
+        cbs.remove(callback)
+        # clean up maps if now empty
+        if len(cbs) == 0:
+            ev_map.pop(evname)
+        if len(ev_map) == 0:
+            self.consumers.pop(ident)
 
     def unsubscribe(self, events):
         '''Unsubscribe this listener from an events of a cetain type
@@ -590,7 +567,7 @@ class EventListener(object):
         """Acquire the client/consumer id for event :var:`e`
         """
         var = 'variable_{}'
-        for var in map(var.format, (self.id_var, self.id_xh)):
+        for var in map(var.format, (Client.id_var, Client.id_xh)):
             ident = e.getHeader(var)
             if ident:
                 self.log.debug(
@@ -774,8 +751,7 @@ class EventListener(object):
                                  .format(body))
         return consumed, sess, job
 
-    @handler('CHANNEL_CREATE')
-    def _handle_create(self, e):
+    def _handle_initial_event(self, e):
         '''Handle channel create events by building local
         `Session` and `Call` objects for state tracking.
         '''
@@ -784,22 +760,29 @@ class EventListener(object):
         # Record the newly activated session
         # TODO: pass con as weakref?
         con = self._tx_con if not self._shared else None
-        sess = Session(event=e, con=con)
+        uuid = e.getHeader('Unique-ID')
+
+        # short circuit if we have already allocated a session since FS is
+        # indeterminate about which event create|originate will arrive first
+        sess = self.sessions.get(uuid)
+        if sess:
+            return True, sess
+
+        # allocate a session model
+        sess = Session(e, uuid=uuid, con=con)
         sess.cid = self.get_id(e, 'default')
         # note the start time and current load
         # TODO: move this to Session __init__??
-        sess.create_time = get_event_time(e)
+        sess.times['create'] = get_event_time(e)
 
-        # Use our special Xheader to try and associate sessions into calls
-        # (assumes that x-headers are forwarded by the proxy/B2BUA)
-        call_uuid = e.getHeader('variable_{}'.format(self.call_corr_xheader))
-        # If that fails then try using the freeswitch 'variable_call_uuid'
-        # (only works if bridging takes place locally)
-        if call_uuid is None:
-            call_uuid = e.getHeader(self.call_corr_var)  # could be 'None'
-            if not call_uuid:
-                self.log.warn("Unable to associate session '{}' into calls"
-                              .format(sess.uuid))
+        # Use our specified "call identification variable" to try and associate
+        # sessions into calls. By default the 'variable_call_uuid' channel
+        # variable is used for tracking locally bridged calls
+        call_uuid = e.getHeader(self.call_id_var)  # could be 'None'
+        if not call_uuid:
+            self.log.warn(
+                "Unable to associate session '{}' with a call using "
+                "variable '{}'".format(sess.uuid, self.call_id_var))
 
         # associate sessions into a call
         # (i.e. set the relevant sessions to reference each other)
@@ -816,23 +799,13 @@ class EventListener(object):
             self.log.debug("call created for session '{}'".format(call_uuid))
         sess.call = call
         self.sessions[uuid] = sess
+        self.sessions_per_app[sess.cid] += 1
         return True, sess
 
-    @handler('CHANNEL_ORIGINATE')
-    def _handle_originate(self, e):
-        '''Handle originate events
-        '''
-        uuid = e.getHeader('Unique-ID')
-        sess = self.sessions.get(uuid, None)
-        self.log.debug("handling originated session '{}'".format(uuid))
-        if sess:
-            sess.update(e)
-            # store local time stamp for originate
-            sess.originate_event_time = get_event_time(e)
-            sess.originate_time = time.time()
-            self.total_originated_sessions += 1
-            return True, sess
-        return False, sess
+    _handle_create = handler('CHANNEL_CREATE')(_handle_initial_event)
+
+    # The first event received is indeterminate
+    _handle_originate = handler('CHANNEL_ORIGINATE')(_handle_initial_event)
 
     _handle_park = handler('CHANNEL_PARK')(lookup_sess)
 
@@ -853,7 +826,7 @@ class EventListener(object):
                            .format(uuid,  e.getHeader('Call-Direction')))
             sess.answered = True
             self.total_answered_sessions += 1
-            sess.answer_time = get_event_time(e)
+            sess.times['answer'] = get_event_time(e)
             sess.update(e)
             return True, sess
         else:
@@ -875,31 +848,37 @@ class EventListener(object):
             return False, None
         sess.update(e)
         sess.hungup = True
+        sess.times['hangup'] = get_event_time(e)
         cause = e.getHeader('Hangup-Cause')
         self.hangup_causes[cause] += 1  # count session causes
+        self.sessions_per_app[sess.cid] -= 1
 
-        # try xheader first then channel var
-        call_uuid = e.getHeader('variable_{}'.format(self.call_corr_xheader))
+        # if possible lookup the relevant call
+        call_uuid = e.getHeader(self.call_id_var)
         if not call_uuid:
-            self.log.debug("handling HANGUP no call_uuid xheader found!?")
-            call_uuid = e.getHeader(self.call_corr_var)  # try call_uuid
-
-        if not call_uuid:
-            self.log.warn("No call found for session '{}'"
-                          .format(sess.uuid))
+            self.log.warn(
+                "handling HANGUP for session '{}' which can not be associated "
+                "with an active call?".format(sess.uuid))
         else:
-            call = self.calls.get(call_uuid, None)
+            # XXX seems like sometimes FS changes the `call_uuid`
+            # between create and hangup oddly enough
+            call = self.calls.get(call_uuid, sess.call)
             if call:
                 if sess in call.sessions:
                     self.log.debug("hungup session '{}' for call '{}'".format(
                                    uuid, call.uuid))
                     call.sessions.remove(sess)
+                else:
+                    self.log.warn("no call for session '{}'".format(sess.uuid))
+
                 # all sessions hungup
-                if len(call.sessions) == 0 or call_uuid == sess.uuid:
+                if len(call.sessions) == 0:
                     self.log.debug("all sessions for call '{}' were hung up"
                                    .format(call_uuid))
                     # remove call from our set
-                    self.calls.pop(call_uuid)
+                    self.calls.pop(call.uuid)
+            else:
+                self.log.warn("no call was found for '{}'".format(call_uuid))
         self.log.debug("handling HANGUP for call_uuid: {}".format(call_uuid))
 
         # pop any corresponding job
@@ -945,6 +924,8 @@ class Client(object):
     '''
     id_var = 'switchy_app'
     id_xh = utils.xheaderify(id_var)
+    # works under the assumption that x-headers are forwarded by the proxy/B2BUA
+    call_id_var = 'sip_h_X-switchy_originating_session'
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
                  listener=None,
@@ -956,7 +937,7 @@ class Client(object):
         self._id = utils.uuid()
         self._orig_cmd = None
         self.log = logger or utils.get_logger(utils.pstr(self))
-        # generally speaking clients should only host one call app
+        # clients can host multiple "composed" apps
         self._apps = {}
         self.apps = type('apps', (), {})()
         self.apps.__dict__ = self._apps  # dot-access to `_apps` from `apps`
@@ -983,6 +964,9 @@ class Client(object):
         # add our con to the listener's set so that it will be
         # managed on server disconnects
         if inst:
+            self._listener.call_id_var = 'variable_{}'.format(self.call_id_var)
+            self.log.debug("set call lookup variable to '{}'".format(
+                self._listener.call_id_var))
             inst._client_con = weakref.proxy(self._con)
 
     listener = property(get_listener, set_listener,
@@ -1005,79 +989,102 @@ class Client(object):
 
         :param ns: A namespace-like object containing functions marked with
             @event_callback (can be a module, class or instance).
-        :params str on_value: id key to be used for registering app callbacks
-            with `EventListener`
+        :params str on_value: app group id key to be used for registering app
+            callbacks with the `EventListener`. This value will be inserted in
+            the `originate` command as an X-header and used to look up which
+            app callbacks should be invoked for each received event.
         """
         listener = self.listener
         name = utils.get_name(ns)
-        app = self._apps.get(name, None)
-        if not app:
-            # if handed a class, instantiate appropriately
-            app = ns() if isinstance(ns, type) else ns
-            prepost = getattr(app, 'prepost', False)
-            if prepost:
-                args, kwargs = utils.get_args(app.prepost)
-                funcargs = tuple(weakref.proxy(getattr(self, argname))
-                                 for argname in args if argname != 'self')
-                ret = prepost(*funcargs, **prepost_kwargs)
-                if inspect.isgenerator(ret):
-                    # run init step
-                    next(ret)
-                    app._finalize = ret
+        group_id = on_value or name or utils.uuid()
+        app_map = self._apps.get(group_id, None)
+        if app_map and name in app_map:
+            # only allow 1 app inst per group
+            raise ConfigurationError(
+                "an app instance with name '{}' already exists for app group "
+                "'{}'.\nIf you want multiple instances of the same app load "
+                "them using different `on_value` ids."
+                .format(name, group_id)
+            )
 
-            # assign a 'consumer id'
-            cid = on_value if on_value else utils.uuid()
-            self.log.info("Loading call app '{}' for listener '{}'"
-                          .format(name, listener))
-            icb, failed = 1, False
-            # insert handlers and callbacks
-            for ev_type, cb_type, obj in marks.get_callbacks(app):
-                if cb_type == 'handler':
-                    # TODO: similar unloading on failure here as above?
-                    listener.add_handler(ev_type, obj)
+        # if handed a class, instantiate appropriately
+        app = ns() if isinstance(ns, type) else ns
+        prepost = getattr(app, 'prepost', False)
+        if prepost:
+            args, kwargs = utils.get_args(app.prepost)
+            funcargs = tuple(weakref.proxy(getattr(self, argname))
+                             for argname in args if argname != 'self')
+            ret = prepost(*funcargs, **prepost_kwargs)
+            if inspect.isgenerator(ret):
+                # run init step
+                next(ret)
+                app._finalize = ret
 
-                elif cb_type == 'callback':
-                    # add default handler if none exists
-                    if ev_type not in listener._handlers:
-                        self.log.info(
-                            "adding default session lookup handler for event"
-                            " type '{}'".format(ev_type)
-                        )
-                        listener.add_handler(
-                            ev_type,
-                            listener.lookup_sess
-                        )
-                    added = listener.add_callback(ev_type, cid, obj)
-                    if not added:
-                        failed = obj
-                        listener.remove_callbacks(cid, last=icb)
-                        break
-                    icb += 1
-                    self.log.debug("'{}' event callback '{}' added for id '{}'"
-                                   .format(ev_type, obj.__name__, cid))
+        self.log.info(
+            "Loading call app '{}' with group id '{}' for listener '{}'"
+            .format(name, group_id, listener)
+        )
+        failed = False
+        cb_paths = []
+        # insert handlers and callbacks
+        for ev_type, cb_type, obj in marks.get_callbacks(app):
+            if cb_type == 'handler':
+                # TODO: similar unloading on failure here as above?
+                listener.add_handler(ev_type, obj)
 
-            if failed:
-                raise TypeError("app load failed since '{}' is not a valid"
-                                "callback type".format(failed))
-            # register locally
-            self._apps[name] = app
-            app.cid, app.name = cid, name
+            elif cb_type == 'callback':
+                # add default handler if none exists
+                if ev_type not in listener._handlers:
+                    self.log.info(
+                        "adding default session lookup handler for event"
+                        " type '{}'".format(ev_type)
+                    )
+                    listener.add_handler(
+                        ev_type,
+                        listener.lookup_sess
+                    )
+                added = listener.add_callback(ev_type, group_id, obj)
+                if not added:
+                    failed = obj
+                    for path in reversed(cb_paths):
+                        listener.remove_callback(*path)
+                    break
+                cb_paths.append((ev_type, group_id, obj))
+                self.log.debug("'{}' event callback '{}' added for id '{}'"
+                               .format(ev_type, obj.__name__, group_id))
 
-        return app.cid
+        if failed:
+            raise TypeError("app load failed since '{}' is not a valid"
+                            "callback type".format(failed))
+        # register locally
+        self._apps.setdefault(group_id, {})[name] = app
+        app.cid, app.name = group_id, name
+        return group_id
 
-    def unload_app(self, ns):
+    def unload_app(self, on_value, ns=None):
         """Unload all callbacks associated with a particular app
-        namespace object
+        `on_value` id.
+        If `ns` is provided unload only the callbacks from that particular
+        subapp.
         """
-        name = utils.get_name(ns)
-        app = self._apps.pop(name)
-        finalize = getattr(app, '_finalize', False)
-        if finalize:
-            try:
-                next(finalize)
-            except StopIteration:
-                pass
-        return self.listener.remove_callbacks(app.cid)
+        app_map = self._apps[on_value]
+        appkeys = [utils.get_name(ns)] if ns else app_map.keys()
+
+        for name in appkeys:
+            app = app_map.pop(name)
+            # run prepost teardown
+            finalize = getattr(app, '_finalize', False)
+            if finalize:
+                try:
+                    next(finalize)
+                except StopIteration:
+                    pass
+            # remove callbacks
+            for ev_type, cb_type, obj in marks.get_callbacks(app):
+                    self.listener.remove_callback(ev_type, on_value, obj)
+
+        if not app_map:
+            self._apps.pop(on_value)
 
     def disconnect(self):
         """Disconnect the client's underlying connection
@@ -1116,22 +1123,21 @@ class Client(object):
         '''
         return self.api(cmd).getBody().strip()
 
-    def hupall(self, name=None):
+    def hupall(self, group_id=None):
         """Hangup all calls associated with this client
         by iterating all managed call apps and hupall-ing
-        with the apps callback id. If :var:`name` is provided
+        with the apps callback id. If :var:`group_id` is provided
         look up the corresponding app an hang up calls for that
         specific app
         """
-        if not name:
+        if not group_id:
             # hangup all calls for all apps
-            for app in self._apps.values():
+            for group_id in self._apps:
                 self.api('hupall NORMAL_CLEARING {} {}'.format(
-                         self.id_var, app.cid))
+                         self.id_var, group_id))
         else:
-            app = self._apps[name]
             self.api('hupall NORMAL_CLEARING {} {}'.format(
-                     self.id_var, app.cid))
+                     self.id_var, group_id))
 
     def _assert_alive(self, listener=None):
         """Assert our listener is active and if so return it
@@ -1187,6 +1193,7 @@ class Client(object):
                   app_id=None,
                   listener=None,
                   bgapi_kwargs={},
+                  rep_fields={},
                   **orig_kwargs):
         # TODO: add a 'block' arg to determine whether api or bgapi is used
         '''Originate a call using FreeSWITCH 'originate' command.
@@ -1211,8 +1218,8 @@ class Client(object):
             origkwds.update(orig_kwargs)
             cmd_str = build_originate_cmd(
                 dest_url,
-                uuid_str,
-                xheaders={listener.call_corr_xheader: uuid_str,
+                uuid_str=uuid_str,
+                xheaders={self.call_id_var: uuid_str,
                           self.id_xh: app_id or self._id},
                 # extra_params={self.id_var: app_id or self._id},
                 **origkwds
@@ -1220,7 +1227,8 @@ class Client(object):
         else:  # accept late data insertion for the uuid_str and app_id
             cmd_str = self.originate_cmd.format(
                 uuid_str=uuid_str,
-                app_id=app_id or self._id
+                app_id=app_id or self._id,
+                **rep_fields
             )
 
         return self.bgapi(
@@ -1235,18 +1243,23 @@ class Client(object):
         '''Build and cache an originate cmd string for later use
         as the default input for calls to `originate`
         '''
-        user_xh = kwargs.pop('xheaders', {})
-        # currently this puts a couple placeholders which can be replaced
+        # by default this inserts a couple placeholders which can be replaced
         # at run time by a format(uuid_str='blah', app_id='foo') call
+        xhs = {self.id_xh: '{app_id}'}
         if self.listener:
-            user_xh[self._listener.call_corr_xheader] = '{uuid_str}'
-        user_xh[self.id_xh] = '{app_id}'
+            xhs[self.call_id_var] = '{uuid_str}'
+        xhs.update(kwargs.pop('xheaders', {}))  # overrides from caller
+
         origparams = {self.id_var: '{app_id}'}
+        if 'uuid_str' in kwargs:
+            raise ConfigurationError(
+                "passing 'uuid_str' here is improper usage")
         origparams.update(kwargs)
+
         # build a reusable command string
         self._orig_cmd = build_originate_cmd(
             *args,
-            xheaders=user_xh,
+            xheaders=xhs,
             **origparams
         )
 
@@ -1288,9 +1301,17 @@ def active_client(host, port='8021', auth='ClueCon',
     client.connect()
     # load app set
     if apps:
-        for value, app in apps.items():
-            client.load_app(app, on_value=value if value else
-                            utils.get_name(app))
+        for on_value, app in apps.items():
+            try:
+                app, ppkwargs = app  # user can optionally pass doubles
+            except TypeError:
+                ppkwargs = {}
+            # doesn't currently load "composed" apps
+            client.load_app(
+                app,
+                on_value=on_value,
+                **ppkwargs
+            )
     # client setup/teardown
     client.listener.start()
     yield client
@@ -1298,7 +1319,27 @@ def active_client(host, port='8021', auth='ClueCon',
     # unload app set
     if apps:
         for value, app in apps.items():
-            client.unload_app(app)
+            client.unload_app(value)
 
     client.listener.disconnect()
     client.disconnect()
+
+
+def get_pool(contacts, **kwargs):
+    """Construct and return a slave pool from a sequence of
+    contact information
+    """
+    from .distribute import SlavePool
+    SlavePair = namedtuple("SlavePair", "client listener")
+    pairs = deque()
+
+    # instantiate all pairs
+    for contact in contacts:
+        if isinstance(contact, (basestring)):
+            contact = (contact,)
+        # create pairs
+        listener = EventListener(*contact, **kwargs)
+        client = Client(*contact, listener=listener)
+        pairs.append(SlavePair(client, listener))
+
+    return SlavePool(pairs)

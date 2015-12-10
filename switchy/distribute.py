@@ -125,8 +125,10 @@ def SlavePool(slaves):
         setattr(sp, 'iter_{}s'.format(name), sp.partial(name))
         setattr(sp, '{}s'.format(name), sp.evals(name))
 
-    sp.hangup_causes = sp.evals('listener.hangup_causes')
-    sp.causes = partial(reduce, add, sp.hangup_causes)
+    sp.hangup_causes_per_slave = sp.evals('listener.hangup_causes')
+    sp.hangup_causes = partial(reduce, add, sp.hangup_causes_per_slave)
+    sp.sessions_per_app_per_slave = sp.evals('listener.sessions_per_app')
+    sp.sessions_per_app = partial(reduce, add, sp.sessions_per_app_per_slave)
 
     # small reduction protocol for 'multi-actions'
     for attr in ('calls', 'jobs', 'sessions', 'failed'):
