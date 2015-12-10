@@ -135,6 +135,7 @@ class Originator(object):
         'duration': 0,
         'period': 1,
         'uuid_gen': utils.uuid,
+        'rep_fields_func': lambda: {},
     }
 
     def __init__(self, slavepool, debug=False, auto_duration=True,
@@ -419,7 +420,8 @@ class Originator(object):
             # originate a call
             job = slave.client.originate(
                 app_id=next(iterappids),
-                uuid_func=self.uuid_gen
+                uuid_func=self.uuid_gen,
+                rep_fields=self.rep_fields_func()
             )
             originated += 1
             # limit the max transmission rate

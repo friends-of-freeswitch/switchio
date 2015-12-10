@@ -1193,6 +1193,7 @@ class Client(object):
                   app_id=None,
                   listener=None,
                   bgapi_kwargs={},
+                  rep_fields={},
                   **orig_kwargs):
         # TODO: add a 'block' arg to determine whether api or bgapi is used
         '''Originate a call using FreeSWITCH 'originate' command.
@@ -1217,7 +1218,7 @@ class Client(object):
             origkwds.update(orig_kwargs)
             cmd_str = build_originate_cmd(
                 dest_url,
-                uuid_str,
+                uuid_str=uuid_str,
                 xheaders={self.call_id_var: uuid_str,
                           self.id_xh: app_id or self._id},
                 # extra_params={self.id_var: app_id or self._id},
@@ -1226,7 +1227,8 @@ class Client(object):
         else:  # accept late data insertion for the uuid_str and app_id
             cmd_str = self.originate_cmd.format(
                 uuid_str=uuid_str,
-                app_id=app_id or self._id
+                app_id=app_id or self._id,
+                **rep_fields
             )
 
         return self.bgapi(
@@ -1241,18 +1243,23 @@ class Client(object):
         '''Build and cache an originate cmd string for later use
         as the default input for calls to `originate`
         '''
-        user_xh = kwargs.pop('xheaders', {})
-        # currently this inserts a couple placeholders which can be replaced
+        # by default this inserts a couple placeholders which can be replaced
         # at run time by a format(uuid_str='blah', app_id='foo') call
+        xhs = {self.id_xh: '{app_id}'}
         if self.listener:
-            user_xh[self.call_id_var] = '{uuid_str}'
-        user_xh[self.id_xh] = '{app_id}'
+            xhs[self.call_id_var] = '{uuid_str}'
+        xhs.update(kwargs.pop('xheaders', {}))  # overrides from caller
+
         origparams = {self.id_var: '{app_id}'}
+        if 'uuid_str' in kwargs:
+            raise ConfigurationError(
+                "passing 'uuid_str' here is improper usage")
         origparams.update(kwargs)
+
         # build a reusable command string
         self._orig_cmd = build_originate_cmd(
             *args,
-            xheaders=user_xh,
+            xheaders=xhs,
             **origparams
         )
 
