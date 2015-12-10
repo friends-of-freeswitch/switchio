@@ -5,6 +5,7 @@
 Measurements app for collecting call latency and performance stats.
 """
 import weakref
+import time
 from switchy.marks import event_callback
 from switchy import utils
 from metrics import new_array
@@ -28,6 +29,12 @@ class Metrics(object):
     def array(self):
         return self._array
 
+    @event_callback('CHANNEL_ORIGINATE')
+    def on_originate(self, sess):
+        # store local time stamp for originate
+        sess.times['originate'] = sess.time
+        sess.times['req_originate'] = time.time()
+
     @event_callback('CHANNEL_HANGUP')
     def log_stats(self, sess, job):
         """Append measurement data inserting only once per call
@@ -47,15 +54,15 @@ class Metrics(object):
 
         peer = sess.call.get_peer(sess)
         if peer and l.sessions.get(peer.uuid, False):
-            first = call.first
-            last = call.last
+            first = call.first.times
+            last = call.last.times
             rollover = self._array.insert((
-                first.create_time,  # invite time index
-                last.create_time - first.create_time,
-                last.answer_time - first.answer_time,
-                first.answer_time - first.create_time,
-                first.originate_time - job.launch_time if job else 0,
-                first.originate_event_time - first.create_time if job else 0,
+                first['create'],  # invite time index
+                last['create'] - first['create'],
+                last['answer'] - first['answer'],
+                first['answer'] - first['create'],
+                first['req_originate'] - job.launch_time if job else 0,
+                first['originate'] - first['create'] if job else 0,
                 pool.count_failed() if pool else 0,
                 pool.count_sessions(),
             ))
