@@ -359,7 +359,7 @@ class Originator(object):
             self.log.debug("scheduling auto hangup for '{}'"
                            .format(sess.uuid))
             # schedule hangup
-            sess.sched_hangup(self.duration - (sess.time - sess.create_time))
+            sess.sched_hangup(self.duration - sess.uptime)
 
         # failed jobs and sessions should be popped in the listener's
         # default bg job handler
