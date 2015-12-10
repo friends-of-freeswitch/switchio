@@ -78,14 +78,10 @@ class Session(object):
     create_ev = 'CHANNEL_CREATE'
 
     # TODO: eventually uuid should be removed
-    def __init__(self, uuid=None, event=None, con=None):
-
+    def __init__(self, event, uuid=None, con=None):
         self.events = Events(event)
-        self.uuid = self.events['Unique-ID']
-        if uuid:
-            self.uuid = uuid
+        self.uuid = uuid or self.events['Unique-ID']
         self.con = con
-
         # sub-namespace for apps to set/get state
         self.vars = {}
 

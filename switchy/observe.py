@@ -249,7 +249,6 @@ class EventListener(object):
         self.log.debug('resetting all stats...')
         self.hangup_causes.clear()
         self.failed_jobs = Counter()
-        self.total_originated_sessions = 0
         self.total_answered_sessions = 0
 
     def start(self):
@@ -752,8 +751,7 @@ class EventListener(object):
                                  .format(body))
         return consumed, sess, job
 
-    @handler('CHANNEL_CREATE')
-    def _handle_create(self, e):
+    def _handle_initial_event(self, e):
         '''Handle channel create events by building local
         `Session` and `Call` objects for state tracking.
         '''
@@ -762,7 +760,16 @@ class EventListener(object):
         # Record the newly activated session
         # TODO: pass con as weakref?
         con = self._tx_con if not self._shared else None
-        sess = Session(event=e, con=con)
+        uuid = e.getHeader('Unique-ID')
+
+        # short circuit if we have already allocated a session since FS is
+        # indeterminate about which event create|originate will arrive first
+        sess = self.sessions.get(uuid)
+        if sess:
+            return True, sess
+
+        # allocate a session model
+        sess = Session(e, uuid=uuid, con=con)
         sess.cid = self.get_id(e, 'default')
         # note the start time and current load
         # TODO: move this to Session __init__??
@@ -795,21 +802,10 @@ class EventListener(object):
         self.sessions_per_app[sess.cid] += 1
         return True, sess
 
-    @handler('CHANNEL_ORIGINATE')
-    def _handle_originate(self, e):
-        '''Handle originate events
-        '''
-        uuid = e.getHeader('Unique-ID')
-        sess = self.sessions.get(uuid, None)
-        self.log.debug("handling originated session '{}'".format(uuid))
-        if sess:
-            sess.update(e)
-            # store local time stamp for originate
-            sess.times['originate'] = get_event_time(e)
-            sess.times['req_originate'] = time.time()
-            self.total_originated_sessions += 1
-            return True, sess
-        return False, sess
+    _handle_create = handler('CHANNEL_CREATE')(_handle_initial_event)
+
+    # The first event received is indeterminate
+    _handle_originate = handler('CHANNEL_ORIGINATE')(_handle_initial_event)
 
     _handle_park = handler('CHANNEL_PARK')(lookup_sess)
 
