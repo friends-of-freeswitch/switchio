@@ -63,11 +63,55 @@
 
 import switchy
 import threading
+import re
+from functools import partial
+from collections import OrderedDict
 from switchy.marks import event_callback
 
 # Enable logging to stderr
 # Debug levels: 'INFO' for production, 'DEBUG' for development
 log = switchy.utils.log_to_stderr('INFO')
+
+
+# IVR DID pattern matching and callback registration similar to
+# `flask.route` (http://flask.pocoo.org/docs/0.10/quickstart/#routing)
+class PatternCaller(object):
+    """A `flask`-like pattern to callback registrar and invoker.
+
+    Allows for registering callback functions via decorator syntax which
+    should be called when `PatterCaller.call_matches` is invoked with a
+    matching value.
+    """
+    def __init__(self):
+        self.regex2funcs = OrderedDict()
+
+    def __call__(self, pattern, **kwargs):
+        """Decorator interface allowing you to register callback functions
+        with a regex pattern and kwargs. When `lookup` is called with a value,
+        any callable registered with a matching regex pattern will be invoked
+        with the provided kwargs.
+        """
+        def inner(func):
+            self.regex2funcs.setdefault(pattern, []).append(
+                partial(func, **kwargs))
+            return func
+
+        return inner
+
+    def call_matches(self, value, **kwargs):
+        """Perform linear lookup and callback invocation for all functions
+        registered with a matching pattern. Each function is invoked with the
+        matched value as its first argument and any arguments provided here.
+        Any kwargs which were provided at registration are also forwarded.
+        """
+        consumed = False
+        for patt, funcs in self.regex2funcs.iteritems():
+            match = re.match(patt, value)
+            if match:
+                consumed = True
+                for func in funcs:
+                        func(match=match, **kwargs)
+        return consumed
 
 
 class IVRCallLogic(object):
@@ -79,6 +123,10 @@ class IVRCallLogic(object):
         self.<var_name> instance variables are global in nature.
         call.vars.['<var_name>'] should be used for per call info and state.
     """
+    # Use a singleton across all instances of this class such that pattern
+    # matching and callbacks can be shared over a clustered app.
+    route = PatternCaller()
+
     def prepost(self, client, listener):
         """Defines a fixture-like pre/post app load hook for performing
         provisioning steps before this app is loaded.
@@ -201,50 +249,33 @@ class IVRCallLogic(object):
         # DTMF has just been detected, stop playing any files to the user
         if call.vars.get('playing') is True:
             sess.breakmedia()
+            call.vars['playing'] = False
 
         # Stop the dtmf timeout timer if one exists
         self.cancel_dtmf_timer(sess)
 
-        # IVR Menu - a map of digits to actions
-        actions = {
-            '911': 'ivr-contact_system_administrator.wav',
-            '811': 'ivr-hello.wav',
-            '111': 'hangup',
-        }
+        # get the digits thus far
+        digits = ''.join(call.vars.get('incoming_dtmf', []))
 
-        digits = call.vars.get('incoming_dtmf', [])
-        if len(digits) == 3:
-            digits_str = ''.join(digits)
-            log.info("'{}': Matched on dtmf sequence '{}'"
-                     .format(sess.uuid, digits_str))
-            log.info("'{}': Playing file STARTED".format(sess.uuid))
+        # Menu processing - call all matching IVR routes/extensions
+        # (See below for registered extension definitions)
+        consumed = self.route.call_matches(digits, app=self, sess=sess)
 
-            # lookup IVR action (eg. this can be a call to an external
-            # database / extension list)
-            action = actions.get(digits_str)
-
-            # process action
-            if action is 'hangup':
-                log.info("'{}': User chose to hangup".format(sess.uuid))
-                sess.hangup()
-            elif action:
-                play_filename = "{}/{}".format(self.sound_dir, action)
-                call.vars['playing'] = True
-                sess.playback(play_filename)
-            else:
-                log.warn(
-                    "No action could be found at extension '{}'"
-                    .format(digits_str)
-                )
-
-        # End of IVR menu: If max digits where entered reset the dtmf queue
-        if len(digits) >= 3:
+        # End of menu processing
+        if consumed:
+            # If digits were matched to an extension reset the dtmf queue.
             log.debug("'{}': Resetting DTMF queue".format(sess.uuid))
             call.vars['incoming_dtmf'] = []  # reset dtmf digits list
 
-        # User has not triggered the menu. Restart the DTMF timeout
-        if call.vars['playing'] is not True:
-            self.start_dtmf_timer(sess)
+        else:
+            # User has not triggered a menu entry so restart the DTMF timeout
+            log.warn(
+                "No action could be found for extension '{}'"
+                .format(digits)
+            )
+            if call.vars['playing'] is not True:
+                # an extension may have triggered playback
+                self.start_dtmf_timer(sess)
 
     @event_callback("PLAYBACK_START")
     def on_playback_start(self, sess):
@@ -284,3 +315,51 @@ class IVRCallLogic(object):
         if call.vars.get('play_welcome') is True:
             call.vars['play_welcome'] = False
             log.warn("'{}': Got HANGUP while playing".format(sess.uuid))
+
+
+# IVR Menu functions:
+#
+# Each function can match multiple DTMF sequences using regex and can be
+# parameterized by the kwargs passed to the pertaining decorator.
+#
+@IVRCallLogic.route('811', filename='ivr-hello.wav')
+@IVRCallLogic.route('411', filename='ivr-contact_system_administrator.wav')
+def playback_file(match, app, sess, filename):
+    """Play back a media file by according to the dialled extension.
+
+    Note: You could also lookup an external database / extension list based
+          on the `value` received here.
+    """
+    log.info("'{}': Matched on DTMF sequence '{}'".format(
+        sess.uuid, match.group()))
+    log.info("'{}': Playing file {}".format(sess.uuid, filename))
+    play_filename = "{}/{}".format(app.sound_dir, filename)
+    sess.call.vars['playing'] = True
+    sess.playback(play_filename)
+
+
+@IVRCallLogic.route('111')
+def hangup_session(match, app, sess):
+    """Hangup the session immediately
+    """
+    log.info("'{}': User chose to hangup".format(sess.uuid))
+    sess.hangup()
+
+
+@IVRCallLogic.route('0(.*)', profile='internal', proxy='myproxy.com:5060')
+def bridge_to_dest(match, app, sess, profile, proxy):
+    """Bridge call to a remote destination.
+
+    WARNING:
+        The host/IP informations here are examples and should be replaced
+        by valid destinations.
+    """
+    # get the digits trailing '9' (see the `re` module)
+    extension = match.group(1)
+
+    # bridge the call to your PBX using trailing digits
+    sess.bridge(
+        dest_url='{}@mypbx.com:5060'.format(extension),
+        proxy=proxy,
+        profile=profile,
+    )
