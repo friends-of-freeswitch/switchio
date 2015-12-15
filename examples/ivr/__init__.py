@@ -1,29 +1,33 @@
 """
-Example IVR application
+Example IVR
 
-This package contains the following modules which contain example code for developing
-a very simple IVR using switchy and FreeSWITCH:
+This package contains the following modules which contain example code for
+developing a very simple IVR using switchy and FreeSWITCH:
 
 call_logic.py:
-    A switchy event processing app which defines the basic event
-    processing logic required to process DTMF inputs, play back prompt-files
-    and take call recordings.
+
+- A switchy event processing app which defines the basic event
+  processing logic required to process DTMF inputs, play back prompt-files
+  and take call recordings.
+
+- An example decorator implementation for registering DTMF sequence
+  processing callbacks very similar to `flask` routes
+  (http://flask.pocoo.org/docs/0.10/quickstart/#routing).
 
 dialer.py:
-    An example auto-dialer using the built-in `switchy.app.call_gen.Originator`
-    app with basic support for multi-campaign batch dialling.
 
-routes.py:
-    An example decorator implementation for registering DTMF sequenmce
-    processing callbacks very similar to `flask` routes
-    (http://flask.pocoo.org/docs/0.10/quickstart/#routing).
+- An example auto-dialer using the built-in `switchy.app.call_gen.Originator`
+  with basic support for multi-campaign batch dialling.
 
 WARNING:
-    This code should by non means be considered production ready. It is
+    This code should by no means be considered production ready. It is
     meant to serve as an overly documented example of how to begin implementing
     an IVR application.
+
+NOTES:
+    - you can configure the arguments to `main` in dailer.py to adjust
+      campaign settings and FreeSWITCH IP information.
 """
-# License:
 #  BSD License
 #  http://opensource.org/licenses/bsd-license.php
 #
@@ -51,3 +55,8 @@ WARNING:
 #  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
+from dialer import main
+
+if __name__ == '__main__':
+    # invoke the auto-dialer
+    main()

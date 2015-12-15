@@ -1,5 +1,6 @@
-# IVR Dialer
-#
+"""
+An example auto-dialer
+"""
 # Author: Nenad Corbic <ncorbic@sangoma.com>
 #
 # IVR Dialer demonstrates how to launch one or more outbound campaigns using
@@ -48,41 +49,30 @@
 import time
 import switchy
 from switchy import get_originator
-from ivr_call_logic import IVRCallLogic
-
-# Enable logging to stderr
-# Debug levels: 'INFO' for production, 'DEBUG' for development
-log = switchy.utils.log_to_stderr('INFO')
-
-# Specify FreeSWITCH or Sangoma NSG IP information
-# In this example the sample app is running on
-# Sangoma NSG appliance hence the use of local address
-host = "127.0.0.1"
-host = "10.10.26.33"
-port = 8821
-
-# Make an outbound call
-# This function will be called by originator for each call
-# User is supposed to provide the outbound DID or SIP URL for each call
-#
-# SIP Call:
-#   dest_url='did@domain.com' Remote SIP URI
-#   dest_profile='internal'   NSG defined SIP profile name
-#   dest_endpoint='sofia'     For SIP calls one MUST set sofia
-#
-# FreeTDM Call:
-#   dest_url='[A,a]/did'      A=ascending hunt, a=descending hunt, DID number
-#   dest_profile='g1'         profile is used as trunk group definition
-#                             (eg. g1 == group 1)
-#   endpoint='freetdm"        For TDM calls on MUST set freetdm
-#
-# In this example we are making a FreeTDM Call.
-# Change True to False in order to make SIP calls.
+from call_logic import IVRCallLogic
 
 
 def create_url():
     """Replacement field callback
-       NOTE: Developer is suppose to supply their own DID from a list or DB
+   NOTE: Developer is suppose to supply their own DID from a list or DB
+
+    Make an outbound call
+    This function will be called by originator for each call
+    User is supposed to provide the outbound DID or SIP URL for each call
+
+    SIP Call:
+      dest_url='did@domain.com' Remote SIP URI
+      dest_profile='internal'   NSG defined SIP profile name
+      dest_endpoint='sofia'     For SIP calls one MUST set sofia
+
+    FreeTDM Call:
+      dest_url='[A,a]/did'      A=ascending hunt, a=descending hunt, DID number
+      dest_profile='g1'         profile is used as trunk group definition
+                                (eg. g1 == group 1)
+      endpoint='freetdm"        For TDM calls on MUST set freetdm
+
+    In this example we are making a FreeTDM Call.
+    Change True to False in order to make SIP calls.
     """
     # if statement is just an easy way to switch between one or the other
     if True:
@@ -103,78 +93,94 @@ def create_url():
         }
 
 
-# Create an 'originator' which is an auto-dialer.
-# You can tell it how many calls to make and at what frequency.
-# After the first batch of calls are complete, you can choose to start dialing
-# again. There are 3 configurable variables:
-# - max_calls_per_campaign
-# - max_call_attempts_per_sec
-# - max_campaigns
-#
-# In this example the dialer will make 1 outbound call on first campaign.
-# By increasing the max_campaigns variable, the dialer will repeat as many dial
-# campaigns.
-max_calls_per_campaign = 1
-max_call_attempts_per_sec = 1
-max_campaigns = 1
+def main(
+    # Specify FreeSWITCH or Sangoma NSG IP information.
+    # In this example the sample app is running on
+    # Sangoma NSG appliance hence the use of local loopback address
+    host="127.0.0.1",
+    port=8821,
 
-# create an auto-dialer
-originator = get_originator(
-    [(host, port)],
-    apps=(IVRCallLogic,),
-    auto_duration=False,
-    rep_fields_func=create_url
-)
+    # Specify campaign settings
+    max_calls_per_campaign=1,
+    max_call_attempts_per_sec=1,
+    max_campaigns=1,
+):
+    """Run an auto-dialer and manage campaigns.
 
-# Initialize dial variables in order for switchy to trigger create_url()
-# function above.
-# The create_url function is a callback which has the task of specifying the
-# dial information per call (i.e. it is called once for each call).
-originator.pool.evals(
-    ("""client.set_orig_cmd(
-     dest_url='{dest_url}',
-     profile='{dest_profile}',
-     endpoint='{dest_endpoint}',
-     app_name='park')""")
-)
+    Create an 'originator' to use as an auto-dialer.
+    You can tell it how many calls to make and at what frequency.
+    After the first batch of calls are complete, you can choose to start
+    dialing again.
 
+    There are 3 configurable dialer variables:
+     - max_calls_per_campaign
+     - max_call_attempts_per_sec
+     - max_campaigns
 
-# Setup calls per sec
-originator.rate = max_call_attempts_per_sec
+    In this example the dialer will by default make 1 outbound call on the
+    first campaign. The `max_campaigns` variable, determines the number of
+    times the dialer will repeat campaigns.
+    """
+    # Enable logging to stderr
+    # Debug levels: 'INFO' for production, 'DEBUG' for development
+    log = switchy.utils.log_to_stderr('INFO')
 
-# Setup maximum number of calls to make
-# max erlangs / simultaneous calls
-originator.limit = max_calls_per_campaign
+    # create an auto-dialer and load our IVRCallLogic switchy app
+    originator = get_originator(
+        [(host, port)],
+        apps=(IVRCallLogic,),
+        auto_duration=False,
+        rep_fields_func=create_url
+    )
 
-# Maximum number of calls to dial out
-originator.max_offered = max_calls_per_campaign
+    # Initialize dial variables in order for switchy to trigger create_url()
+    # function above.
+    # The create_url function is a callback which has the task of specifying
+    # the dial information per call (i.e. it is called once for each call).
+    originator.pool.evals(
+        ("""client.set_orig_cmd(
+         dest_url='{dest_url}',
+         profile='{dest_profile}',
+         endpoint='{dest_endpoint}',
+         app_name='park')""")
+    )
 
-# Start the initial campaign - Originator will start making outbound calls
-originator.start()
+    # Setup calls per sec
+    originator.rate = max_call_attempts_per_sec
 
-# Keeps a count of campaigns
-campaign_cnt = 0
+    # Setup maximum number of calls to make
+    # max erlangs / simultaneous calls
+    originator.limit = max_calls_per_campaign
 
-# Here is an example of how to keep an eye on the campaign.
-# After the campaign is over, check to see if another campaign should start
-while (True):
-    if originator.stopped() and originator.count_calls() == 0:
+    # Maximum number of calls to dial out
+    originator.max_offered = max_calls_per_campaign
 
-        log.info(originator)  # log state info and current load
+    # Start the initial campaign - Originator will start making outbound calls
+    originator.start()
 
-        # Check to see if we should run another camapign
-        campaign_cnt += 1
-        if campaign_cnt >= max_campaigns:
-            break
+    # Keeps a count of campaigns
+    campaign_cnt = 0
 
-        log.info("Starting new campaign\n")
+    # Here is an example of how to keep an eye on the campaign.
+    # After the campaign is over, check to see if another campaign should start
+    while (True):
+        if originator.stopped() and originator.count_calls() == 0:
 
-        # We must increase the max allowed calls in order
-        # for dialer to initiate another max_calls_per_campaign
-        originator.max_offered += max_calls_per_campaign
-        originator.start()
+            log.info(originator)  # log state info and current load
 
-    time.sleep(1)
+            # Check to see if we should run another camapign
+            campaign_cnt += 1
+            if campaign_cnt >= max_campaigns:
+                break
 
-log.info("All campaigns done: stopping...\n")
-originator.shutdown()
+            log.info("Starting new campaign\n")
+
+            # We must increase the max allowed calls in order
+            # for dialer to initiate another max_calls_per_campaign
+            originator.max_offered += max_calls_per_campaign
+            originator.start()
+
+        time.sleep(1)
+
+    log.info("All campaigns done: stopping...\n")
+    originator.shutdown()
