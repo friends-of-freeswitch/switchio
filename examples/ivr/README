@@ -1,0 +1,57 @@
+======================
+IVR Dialer Sample Code
+======================
+
+
+Executing the sample code
+=========================
+python2.7 __init__.py
+
+
+Mandatory Configuration
+=======================
+
+dialer.py
+---------
+  Implements the campaign outbound dialer section of the sample application.
+  Open dialer.py code using vi or any other editor
+
+  Configure the NetBorder VoIP Gateway endpoint and DID per call
+    Default endpoint is set to: freetdm
+    Depending on NetBorder gateway configuration: freetdm endpoint can
+    be configured for SS7, PRI, MFCR2
+
+  Default DID is set to: 4113
+    This is just an example, and should be obtained from the campaign list of DIDs
+
+  Enable debugging
+    Set the loglevel to DEBUG from INFO
+
+  Read the comments in the source
+
+call_logic.py
+-------------
+  Implements the IVR call logic for each connected call.
+
+  Default IVR Menu:
+     911 - play a file
+     811 - play another file
+     111 - hangup the call
+
+  Enable debugging
+    Set the loglevel to DEBUG from INFO
+
+  Read the comments in the call logic source
+
+
+__init__.py
+-----------
+  Launches the dialer
+
+  User can configure dialer campaign parameters and NetBorder IP:Port information
+    Default: main(host="127.0.0.1", port=8821, max_calls_per_campaign=1, max_call_attempts_per_sec=1, max_campaigns=1)
+      Single campaign with a single call
+      Sample app is in NetBorder appliance
+
+    Example of non default config where NetBorder Appliance is remote:
+      main(host="10.10.26.33", port=8821, max_calls_per_campaign=2, max_call_attempts_per_sec=1, max_campaigns=1)
