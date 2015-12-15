@@ -80,14 +80,14 @@ def create_url():
         # Adding F at the end of the DID disables remote SS7 overlap dialing
         # which can add 5 sec to the incoming call setup time.
         return {
-            'dest_url': 'a/4113F',
+            'dest_url': 'a/4113',
             'dest_profile': 'g1',
             'dest_endpoint': 'freetdm'
         }
     else:
         # Make a SIP Call
         return {
-            'dest_url': '1000@10.10.12.5:6060',
+            'dest_url': '1000@10.10.12.22:6060',
             'dest_profile': 'internal',
             'dest_endpoint': 'sofia'
         }
@@ -123,7 +123,8 @@ def main(
     """
     # Enable logging to stderr
     # Debug levels: 'INFO' for production, 'DEBUG' for development
-    log = switchy.utils.log_to_stderr('INFO')
+    loglevel = 'INFO'
+    log = switchy.utils.log_to_stderr(loglevel)
 
     # create an auto-dialer and load our IVRCallLogic switchy app
     originator = get_originator(
@@ -144,6 +145,12 @@ def main(
          endpoint='{dest_endpoint}',
          app_name='park')""")
     )
+
+    # Enables debugging on NetBorder VoIP Gateway
+    if loglevel == 'DEBUG':
+        originator.pool.evals(
+            ("""client.set_loglevel('DEBUG')""")
+        )
 
     # Setup calls per sec
     originator.rate = max_call_attempts_per_sec

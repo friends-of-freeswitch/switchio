@@ -59,4 +59,21 @@ from dialer import main
 
 if __name__ == '__main__':
     # invoke the auto-dialer
-    main()
+    # Example of running the sample app on NetBorder VoIP Appliance
+    main(
+        host="127.0.0.1",
+        port=8821,
+        max_calls_per_campaign=1,
+        max_call_attempts_per_sec=1,
+        max_campaigns=1
+    )
+
+    # Example of running the sample app on Stand alone Linux server
+    # Example assumes that NetBorder VoIP Appliance is on Ip 10.10.26.33
+    # main(
+    #     host = "10.10.26.33",
+    #     port = 8821,
+    #     max_calls_per_campaign = 2,
+    #     max_call_attempts_per_sec = 1,
+    #     max_campaigns = 1
+    # )

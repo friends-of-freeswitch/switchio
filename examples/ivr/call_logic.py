@@ -145,6 +145,8 @@ class IVRCallLogic(object):
 
         self.stereo = False  # toggle whether to make stereo recordings
 
+        self.dtmf_menu_max_digits = 3
+
         # mod_sndfile module is a must in order to play prompts
         # Example of how to execute FreeSWITCH/NSG commands as from the CLI
         try:
@@ -273,6 +275,10 @@ class IVRCallLogic(object):
                 "No action could be found for extension '{}'"
                 .format(digits)
             )
+            if len(digits) >= self.dtmf_menu_max_digits:
+                log.debug("'{}': Resetting DTMF queue".format(sess.uuid))
+                call.vars['incoming_dtmf'] = []  # reset dtmf digits list
+
             if call.vars['playing'] is not True:
                 # an extension may have triggered playback
                 self.start_dtmf_timer(sess)
@@ -323,12 +329,12 @@ class IVRCallLogic(object):
 # parameterized by the kwargs passed to the pertaining decorator.
 #
 @IVRCallLogic.route('811', filename='ivr-hello.wav')
-@IVRCallLogic.route('411', filename='ivr-contact_system_administrator.wav')
+@IVRCallLogic.route('911', filename='ivr-contact_system_administrator.wav')
 def playback_file(match, app, sess, filename):
     """Play back a media file by according to the dialled extension.
 
     Note: You could also lookup an external database / extension list based
-          on the `value` received here.
+          on the `match` received here.
     """
     log.info("'{}': Matched on DTMF sequence '{}'".format(
         sess.uuid, match.group()))
@@ -346,7 +352,7 @@ def hangup_session(match, app, sess):
     sess.hangup()
 
 
-@IVRCallLogic.route('0(.*)', profile='internal', proxy='myproxy.com:5060')
+@IVRCallLogic.route('0(.*)#', profile='internal', proxy='myproxy.com:5060')
 def bridge_to_dest(match, app, sess, profile, proxy):
     """Bridge call to a remote destination.
 
@@ -354,10 +360,10 @@ def bridge_to_dest(match, app, sess, profile, proxy):
         The host/IP informations here are examples and should be replaced
         by valid destinations.
     """
-    # get the digits trailing '9' (see the `re` module)
+    # get the digits between '9' and '#' (see the `re` module)
     extension = match.group(1)
 
-    # bridge the call to your PBX using trailing digits
+    # bridge the call to your PBX using parsed extension
     sess.bridge(
         dest_url='{}@mypbx.com:5060'.format(extension),
         proxy=proxy,
