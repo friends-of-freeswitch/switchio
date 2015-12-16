@@ -12,6 +12,8 @@ import tempfile
 import pandas as pd
 import numpy as np
 import shmarray
+import os
+import pickle
 from switchy import utils
 from functools import partial
 from collections import OrderedDict, namedtuple
@@ -32,6 +34,7 @@ def DictProxy(d, extra_attrs={}):
         '__repr__',
         '__getitem__',
         '__setitem__',
+        '__contains__',
     ]
     attr_map = {attr: getattr(d, attr) for attr in attrs}
     attr_map.update(extra_attrs)
@@ -77,8 +80,8 @@ class Measurers(object):
     def __init__(self):
         self._apps = OrderedDict()
         # delegate to `_apps` for subscript access
-        setattr(self.__class__, '__getitem__',
-                getattr(self._apps, '__getitem__'))
+        for meth in '__getitem__ __contains__'.split():
+            setattr(self.__class__, meth, getattr(self._apps, meth))
 
         # add attr access for references to data frame operators
         self._ops = OrderedDict()
@@ -95,11 +98,15 @@ class Measurers(object):
             type(self._apps).__name__, type(self).__name__)
 
     def add(self, app, name=None, operators={}, **ppkwargs):
+        name = name or utils.get_name(app)
+        prepost = getattr(app, 'prepost', None)
+        if not prepost:
+            raise AttributeError(
+                "'{}' must define a `prepost` method".format(name))
         args, kwargs = utils.get_args(app.prepost)
         if 'storer' not in kwargs:
             raise TypeError("'{}' must define a 'storer' kwarg"
                             .format(app.prepost))
-        name = name or utils.get_name(app)
 
         # acquire storer factory
         factory = getattr(app, 'new_storer', None)
@@ -115,14 +122,16 @@ class Measurers(object):
         setattr(
             self.stores.__class__,
             name,
+            # make instance lookups access the `data` attr
             property(partial(storer.__class__.data.__get__, storer))
         )
-
         # add any app defined operator functions
         ops = getattr(app, 'operators', {})
         ops.update(operators)
         for opname, func in ops.items():
             self.add_operator(name, func, opname=opname)
+
+        return name
 
     def add_operator(self, measurername, func, opname):
         m = self._apps[measurername]
@@ -144,11 +153,15 @@ class Measurers(object):
     def items(self):
         return list(reversed(self._apps.items()))
 
-    def to_store(self, path):
+    def to_store(self, dirpath):
         """Dump all data + operator combinations to a hierarchical HDF store
         on disk.
         """
-        with pd.HDFStore(path) as store:
+        if not os.path.isdir(dirpath):
+            raise ValueError("You must provide a directory")
+
+        storepath = os.path.join(dirpath, "switchy_measures.hdf5")
+        with pd.HDFStore(storepath) as store:
             # raw data sets
             for name, m in self._apps.items():
                 data = m.storer.data
@@ -164,6 +177,14 @@ class Measurers(object):
                             dropna=False,
                             min_itemsize=min_size,
                         )
+        # dump pickle file containing figspec (and possibly other meta-data)
+        pklpath = os.path.join(dirpath, 'switchy_measure.pkl')
+        with open(pklpath, 'w') as pklfile:
+            pickle.dump(
+                {'storepath': storepath, 'figspecs': self._figspecs},
+                pklfile,
+            )
+        return pklpath
 
     @property
     def merged_ops(self):
@@ -274,7 +295,11 @@ class DataStorer(object):
         """Current buffer length up the last inserted data point
         """
         bi = self.bindex
-        return bi if bi else self._len
+        l = self._len
+        if not bi:
+            # handles the 1 % 1 == 0 case when l == 1
+            return bi if self.rindex < l else l
+        return bi
 
     @property
     def rindex(self):
@@ -355,14 +380,31 @@ def _consume_and_write(queue, path, ri, sharr):
     log.debug("terminating frame writer '{}'".format(proc.name))
 
 
-def load(path, wrapper=pd.DataFrame):
-    '''Load a pickeled numpy array from the filesystem into a `DataStorer`
-    wrapper.
+def load(path):
+    """Load a previously pickled data set from the filesystem and return it as
+    a loaded `pandas.DataFrame`.
+    """
+    with open(path, 'r') as pkl:
+        obj = pickle.load(pkl)
+        if not isinstance(obj, dict):
+            return load_legacy(obj)
 
-    WARNING: Deprecated use `from_store` to load HDF files.
+        store = pd.HDFStore(obj['storepath'])
+        merged = pd.concat(
+            (store[key] for key in store.keys()),
+            axis=1,
+        )
+        figspecs = obj.get('figspecs', {})
+        # XXX evetually we should support multiple figures
+        figspec = figspecs[figspecs.keys()[0]]
+        merged._plot = partial(plot_df, merged, figspec)
+        return merged
+
+
+def load_legacy(array):
+    '''Load a pickeled numpy structured array from the filesystem into a
+    `DataFrame`.
     '''
-    array = np.load(path)
-
     # calc and assign rate info
     def calc_rates(df):
         df = df.sort(['time'])
@@ -375,7 +417,7 @@ def load(path, wrapper=pd.DataFrame):
         return mdf
 
     # adjust field spec to old record array record names
-    calc_rates.figspec = {
+    figspec = {
         (1, 1): [
             'call_setup_latency',
             'answer_latency',
@@ -391,13 +433,6 @@ def load(path, wrapper=pd.DataFrame):
             'wm_rate',  # why so many NaN?
         ]
     }
-
-    ds = DataStorer(path, dtype=array.dtype, data=array)
-    ds.plot = partial(plot_df, ds.data, calc_rates.figspec)
-    return ds
-
-
-def from_store(path):
-    """Load an HDF file from the into a `pandas.HDFStore`
-    """
-    return pd.HDFStore(path)
+    df = calc_rates(pd.DataFrame.from_records(array))
+    df._plot = partial(plot_df, df, figspec)
+    return df
