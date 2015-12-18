@@ -80,16 +80,20 @@ def create_url():
         # Adding F at the end of the DID disables remote SS7 overlap dialing
         # which can add 5 sec to the incoming call setup time.
         return {
-            'dest_url': 'a/4113',
+            'dest_url': 'a/1000F',
             'dest_profile': 'g1',
-            'dest_endpoint': 'freetdm'
+            'dest_endpoint': 'freetdm',
+            'caller_id': "'Sangoma Technologies'",
+            'caller_id_num': '9054741990'
         }
     else:
         # Make a SIP Call
         return {
             'dest_url': '1000@10.10.12.22:6060',
             'dest_profile': 'internal',
-            'dest_endpoint': 'sofia'
+            'dest_endpoint': 'sofia',
+            'caller_id': "'Sangoma Technologies'",
+            'caller_id_num': '9054741990'
         }
 
 
@@ -143,6 +147,8 @@ def main(
          dest_url='{dest_url}',
          profile='{dest_profile}',
          endpoint='{dest_endpoint}',
+         caller_id='{caller_id}',
+         caller_id_num='{caller_id_num}',
          app_name='park')""")
     )
 
