@@ -7,6 +7,7 @@ Tests for the pandas machinery
 '''
 import pytest
 import time
+import tempfile
 from switchy.apps import players
 
 
@@ -26,7 +27,7 @@ def metrics():
 
 
 @pytest.mark.parametrize("length", [1, 128])
-def test_buffered_datastorer(metrics, length):
+def test_with_orig(metrics, length):
     """Verify the storer's internal in-mem buffering and disk flushing logic
     """
     np = metrics.np
@@ -35,6 +36,7 @@ def test_buffered_datastorer(metrics, length):
         dtype=[('ints', np.uint32), ('strs', 'S5')],
         buf_size=length,
     )
+    assert len(ds.data) == 0
     assert ds._writer.is_alive()
     # generate enough entries to fill up the buffer once
     for i in range(length):
@@ -128,24 +130,108 @@ def test_loaded_datastorer(metrics):
     assert (ds.data == rarr).all().all()
 
 
+def write_bufs(
+    num,
+    ds,
+    dtype=[('ints', 'i4'), ('strs', 'S5')],
+    func=lambda i: (i, str(i)),
+):
+    if type(ds) is type:
+        ds = ds(
+            'test_buffered_ds',
+            dtype=dtype,
+        )
+    numentries = num * len(ds._shmarr)
+    for i in range(numentries):
+        entry = func(i)
+        ds.append_row(entry)
+    return ds
+
+
+def test_measurers(metrics, tmpdir):
+    np = metrics.np
+
+    # an operator
+    def diff(df):
+        return df + df
+
+    # a figspec for plotting only the columns with numeric types
+    diff.figspec = {
+        (1, 1): ['ints'],
+    }
+
+    class MeasureBuddy(object):
+        fields = [('ints', np.uint32), ('strs', 'S5')]
+        storer_kwargs = {'buf_size': 10}
+        operators = {'diff': diff}
+
+    ms = metrics.Measurers()
+    with pytest.raises(AttributeError):
+        name = ms.add(MeasureBuddy)
+
+    # add a prepost method which is missing a `storer` kwarg
+    def prepost(self):
+        pass
+    MeasureBuddy.prepost = prepost.__get__(ms, MeasureBuddy)
+    with pytest.raises(TypeError):
+        name = ms.add(MeasureBuddy)
+
+    # add a prepost method which accepts a `storer` kwarg
+    def prepost(self, storer=None):
+        self.storer = storer
+    MeasureBuddy.prepost = prepost.__get__(ms, MeasureBuddy)
+    name = ms.add(MeasureBuddy)
+
+    # verify container
+    assert name in ms
+    m = ms[name]  # get measurer
+    assert len(ms.items()) == 1
+
+    # verify operator
+    assert 'diff' in ms._ops
+    assert diff is m.ops['diff']
+    assert 'diff' in ms.ops
+
+    # verify figspec
+    assert diff.figspec == ms.figspecs.diff
+
+    # write 3 bufs worth
+    ds = write_bufs(3, ds=m.storer)
+    # check storer
+    assert name in ms.stores
+    assert m.storer is ds
+    assert ds is ms._stores[name]
+    time.sleep(0.05)
+    assert len(ms.ops.diff) == len(m.storer.data) == len(ds.data)
+    # check merged
+    assert (ms.ops.diff == ms.merged_ops).all().all()
+
+    # check offline storage
+    with pytest.raises(ValueError):
+        # must be a dir path
+        pklpath = ms.to_store(tempfile.mktemp())
+
+    pklpath = ms.to_store(tempfile.mkdtemp())
+    df = metrics.load(pklpath)
+    assert len(df) == len(ds.data)
+    # double check figspec / partial func
+    assert df._plot.args[1] == diff.figspec
+    # ensure plotting doesn't throw errors
+    figpath = tmpdir.join('switchy_figure.png')
+    assert df._plot(fname=str(figpath))
+    assert figpath.exists()
+
+
 def test_write_speed(metrics):
     """Assert we can write and read quickly to the storer
     """
-    np = metrics.np
-    ds = metrics.DataStorer(
-        'test_buffered_ds',
-        dtype=[('ints', np.uint32), ('strs', 'S5')],
-    )
+    ds = write_bufs(3, metrics.DataStorer)
     numentries = 3 * len(ds._shmarr)
-    for i in range(numentries):
-        entry = (i, str(i))
-        ds.append_row(entry)
-    time.sleep(0.03)  # 20ms to flush 3 bufs...
+    time.sleep(0.03)  # 30ms to flush 3 bufs...
     assert len(ds.data) == numentries
-    assert tuple(ds.data.iloc[-1]) == entry
 
 
-def test_df_buffering_with_orig(get_orig):
+def test_with_orig(get_orig):
     """Test that using a `DataStorer` with a single row dataframe
     stores data correctly
     """
@@ -153,6 +239,7 @@ def test_df_buffering_with_orig(get_orig):
     orig.load_app(players.TonePlay)
     # configure max calls originated to length of of storer buffer
     ct_storer = orig.measurers['CallTimes'].storer
+    assert len(ct_storer.data) == 0
     orig.limit = orig.max_offered = ct_storer._len or 1
     assert ct_storer.bindex == 0
     orig.start()
@@ -172,6 +259,8 @@ def test_df_buffering_with_orig(get_orig):
     print("'{}' secs since all written to frame".format(time.time() - start))
 
     # index is always post-incremented after each row append
+    # (WARNING: the below check may intermittently fail due to thread raciness
+    # when determining if max_offered has been surpassed in an event callback)
     assert orig.max_offered == ct_storer.rindex
     assert not len(ct_storer.store)
     assert not ct_storer._store.keys()  # no flush to disk yet
