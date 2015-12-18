@@ -8,19 +8,25 @@ Measurement and plotting tools - numpy + mpl helpers
 #     - figure.tight_layout doesn't seem to work??
 #     - make legend malleable
 import sys
-from os.path import basename
-import matplotlib.pyplot as plt
+import os
 import numpy as np
-import pylab
 from ... import utils
 from collections import namedtuple
+
+# handle remote execution plotting
+if not os.environ.get("DISPLAY"):
+    import matplotlib
+    matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+import pylab
 
 log = utils.get_logger(__name__)
 
 plotitems = namedtuple('plotitems', 'mng fig axes artists')
 
 
-def multiplot(df, figspec, fig=None, mng=None, block=False):
+def multiplot(df, figspec, fig=None, mng=None, block=False, fname=None):
     '''Plot selected columns in appropriate axes on a figure using the pandas
     plotting helpers where possible. `figspec` is a map of subplot location
     tuples to column name iterables.
@@ -37,6 +43,10 @@ def multiplot(df, figspec, fig=None, mng=None, block=False):
         tight_layout=True,
     )
     mng = mng if mng else plt.get_current_fig_manager()
+
+    if block or fname:
+        # turn interactive mode off
+        plt.ioff()
 
     # plot loop
     artist_map = {}
@@ -63,7 +73,7 @@ def multiplot(df, figspec, fig=None, mng=None, block=False):
         ax.set_xlabel('Call Event Index', fontdict={'size': 'large'})
 
     if getattr(df, 'title', None):
-        fig.suptitle(basename(df.title), fontsize=15)
+        fig.suptitle(os.path.basename(df.title), fontsize=15)
 
     if block:
         if sys.platform.lower() == 'darwin':
@@ -71,10 +81,14 @@ def multiplot(df, figspec, fig=None, mng=None, block=False):
             # the fig.show() method throws exceptions
             pylab.show()
         else:
-            plt.ioff()
             plt.show()
+    # save to file depending on fname extension
+    elif fname:
+        plt.savefig(fname, bbox_inches='tight')
+    # regular interactive plotting
     else:
         fig.show()
+
     return plotitems(mng, fig, axes, artist_map)
 
 
