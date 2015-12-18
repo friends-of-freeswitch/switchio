@@ -281,7 +281,7 @@ def iter_import_submods(packages, recursive=False, imp_excs=()):
                         yield res
 
 
-def waitwhile(predicate, timeout=float('inf'), period=0.1):
+def waitwhile(predicate, timeout=float('inf'), period=0.1, exc=True):
     """Block until `predicate` evaluates to `False`.
 
     :param predicate: predicate function
@@ -294,7 +294,10 @@ def waitwhile(predicate, timeout=float('inf'), period=0.1):
     while predicate():
         time.sleep(period)
         if time.time() - start > timeout:
-            raise TimeoutError(
-                "'{}' failed to be True".format(
-                    predicate)
-            )
+            if exc:
+                raise TimeoutError(
+                    "'{}' failed to be True".format(
+                        predicate)
+                )
+            return False
+    return True
