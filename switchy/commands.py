@@ -15,6 +15,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
                         endpoint='sofia',
                         timeout=60,
                         caller_id='Mr_Switchy',
+                        caller_id_num='1112223333',
                         codec='PCMU',
                         abs_codec='',
                         xheaders={},
@@ -46,7 +47,8 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
     # default params setup
     params = {
         'originate_timeout': timeout,
-        'originate_caller_id_name': caller_id,
+        'origination_caller_id_name': caller_id,
+        'origination_caller_id_number': caller_id_num,
         'originator_codec': codec,
         'absolute_codec_string': abs_codec,
         # must fill this in using a format string placeholder
