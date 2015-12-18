@@ -304,10 +304,9 @@ class Originator(object):
                 attr.replace('_', '-'), getattr(self, attr)) for attr in props)
         )
 
-    def _stop_on_none(self):
+    def _report_on_none(self):
         if self.pool.count_jobs() == 0 and self.pool.count_sessions() == 0:
             self.log.info('all sessions have ended...')
-            self._change_state("STOPPED")
 
     @marks.event_callback("BACKGROUND_JOB")
     def _handle_bj(self, sess, job):
@@ -322,11 +321,11 @@ class Originator(object):
 
         # failed jobs and sessions should be popped in the listener's
         # default bg job handler
-        self._stop_on_none()
+        self._report_on_none()
 
     @marks.event_callback("CHANNEL_HANGUP")
     def _handle_hangup(self, sess, job):
-        self._stop_on_none()
+        self._report_on_none()
         # if sess.call.sessions and sess.is_outbound():
         #     # we normally expect that the caller hangs up
         #     self.log.warn(
@@ -382,7 +381,7 @@ class Originator(object):
                 break
             self.log.debug("count calls = {}".format(count_calls()))
             # originate a call
-            job = slave.client.originate(
+            slave.client.originate(
                 app_id=next(iterappids),
                 uuid_func=self.uuid_gen,
                 rep_fields=self.rep_fields_func()
@@ -558,8 +557,7 @@ class Originator(object):
         self,
         state_or_predicate=lambda orig:
             orig.count_calls() or not orig.stopped(),
-        timeout=30,
-        period=0.1,
+        **kwargs
     ):
         """If `state_or_predicate' is a func, block until it evaluates to `False`.
         If it is a `str` block until the internal state matches that value.
@@ -583,4 +581,4 @@ class Originator(object):
                     .format(state_or_predicate)
                 )
         # poll for predicate to eval False
-        utils.waitwhile(predicate=predicate, timeout=timeout, period=period)
+        return utils.waitwhile(predicate=predicate, **kwargs)
