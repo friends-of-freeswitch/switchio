@@ -135,11 +135,6 @@ class Session(object):
         '''
         self.events.update(event)
 
-    def show(self):
-        """Print data for most recent event to console
-        """
-        self.events.show()
-
     def __enter__(self, connection):
         self.con = connection
         return self
