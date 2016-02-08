@@ -219,6 +219,10 @@ class IVRCallLogic(object):
     def dtmf_timeout_action(self, sess):
         """Timer handler that implements DTMF timeout
         """
+
+        if sess.hungup is True:
+            return
+
         call = sess.call
         log.info("'{}': DTMF timeout".format(sess.uuid))
 
