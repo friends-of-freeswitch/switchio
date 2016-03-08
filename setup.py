@@ -34,7 +34,9 @@ setup(
             'switchy = switchy.cli:cli',
         ]
     },
-    install_requires=['click'],
+    install_requires=[
+        'click',
+    ],
     package_data={
         'switchy': ['../conf/switchydp.xml']
     },

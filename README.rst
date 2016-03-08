@@ -1,34 +1,50 @@
 Switchy
 =======
-A fast FreeSWITCH ESL control library with an emphasis on load testing.
+A FreeSWITCH_ control library and stress testing tool
 
+.. _FreeSWITCH: https://freeswitch.org/
+
+Features
+========
 Among other things, Switchy let's you
 
-    - drive N slaves as call generators
-    - write call control applications in pure python using a
-      super thin ESL api wrapper
-    - collect performance metrics using numpy
-    - dynamically modify call flows at runtime
+- drive multiple FreeSWITCH processes as a call generator cluster
+- write call control applications (IVRs, auto-dialers, ...) in pure
+  Python using a thin ESL api wrapper
+- record and display performance metrics captured during stress tests
+- avoid monolithic Python dependencies like :code:`twisted`
 
 Installation
 ============
 
 Dependencies
 ------------
-Switchy relies on the ESL SWIG package distributed with the FreeSWITCH
-sources. Manual installation instructions for the ESL package can be
-found here: https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
+Currently, Switchy relies on the `ESL SWIG package`_ distributed with the
+FreeSWITCH sources. Luckily, Sangoma has nicely `packaged this with setuptools`_
+so manual installation is not necessary.
+
+.. _ESL SWIG package: https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
+.. _packaged this with setuptools: https://github.com/sangoma/python-ESL
+
+Some optional numerical packages are required to record
+performance measurements. See the :code:`setup.py`'s
+:code:`extras_require` for details.
 
 Using pip
 ---------
-The simplest way to install this package is using pip with the command:
+At the moment :code:`switchy` is still pre major release software and we recommend
+downloading and installing directly from this repo:
 
-    pip install git+git://github.com/sangoma/switchy.git
+::
+
+    pip download git+git://github.com/sangoma/switchy.git -b switchy/
+    pip install -r switchy/requirements.txt switchy/
 
 Documentation
 =============
-Full usage documentation can be found at readthedocs:
-https://switchy.readthedocs.org/
+Full usage documentation can be found on readthedocs_
+
+.. _readthedocs: https://switchy.readthedocs.org/
 
 License
 =======
