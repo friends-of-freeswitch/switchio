@@ -110,7 +110,7 @@ def pstr(self):
     """
     return '{}@{}'.format(
         type(self).__name__,
-        getattr(self, 'server', getattr(self, 'host', ''))
+        getattr(self, 'server', getattr(self, 'host', 'unknown-host'))
     )
 
 
