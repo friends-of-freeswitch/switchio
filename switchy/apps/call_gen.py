@@ -142,7 +142,7 @@ class Originator(object):
         self.count_calls = self.pool.fast_count
         self.debug = debug
         self.auto_duration = auto_duration
-        self.server = self.pool.evals('client.server')
+        self.server = self.pool.evals('client.host')
         self.log = utils.get_logger(utils.pstr(self))
         self._thread = None
         self._start = mp.Event()

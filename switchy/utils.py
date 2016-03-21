@@ -105,6 +105,25 @@ def xheaderify(header_name):
     return 'sip_h_X-{}'.format(header_name)
 
 
+def param2header(name):
+    """Return the appropriate event header name corresponding to the named
+    parameter `name` which should be used when the param is received as a
+    header in event data.
+
+    Most often this is just the original parameter name with a 'variable_'
+    prefix. This is pretty much a shitty hack (thanks goes to FS for the
+    asymmetry in variable referencing...)
+    """
+    var_keys = {
+        'sip_h_X-',  # is it an x-header?
+        'switchy',  # custom switchy variable?
+    }
+    for key in var_keys:
+        if key in name:
+            return 'variable_{}'.format(name)
+    return name
+
+
 def pstr(self):
     """Pretty str repr of connection-like instances
     """

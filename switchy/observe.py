@@ -58,6 +58,7 @@ class EventListener(object):
                  bg_jobs=None,
                  rx_con=None,
                  call_id_var='variable_call_uuid',
+                 app_id_vars=None,
                  autorecon=30,
                  max_limit=float('inf'),
                  # proxy_mng=None,
@@ -73,7 +74,8 @@ class EventListener(object):
             Authentication password for connecting via esl
         call_id_var : string
             Name of the freeswitch variable (including the 'variable_' prefix)
-            to use for associating sessions into calls (see `_handle_create`).
+            to use for associating sessions into tracked calls
+            (see `_handle_create`).
 
             It is common to set this to an Xheader variable if attempting
             to track calls "through" an intermediary device (i.e. the first
@@ -83,14 +85,15 @@ class EventListener(object):
             intermediary device must be configured to forward the Xheaders
             it receives.
         autorecon : int, bool
-            Enable reconnection attempts on server disconnect. An integer
-            value specifies the of number seconds to spend re-trying the
-            connection before bailing. A bool of 'True' will poll
-            indefinitely and 'False' will not poll at all.
+            Enable reconnection attempts on loss of a server connection.
+            An integer value specifies the of number seconds to spend
+            re-trying the connection before bailing. A bool of 'True'
+            will poll indefinitely and 'False' will not poll at all.
         '''
-        self.server = host
+        self.host = host
         self.port = port
         self.auth = auth
+        self.log = utils.get_logger(utils.pstr(self))
         self._sessions = session_map or OrderedDict()
         self._bg_jobs = bg_jobs or OrderedDict()
         self._calls = OrderedDict()  # maps aleg uuids to Sessions instances
@@ -109,6 +112,12 @@ class EventListener(object):
         self.autorecon = autorecon
         self._call_var = None
         self.call_id_var = call_id_var
+        self.app_id_vars = map(
+            utils.param2header, (Client.id_var, Client.id_xh)
+        )
+        if app_id_vars:
+            self.app_id_vars = list(app_id_vars) + self.app_id_vars
+            self.log.debug("app lookup vars are: {}".format(self.app_id_vars))
         self.max_limit = max_limit
         self._id = utils.uuid()
 
@@ -125,12 +134,11 @@ class EventListener(object):
         self._exit = mp.Event()  # indicate when event loop should terminate
         self._lookup_blocker = mp.Event()  # used block event loop temporarily
         self._lookup_blocker.set()
-        self.log = utils.get_logger(utils.pstr(self))
         self._epoch = self._fs_time = 0.0
 
         # set up contained connections
-        self._rx_con = rx_con or Connection(self.server, self.port, self.auth)
-        self._tx_con = Connection(self.server, self.port, self.auth)
+        self._rx_con = rx_con or Connection(self.host, self.port, self.auth)
+        self._tx_con = Connection(self.host, self.port, self.auth)
 
         # mockup thread
         self._thread = None
@@ -192,7 +200,8 @@ class EventListener(object):
 
     @property
     def call_id_var(self):
-        """Channel variable used for associating sip legs into a 'call'
+        """Channel variable name used for associating sip sessions into a 'call'
+        (i.e. not the call-id from telephony).
         """
         return self._call_var
 
@@ -288,7 +297,7 @@ class EventListener(object):
             self._rx_con.disconnect()
         self._tx_con.disconnect()
         self.log.info("Disconnected listener '{}' from '{}'".format(self._id,
-                      self.server))
+                      self.host))
 
     def _stop(self):
         '''Stop bg thread by allowing it to fall through the
@@ -320,7 +329,7 @@ class EventListener(object):
         self._rx_con.subscribe(
             (ev for ev in self._handlers if ev not in self._unsub))
         self.log.info("Connected listener '{}' to '{}'".format(self._id,
-                      self.server))
+                      self.host))
 
     def get_new_con(self, server=None, port=None, auth=None,
                     register_events=False,
@@ -347,7 +356,7 @@ class EventListener(object):
         -------
         con : Connection
         '''
-        con = Connection(server or self.server, port or self.port,
+        con = Connection(server or self.host, port or self.port,
                          auth or self.auth, **kwargs)
         if register_events:
             con.subscribe(self._handlers)
@@ -570,12 +579,11 @@ class EventListener(object):
     def get_id(self, e, default=None):
         """Acquire the client/consumer id for event :var:`e`
         """
-        var = 'variable_{}'
-        for var in map(var.format, (Client.id_var, Client.id_xh)):
+        for var in self.app_id_vars:
             ident = e.getHeader(var)
             if ident:
                 self.log.debug(
-                    "sess lookup for id '{}' successfully returned '{}'"
+                    "app id lookup using '{}' successfully returned '{}'"
                     .format(var, ident)
                 )
                 return ident
@@ -646,7 +654,7 @@ class EventListener(object):
         """
         self.disconnect()
         self.log.warning("handling DISCONNECT from server '{}'"
-                         .format(self.server))
+                         .format(self.host))
         count = self.autorecon
         if count:
             while count:
@@ -665,7 +673,7 @@ class EventListener(object):
         self._exit.set()
         self.log.warning("Reconnection attempts to '{}' failed. Please call"
                          " 'connect' manually when server is ready "
-                         .format(self.server))
+                         .format(self.host))
         return True, None
 
     @handler('BACKGROUND_JOB')
@@ -763,11 +771,9 @@ class EventListener(object):
         `Session` and `Call` objects for state tracking.
         '''
         uuid = e.getHeader('Unique-ID')
-        self.log.debug("channel created for session '{}'".format(uuid))
         # Record the newly activated session
         # TODO: pass con as weakref?
         con = self._tx_con if not self._shared else None
-        uuid = e.getHeader('Unique-ID')
 
         # short circuit if we have already allocated a session since FS is
         # indeterminate about which event create|originate will arrive first
@@ -777,6 +783,7 @@ class EventListener(object):
 
         # allocate a session model
         sess = Session(e, uuid=uuid, con=con)
+        self.log.debug("session created with uuid '{}'".format(uuid))
         sess.cid = self.get_id(e, 'default')
 
         # Use our specified "call identification variable" to try and associate
@@ -885,7 +892,6 @@ class EventListener(object):
                             "already removed".format(call.uuid, sess.uuid))
             else:
                 self.log.warn("no call was found for '{}'".format(call_uuid))
-        self.log.debug("handling HANGUP for call_uuid: {}".format(call_uuid))
 
         # pop any corresponding job
         job = sess.bg_job
@@ -930,16 +936,17 @@ class Client(object):
     '''
     id_var = 'switchy_app'
     id_xh = utils.xheaderify(id_var)
-    # works under the assumption that x-headers are forwarded by the proxy
-    call_id_var = 'sip_h_X-switchy_originating_session'
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
-                 listener=None,
-                 logger=None):
+                 call_id_var=None, listener=None, logger=None):
 
-        self.host = self.server = host
+        self.host = host
         self.port = port
         self.auth = auth
+        # works under the assumption that x-headers are forwarded by the proxy
+        self.call_id_var = call_id_var or utils.xheaderify(
+            'switchy_originating_session')
+
         self._id = utils.uuid()
         self._orig_cmd = None
         self.log = logger or utils.get_logger(utils.pstr(self))
@@ -951,7 +958,7 @@ class Client(object):
 
         # WARNING: order of these next steps matters!
         # create a local connection for sending commands
-        self._con = Connection(self.server, self.port, self.auth)
+        self._con = Connection(self.host, self.port, self.auth)
         # if the listener is provided it is expected that the
         # user will run the set up methods (i.e. connect, start, etc..)
         self.listener = listener
@@ -970,7 +977,7 @@ class Client(object):
         # add our con to the listener's set so that it will be
         # managed on server disconnects
         if inst:
-            self._listener.call_id_var = 'variable_{}'.format(self.call_id_var)
+            self._listener.call_id_var = utils.param2header(self.call_id_var)
             self.log.debug("set call lookup variable to '{}'".format(
                 self._listener.call_id_var))
             inst._client_con = weakref.proxy(self._con)
@@ -1104,7 +1111,7 @@ class Client(object):
         """
         self._con.connect()
         assert self.connected(), "Failed to connect to '{}'".format(
-            self.server)
+            self.host)
 
     def connected(self):
         """Check if connection is active
@@ -1346,7 +1353,11 @@ def get_pool(contacts, **kwargs):
             contact = (contact,)
         # create pairs
         listener = EventListener(*contact, **kwargs)
-        client = Client(*contact, listener=listener)
+        client = Client(
+            *contact,
+            listener=listener,
+            call_id_var=kwargs.get('call_id_var')
+        )
         pairs.append(SlavePair(client, listener))
 
     return SlavePool(pairs)

@@ -16,7 +16,7 @@ def test_toneplay(fsip):
         # have the external prof call itself by default
         assert 'TonePlay' in caller.app_names
         sess, waitfor = caller(
-            "doggy@{}:{}".format(caller.client.server, 5080),
+            "doggy@{}:{}".format(caller.client.host, 5080),
             'TonePlay',
             timeout=3,
         )
@@ -36,7 +36,7 @@ def test_playrec(fsip):
         # have the external prof call itself by default
         caller.apps.PlayRec['PlayRec'].rec_rate = 1
         sess, waitfor = caller(
-            "doggy@{}:{}".format(caller.client.server, 5080),
+            "doggy@{}:{}".format(caller.client.host, 5080),
             'PlayRec',
             timeout=10,
         )
@@ -58,7 +58,7 @@ def test_alt_call_id_var(fsip):
         dest = 'doggy'
         # have the external prof call itself by default
         sess, waitfor = caller(
-            "{}@{}:{}".format(dest, caller.client.server, 5080),
+            "{}@{}:{}".format(dest, caller.client.host, 5080),
             'TonePlay',  # the default app
             timeout=3,
         )
