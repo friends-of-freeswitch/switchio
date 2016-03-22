@@ -178,7 +178,7 @@ class Measurers(object):
                             min_itemsize=min_size,
                         )
         # dump pickle file containing figspec (and possibly other meta-data)
-        pklpath = os.path.join(dirpath, 'switchy_measure.pkl')
+        pklpath = os.path.join(dirpath, 'switchy_measures.pkl')
         with open(pklpath, 'w') as pklfile:
             pickle.dump(
                 {'storepath': storepath, 'figspecs': self._figspecs},
@@ -389,7 +389,14 @@ def load(path):
         if not isinstance(obj, dict):
             return load_legacy(obj)
 
-        store = pd.HDFStore(obj['storepath'])
+        # attempt to find the hdf file
+        hdfpath = obj['storepath']
+        if not os.path.exists(hdfpath):
+            # it might be a sibling file
+            hdfpath = os.path.basename(hdfpath)
+            assert os.path.exists(hdfpath), "Can't find hdf file?"
+
+        store = pd.HDFStore(hdfpath)
         merged = pd.concat(
             (store[key] for key in store.keys()),
             axis=1,
