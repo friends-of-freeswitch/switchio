@@ -90,12 +90,12 @@ def get(name):
     return _apps.get(name)
 
 
-def load(packages=(), imp_excs=('numpy',)):
+def load(packages=(), imp_excs=('pandas',)):
     """Load by importing all built-in apps along with any apps found in the
     provided `packages` list.
 
     :param packages: package (names or actual modules)
-    :type package: str | module
+    :type packages: str | module
     :rtype: dict[str, types.ModuleType]
     """
     apps_map = {}

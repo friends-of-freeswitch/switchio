@@ -43,7 +43,7 @@ setup(
     # use_2to3 = False
     # zip_safe=True,
     extras_require={
-        'metrics': ['numpy'],
+        'metrics': ['pandas'],
         'graphing': ['matplotlib'],
         'testing': ['pytest'],
     },
