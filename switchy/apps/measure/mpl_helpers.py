@@ -2,14 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-Measurement and plotting tools - numpy + mpl helpers
+Measurement and plotting tools - pandas + mpl helpers
 """
 # TODO:
-#     - figure.tight_layout doesn't seem to work??
-#     - make legend malleable
+# - make legend malleable
 import sys
 import os
-import numpy as np
 from ... import utils
 from collections import namedtuple
 
@@ -41,6 +39,8 @@ def multiplot(df, figspec, fig=None, mng=None, block=False, fname=None):
         sharex=True,
         squeeze=False,
         tight_layout=True,
+        # make a BIG plot if we're writing to file
+        figsize=(2*24, 1*24) if fname else None,
     )
     mng = mng if mng else plt.get_current_fig_manager()
 
@@ -64,13 +64,14 @@ def multiplot(df, figspec, fig=None, mng=None, block=False, fname=None):
         artists, names = ax.get_legend_handles_labels()
         artist_map[loc] = {
             name: artist for name, artist in zip(names, artists)}
+
         # set legend
         ax.legend(
+            artists, names,
             loc='upper left', fontsize='large', fancybox=True, framealpha=0.5
         )
-        # set titles
-        # ax.set_title(name, fontdict={'size': 'small'})
-        ax.set_xlabel('Call Event Index', fontdict={'size': 'large'})
+
+    ax.set_xlabel('Call Event Index', fontdict={'size': 'large'})
 
     if getattr(df, 'title', None):
         fig.suptitle(os.path.basename(df.title), fontsize=15)
@@ -90,12 +91,3 @@ def multiplot(df, figspec, fig=None, mng=None, block=False, fname=None):
         fig.show()
 
     return plotitems(mng, fig, axes, artist_map)
-
-
-def gen_hist(arr, col='invite_latency'):
-    arr = arr[col]
-    fig = plt.figure()  # always render new plots
-    bins = np.arange(float(np.ceil(arr.max())))
-    n, bins, patches = plt.hist(arr, bins=bins, normed=True)
-    fig.show()
-    return n, bins, patches
