@@ -531,6 +531,8 @@ class EventListener(object):
             evname = e.getHeader('Event-Subclass')
         self.log.debug("receive event '{}'".format(evname))
 
+        uid = e.getHeader('Unique-ID')
+
         handler = self._handlers.get(evname, False)
         if handler:
             self.log.debug("handler is '{}'".format(handler))
@@ -544,7 +546,7 @@ class EventListener(object):
                 if consumers and consumed:
                     cbs = consumers.get(evname, ())
                     self.log.debug(
-                        "consumer '{}' has callback '{}' registered for ev {}"
+                        "consumer '{}' has callback {} registered for ev {}"
                         .format(cid, cbs, evname)
                     )
                     # look up the client's callback chain and run
@@ -554,7 +556,14 @@ class EventListener(object):
                     # XXX assign ret on each interation in an attempt to avoid
                     # python's dynamic scope lookup
                     for cb, ret in zip(cbs, itertools.repeat(ret)):
-                        cb(*ret)
+                        try:
+                            cb(*ret)
+                        except Exception:
+                            self.log.exception(
+                                "Failed to execute callback {} for event "
+                                "with uid {}".format(cb, uid)
+                            )
+
                     # unblock `session.vars` waiters
                     if model in self._waiters:
                         for varname, events in self._waiters[model].items():
@@ -567,10 +576,9 @@ class EventListener(object):
                 self.log.warning("Caught ESL error for event '{}':\n{}"
                                  .format(evname, traceback.format_exc()))
             except Exception:
-                self.log.error(
-                    "Failed to process event '{}' with uid '{}':\n{}"
-                    .format(evname, e.getHeader('Unique-ID'),
-                            traceback.format_exc())
+                self.log.exception(
+                    "Failed to process event {} with uid {}"
+                    .format(evname, uid)
                 )
             return consumed
         else:

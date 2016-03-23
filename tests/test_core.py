@@ -65,6 +65,7 @@ def scenario(request, fssock):
         print("{} stderr: {}".format(name, err))
     # ensure no failures
     for ua, proc in runner.procs.items():
+        # if it's None then sipp procs are probably still alive
         assert proc.returncode == 0
 
 
@@ -140,6 +141,35 @@ def monitor(el):
         calls = el.count_calls()
 
 
+@pytest.fixture
+def checkcalls(proxy_dp, scenario, ael):
+    """Return a function that can be used to make calls and check that call
+    counting is fast and correct.
+    """
+    def inner(rate=1, limit=1, duration=3, call_count=None, sleep=1.1):
+        # configure cmds
+        for ua in scenario.cmds:
+            ua.rate = rate
+            ua.limit = limit
+            ua.call_count = call_count or limit
+            ua.duration = int(duration * 1000)
+            print("SIPp cmd: {}".format(ua.render()))
+
+        # verify call counting
+        with scenario():
+            # wait for events to arrive and be processed
+            time.sleep(sleep)
+            msg = "Wasn't quite fast enough to track {} cps".format(rate)
+            assert ael.count_calls() == limit, msg
+            time.sleep(duration + 1.05)
+            assert ael.count_calls() == 0
+
+        if hasattr(ael, 'call_times'):  # check call_times tracking
+            assert len(ael.call_times.storer.data) == limit
+
+    return inner
+
+
 @pytest.mark.usefixtures('load_limits')
 class TestListener:
     def test_startup(self, el):
@@ -208,21 +238,31 @@ class TestListener:
         # remove connection from listener set
         delattr(el, 'con')
 
-    def test_call(self, ael, proxy_dp, scenario):
-        duration = 3
-        for ua in scenario.cmds:
-            ua.rate = 1
-            ua.limit = 1
-            ua.call_count = 1
-            ua.duration = int(duration * 1000)
-            print("SIPp cmd: {}".format(ua.render()))
-        with scenario():
-            time.sleep(1.3)  # we can track up to around 250cps (very rough)
-            assert ael.count_calls() == 1
-            time.sleep(duration + 0.5)
-            assert ael.count_calls() == 0
+    def test_call(self, checkcalls):
+        """Test a simple call (a pair of sessions) through FreeSWITCH
+        """
+        checkcalls(duration=3, sleep=1.3)
 
-    def test_track_cps(self, proxy_dp, ael, scenario, cps):
+    def test_cb_err(self, ael, checkcalls):
+        """Verify that the callback chain is never halted due to a single
+        callback's error
+        """
+        var = [None]
+
+        def throw_err(sess):
+            raise Exception("Callback failed on purpose")
+
+        def set_var(sess):
+            var[0] = 'yay'
+
+        ael.add_callback('CHANNEL_CREATE', 'default', throw_err)
+        ael.add_callback('CHANNEL_CREATE', 'default', set_var)
+
+        checkcalls(duration=3, sleep=1.3)
+        # ensure callback chain wasn't halted
+        assert var
+
+    def test_track_cps(self, checkcalls, cps):
         '''load fs with up to 250 cps and test that we're fast enough
         to track all the created session within a 1 sec period
 
@@ -230,26 +270,9 @@ class TestListener:
         this test may fail intermittently as it depends on the
         speed of the fs server under test
         '''
-        duration = 4
-        for ua in scenario.cmds:
-            ua.rate = cps
-            ua.limit = cps
-            ua.call_count = cps
-            ua.duration = int(duration * 1000)
-            print("SIPp cmd: {}".format(ua.render()))
+        checkcalls(rate=cps, limit=cps, call_count=cps, duration=4)
 
-        with scenario():
-            # wait for events to arrive and be processed
-            time.sleep(1.1)
-            msg = "Wasn't quite fast enough to track {} cps".format(cps)
-            assert ael.count_calls() == cps, msg
-            time.sleep(duration + 1.05)
-            assert ael.count_calls() == 0
-
-        if hasattr(ael, 'call_times'):  # check call_times tracking
-            assert len(ael.call_times.storer.data) == cps
-
-    def test_track_1kcapacity(self, ael, proxy_dp, scenario, cps):
+    def test_track_1kcapacity(self, checkcalls, cps):
         '''load fs with up to 1000 simultaneous calls
         and test we (are fast enough to) track all the created sessions
 
@@ -259,22 +282,7 @@ class TestListener:
         '''
         limit = 1000
         duration = limit / cps + 1  # h = E/lambda (erlang formula)
-        for ua in scenario.cmds:
-            ua.rate = cps
-            ua.limit = limit
-            ua.call_count = limit
-            ua.duration = int(duration * 1000)
-            print("SIPp cmd: {}".format(ua.render()))
-
-        with scenario():
-            # wait for events to arrive and be processed
-            time.sleep(duration)
-            assert ael.count_calls() == limit
-            time.sleep(duration + 1.5)
-            assert ael.count_calls() == 0
-
-        if hasattr(ael, 'call_times'):
-            assert len(ael.call_times.storer.data) == limit
+        checkcalls(rate=cps, limit=limit, duration=duration, sleep=duration)
 
 
 class TestClient:
