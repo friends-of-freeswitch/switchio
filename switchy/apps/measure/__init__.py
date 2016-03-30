@@ -14,7 +14,7 @@ from .metrics import pd, DataStorer, np
 
 def call_metrics(df):
     """Default call measurements computed from data retrieved by
-    the `CallTimes` app.
+    the `CDR` app.
     """
     # sort by create time
     df = df.sort_values(by=['caller_create'])
@@ -94,9 +94,10 @@ call_metrics.figspec = {
 }
 
 
-class CallTimes(object):
-    """Collect call oriented event time stamps and load data which can be used
-    for per call metrics computations.
+class CDR(object):
+    """Collect call detail record info including call oriented event time
+    stamps and and active sessions data which can be used for per call metrics
+    computations.
     """
     fields = [
         # since we're mixing numeric and str types we must be explicit
@@ -188,7 +189,7 @@ class CallTimes(object):
 
         pool = self.pool
         job = getattr(call, 'job', None)
-        # NOTE: the entries here correspond to the listed `CallTimes.fields`
+        # NOTE: the entries here correspond to the listed `CDR.fields`
         rollover = self._ds.append_row((
             caller.appname,
             caller['Hangup-Cause'],

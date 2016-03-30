@@ -158,9 +158,9 @@ class Originator(object):
         self.app_manager = AppManager(self.pool)
         self.measurers = self.app_manager.measurers
         if self.measurers:
-            from measure import CallTimes
+            from measure import CDR
             self.measurers.add(
-                CallTimes(),
+                CDR(),
                 pool=self.pool,
             )
 

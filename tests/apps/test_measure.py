@@ -235,10 +235,10 @@ def test_with_orig(get_orig):
     """Test that using a `DataStorer` with a single row dataframe
     stores data correctly
     """
-    orig = get_orig('doggy', rate=80)
+    orig = get_orig('doggy', rate=70)
     orig.load_app(players.TonePlay)
     # configure max calls originated to length of of storer buffer
-    ct_storer = orig.measurers['CallTimes'].storer
+    ct_storer = orig.measurers['CDR'].storer
     assert len(ct_storer.data) == 0
     orig.limit = orig.max_offered = ct_storer._len or 1
     assert ct_storer.bindex == 0
