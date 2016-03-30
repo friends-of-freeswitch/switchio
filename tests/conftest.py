@@ -19,11 +19,15 @@ def pytest_addoption(parser):
                      help="num of sipp calls to launch per second")
 
 
-def pytest_configure(config):
+@pytest.fixture(scope='session', autouse=True)
+def loglevel(request):
+    level = max(40 - request.config.option.verbose * 10, 10)
     if sys.stdout.isatty():
         # enable console logging
         from switchy import utils
-        utils.log_to_stderr(max(40 - config.option.verbose * 10, 10))
+        utils.log_to_stderr(level)
+
+    return level
 
 
 @pytest.fixture(scope='session')

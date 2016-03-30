@@ -7,66 +7,50 @@ Tests for core components
 from __future__ import division
 import time
 import pytest
+import logging
 from distutils import spawn
+from pprint import pformat
+from contextlib import contextmanager
 from switchy.utils import ConfigurationError
 
 
-@pytest.yield_fixture
-def scenario(request, fssock):
+@pytest.fixture
+def scenario(request, fssock, loglevel):
     '''provision and return a SIPp scenario with the
     remote proxy set to the current fs server
     '''
     sipp = spawn.find_executable('sipp')
     if not sipp:
         pytest.skip("SIPp is required to run call/speed tests")
+
+    try:
+        import pysipp
+    except ImportError:
+        pytest.skip("pysipp is required to run call/speed tests")
+
     import socket
-    from helpers import CmdStr, get_runner
-    # build command template
-    template = (
-        '{remote_host}:{remote_port}',
-        '-i {local_ip}',
-        '-p {local_port}',
-        '-recv_timeout {msg_timeout}',
-        '-sn {scen_name}',
-        '-s {uri_username}',
-        '-rsa {proxy}',
-        # load settings
-        '-d {duration}',
-        '-r {rate}',
-        '-l {limit}',
-        '-m {call_count}'
-    )
+    pl = pysipp.utils.get_logger()
+    pl.setLevel(loglevel)
+    scen = pysipp.scenario(defaults={
+        'local_host': socket.gethostbyname(socket.getfqdn()),
+    })
+    scen.log = pl
 
-    # common
-    ua = CmdStr(sipp, template)
-    ua.local_ip = socket.gethostbyname(socket.getfqdn())
-    ua.duration = 10000
-    ua.call_count = 1
-    ua.limit = 1
-    # uas
-    uas = ua.copy()
-    uas.scen_name = 'uas'
+    # server
+    uas = scen.agents['uas']
     uas.local_port = 8888
-    # uac
-    uac = ua.copy()
-    uac.scen_name = 'uac'
-    uac.local_port = 9999
-    uac.remote_host = uas.local_ip
-    uac.remote_port = uas.local_port
-    # NOTE: you must add a park extension to your default dialplan!
-    uac.uri_username = 'park'  # call the park extension
-    # first hop should be fs server
-    uac.proxy = ':'.join(map(str, fssock))
 
-    runner = get_runner((uas, uac))
-    yield runner
-    # print output
-    for name, (out, err) in runner.results.items():
-        print("{} stderr: {}".format(name, err))
-    # ensure no failures
-    for ua, proc in runner.procs.items():
-        # if it's None then sipp procs are probably still alive
-        assert proc.returncode == 0
+    # client
+    uac = scen.agents['uac']
+    uac.local_port = 9999
+    uac.destaddr = scen.local_host, uas.local_port
+
+    # NOTE: you must add a park extension to your default dialplan!
+    uac.uri_username = 'park'
+    # first hop should be fs server
+    uac.proxyaddr = fssock
+
+    return scen
 
 
 @pytest.yield_fixture
@@ -104,7 +88,7 @@ def proxy_dp(ael, client):
 
     # attempt to add measurement collection
     try:
-        from switchy.apps.measure import CallTimes
+        from switchy.apps.measure import CDR
     except ImportError:
         print("WARNING: numpy measurements not available")
     else:
@@ -112,9 +96,9 @@ def proxy_dp(ael, client):
         client.listener = ael
         # assigning a listener overrides it's call lookup var so restore it
         client.listener.call_id_var = 'variable_call_uuid'
-        # insert the `CallTimes` app
-        assert 'default' == client.load_app(CallTimes, on_value="default")
-        app = client.apps.default['CallTimes']
+        # insert the `CDR` app
+        assert 'default' == client.load_app(CDR, on_value="default")
+        app = client.apps.default['CDR']
         ael.call_times = app
     # sanity
     assert ael.connected()
@@ -148,15 +132,25 @@ def checkcalls(proxy_dp, scenario, ael):
     """
     def inner(rate=1, limit=1, duration=3, call_count=None, sleep=1.1):
         # configure cmds
-        for ua in scenario.cmds:
-            ua.rate = rate
-            ua.limit = limit
-            ua.call_count = call_count or limit
-            ua.duration = int(duration * 1000)
-            print("SIPp cmd: {}".format(ua.render()))
+        scenario.rate = rate
+        scenario.limit = limit
+        scenario.call_count = call_count or limit
+        scenario.pause_duration = int(duration * 1000)
+        scenario.recv_timeout = scenario.pause_duration + 5000
+
+        scenario.log.info(
+            "SIPp cmds: {}".format(pformat(scenario.cmditems()))
+        )
+
+        @contextmanager
+        def runscen(*args, **kwargs):
+            scenario(block=False)
+            yield
+            scenario.finalize()
 
         # verify call counting
-        with scenario():
+        with runscen():
+
             # wait for events to arrive and be processed
             time.sleep(sleep)
             msg = "Wasn't quite fast enough to track {} cps".format(rate)
@@ -164,8 +158,8 @@ def checkcalls(proxy_dp, scenario, ael):
             time.sleep(duration + 1.05)
             assert ael.count_calls() == 0
 
-        if hasattr(ael, 'call_times'):  # check call_times tracking
-            assert len(ael.call_times.storer.data) == limit
+            if hasattr(ael, 'call_times'):  # check call_times tracking
+                assert len(ael.call_times.storer.data) == limit
 
     return inner
 
