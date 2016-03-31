@@ -36,31 +36,19 @@ class CommandError(ESLError):
 LOG_FORMAT = ("%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d "
               ": %(message)s")
 DATE_FORMAT = '%b %d %H:%M:%S'
-_log = None
-
-
-def get_root_log():
-    '''Get the root switchy log
-    '''
-    global _log
-    if not _log:
-        _log = logging.getLogger('switchy')
-        _log.debug("creating new logger")
-        _log.propagate = True
-    return _log
 
 
 def get_logger(name=None):
-    '''Return a sub-log for `name` or the pkg log by default
+    '''Return the package log or a sub-log for `name` if provided.
     '''
-    log = get_root_log()
+    log = logging.getLogger('switchy')
     return log.getChild(name) if name else log
 
 
 def log_to_stderr(level=None):
     '''Turn on logging and add a handler which writes to stderr
     '''
-    log = get_root_log()
+    log = logging.getLogger()  # the root logger
     if level:
         log.setLevel(level)
     if not any(
@@ -87,6 +75,7 @@ def log_to_stderr(level=None):
             logging.warning("Colour logging not supported. Please install"
                             " the colorlog module to enable\n")
             formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+
         handler.setFormatter(formatter)
         log.addHandler(handler)
     return log
