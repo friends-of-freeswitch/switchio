@@ -6,7 +6,7 @@ import pickle
 from functools import partial
 from collections import OrderedDict, namedtuple
 from switchy import utils
-from .metrics import DataStorer, min_size
+from .storage import DataStorer, min_size
 import pandas as pd
 
 # re-export(s)

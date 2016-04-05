@@ -30,8 +30,8 @@ def measure():
 def test_buffered(measure, length):
     """Verify the storer's internal in-mem buffering and disk flushing logic
     """
-    np = measure.metrics.np
-    ds = measure.metrics.DataStorer(
+    np = measure.storage.np
+    ds = measure.storage.DataStorer(
         'test_buffered_ds',
         dtype=[('ints', np.uint32), ('strs', 'S5')],
         buf_size=length,
@@ -107,7 +107,7 @@ def test_no_dtypes(measure):
     """Ensure that When no explicit dtype is provided, all row entries are cast
     to float internally.
     """
-    ds = measure.metrics.DataStorer('no_dtype', ['ones', 'twos'])
+    ds = measure.storage.DataStorer('no_dtype', ['ones', 'twos'])
     entry = (1, 2)
     ds.append_row(entry)
     time.sleep(0.005)  # write delay
@@ -122,9 +122,9 @@ def test_no_dtypes(measure):
 def test_loaded_datastorer(measure):
     """A loaded array should work just as well
     """
-    np = measure.metrics.np
+    np = measure.storage.np
     rarr = np.random.randn(100, 4)
-    ds = measure.metrics.DataStorer('test_loaded_ds', rarr.dtype, data=rarr)
+    ds = measure.storage.DataStorer('test_loaded_ds', rarr.dtype, data=rarr)
     assert not hasattr(ds, '_writer')  # no sub-proc launched
     assert ds.data.shape == rarr.shape
     assert (ds.data == rarr).all().all()
@@ -149,7 +149,7 @@ def write_bufs(
 
 
 def test_measurers(measure, tmpdir):
-    np = measure.metrics.np
+    np = measure.storage.np
 
     # an operator
     def diff(df):
@@ -225,7 +225,7 @@ def test_measurers(measure, tmpdir):
 def test_write_speed(measure):
     """Assert we can write and read quickly to the storer
     """
-    ds = write_bufs(3, measure.metrics.DataStorer)
+    ds = write_bufs(3, measure.storage.DataStorer)
     numentries = 3 * len(ds._shmarr)
     time.sleep(0.03)  # 30ms to flush 3 bufs...
     assert len(ds.data) == numentries

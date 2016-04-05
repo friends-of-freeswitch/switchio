@@ -1,12 +1,12 @@
 """
-Measurements app for collecting call latency and performance stats.
+CDR app for collecting signalling latency and performance stats.
 """
 import weakref
 import itertools
 import time
 from switchy.marks import event_callback
 from switchy import utils
-from .metrics import pd, DataStorer, np
+from .storage import pd, DataStorer, np
 
 
 def call_metrics(df):
@@ -54,24 +54,24 @@ def call_metrics(df):
 #     )
 
 
-def call_types(df, figspec=None):
-    """Hangup-cause and app plotting annotations
-    """
-    # sort by create time
-    df = df.sort_values(by=['caller_create'])
-    ctdf = pd.DataFrame(
-        data={
-            'hangup_cause': df['hangup_cause'],
-        },
-        # data will be sorted by 'caller_create` but re-indexed
-        index=range(len(df)),
-    )
+# def call_types(df, figspec=None):
+#     """Hangup-cause and app plotting annotations
+#     """
+#     # sort by create time
+#     df = df.sort_values(by=['caller_create'])
+#     ctdf = pd.DataFrame(
+#         data={
+#             'hangup_cause': df['hangup_cause'],
+#         },
+#         # data will be sorted by 'caller_create` but re-indexed
+#         index=range(len(df)),
+#     )
 
-    # create step funcs for each hangup cause
-    for cause in ctdf.hangup_cause.value_counts().keys():
-        ctdf[cause.lower()] = (ctdf.hangup_cause == cause).astype(pd.np.float)
+#     # create step funcs for each hangup cause
+#     for cause in ctdf.hangup_cause.value_counts().keys():
+#         ctdf[cause.lower()] = (ctdf.hangup_cause == cause).astype(pd.np.float)
 
-    return ctdf
+#     return ctdf
 
 
 call_metrics.figspec = {
@@ -119,7 +119,7 @@ class CDR(object):
 
     operators = {
         'call_metrics': call_metrics,
-        'call_types': call_types,
+        # 'call_types': call_types,
         # 'hcm': hcm,
     }
 
