@@ -78,7 +78,7 @@ class DataStorer(object):
         self._store.close()
 
         # setup bg writer
-        self.queue = queues.SimpleQueue()
+        self.queue = queues.Queue()
         if bg_writer:
             # disable SIGINT while we spawn
             signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -156,7 +156,7 @@ class DataStorer(object):
     def _stopwriter(self):
         """Trigger the background frame writer to terminate
         """
-        self.queue.put(Terminate)
+        self.queue.put(Terminate, timeout=3)
 
 
 def _consume_and_write(queue, path, ri, sharr):
