@@ -440,8 +440,9 @@ class Originator(object):
             # exit gracefully
             self.log.info("terminating originate thread...")
         except Exception:
-            self.log.error("'{}' failed with:\n{}".format(
-                mp.current_process().name, traceback.format_exc()))
+            self.log.exception(
+                "'{}' failed with:".format(mp.current_process().name)
+            )
 
     @property
     def state(self):

@@ -12,13 +12,13 @@ from switchy.apps import players
 
 
 @pytest.fixture(autouse=True)
-def metrics():
+def measure():
     """Load the measurement sub-module as long as there are no import issues
     otherwise skip this test set.
     """
     try:
-        from switchy.apps.measure import metrics
-        return metrics
+        from switchy.apps import measure
+        return measure
     except ImportError as ie:
         pytest.skip(
             "'{}' is required to run measurement tests"
@@ -27,11 +27,11 @@ def metrics():
 
 
 @pytest.mark.parametrize("length", [1, 128])
-def test_with_orig(metrics, length):
+def test_buffered(measure, length):
     """Verify the storer's internal in-mem buffering and disk flushing logic
     """
-    np = metrics.np
-    ds = metrics.DataStorer(
+    np = measure.metrics.np
+    ds = measure.metrics.DataStorer(
         'test_buffered_ds',
         dtype=[('ints', np.uint32), ('strs', 'S5')],
         buf_size=length,
@@ -103,11 +103,11 @@ def test_with_orig(metrics, length):
         assert ds.data.iloc[i][0] == i
 
 
-def test_no_dtypes(metrics):
+def test_no_dtypes(measure):
     """Ensure that When no explicit dtype is provided, all row entries are cast
     to float internally.
     """
-    ds = metrics.DataStorer('no_dtype', ['ones', 'twos'])
+    ds = measure.metrics.DataStorer('no_dtype', ['ones', 'twos'])
     entry = (1, 2)
     ds.append_row(entry)
     time.sleep(0.005)  # write delay
@@ -119,12 +119,12 @@ def test_no_dtypes(metrics):
     assert tuple(ds.data.iloc[-1]) == entry
 
 
-def test_loaded_datastorer(metrics):
+def test_loaded_datastorer(measure):
     """A loaded array should work just as well
     """
-    np = metrics.np
+    np = measure.metrics.np
     rarr = np.random.randn(100, 4)
-    ds = metrics.DataStorer('test_loaded_ds', rarr.dtype, data=rarr)
+    ds = measure.metrics.DataStorer('test_loaded_ds', rarr.dtype, data=rarr)
     assert not hasattr(ds, '_writer')  # no sub-proc launched
     assert ds.data.shape == rarr.shape
     assert (ds.data == rarr).all().all()
@@ -148,8 +148,8 @@ def write_bufs(
     return ds
 
 
-def test_measurers(metrics, tmpdir):
-    np = metrics.np
+def test_measurers(measure, tmpdir):
+    np = measure.metrics.np
 
     # an operator
     def diff(df):
@@ -165,7 +165,7 @@ def test_measurers(metrics, tmpdir):
         storer_kwargs = {'buf_size': 10}
         operators = {'diff': diff}
 
-    ms = metrics.Measurers()
+    ms = measure.Measurers()
     with pytest.raises(AttributeError):
         name = ms.add(MeasureBuddy)
 
@@ -212,7 +212,7 @@ def test_measurers(metrics, tmpdir):
         pklpath = ms.to_store(tempfile.mktemp())
 
     pklpath = ms.to_store(tempfile.mkdtemp())
-    df = metrics.load(pklpath)
+    df = measure.load(pklpath)
     assert len(df) == len(ds.data)
     # double check figspec / partial func
     assert df._plot.args[1] == diff.figspec
@@ -222,10 +222,10 @@ def test_measurers(metrics, tmpdir):
     assert figpath.exists()
 
 
-def test_write_speed(metrics):
+def test_write_speed(measure):
     """Assert we can write and read quickly to the storer
     """
-    ds = write_bufs(3, metrics.DataStorer)
+    ds = write_bufs(3, measure.metrics.DataStorer)
     numentries = 3 * len(ds._shmarr)
     time.sleep(0.03)  # 30ms to flush 3 bufs...
     assert len(ds.data) == numentries

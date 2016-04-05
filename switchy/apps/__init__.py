@@ -119,12 +119,11 @@ class AppManager(object):
         self.pool = pool
         # attempt measurement apps setup (requires pandas)
         try:
-            from measure.metrics import Measurers
+            from measure import Measurers
         except ImportError as ie:
             utils.log_to_stderr().warn(ie.message)
             self.measurers = None
         else:
-            # shared by whole cluster
             self.measurers = Measurers()
 
     def load_multi_app(self, apps_iter, app_id=None, **kwargs):

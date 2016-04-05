@@ -251,6 +251,22 @@ class Timer(object):
         return self._last
 
 
+def DictProxy(d, extra_attrs={}):
+    """A dictionary proxy object which provides attribute access to elements
+    """
+    attrs = [
+        '__repr__',
+        '__getitem__',
+        '__setitem__',
+        '__contains__',
+    ]
+    attr_map = {attr: getattr(d, attr) for attr in attrs}
+    attr_map.update(extra_attrs)
+    proxy = type('DictProxy', (), attr_map)()
+    proxy.__dict__ = d
+    return proxy
+
+
 # based on
 # http://stackoverflow.com/questions/3365740/how-to-import-all-submodules
 def iter_import_submods(packages, recursive=False, imp_excs=()):

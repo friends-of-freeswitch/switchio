@@ -1,210 +1,230 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""
-Measurements app for collecting call latency and performance stats.
-"""
-import weakref
-import itertools
-import time
-from switchy.marks import event_callback
+import os
+import pickle
+from functools import partial
+from collections import OrderedDict, namedtuple
 from switchy import utils
-from .metrics import pd, DataStorer, np
+from .metrics import DataStorer, min_size
+import pandas as pd
+
+# re-export(s)
+from cdr import CDR
 
 
-def call_metrics(df):
-    """Default call measurements computed from data retrieved by
-    the `CDR` app.
+def plot_df(df, figspec, **kwargs):
+    """Plot a pandas data frame according to the provided `figspec`
     """
-    # sort by create time
-    df = df.sort_values(by=['caller_create'])
-    cr = 1 / df['caller_create'].diff()  # compute instantaneous call rates
-    # any more and the yaxis scale becomes a bit useless
-    clippedcr = cr.clip(upper=1000)
-
-    mdf = pd.DataFrame(
-        data={
-            'switchy_app': df['switchy_app'],
-            'hangup_cause': df['hangup_cause'],
-            'hangup_index': df.index,
-            'invite_latency': df['callee_create'] - df['caller_create'],
-            'answer_latency': df['caller_answer'] - df['callee_answer'],
-            'call_setup_latency': df['caller_answer'] - df['caller_create'],
-            'originate_latency': df['caller_req_originate'] - df['job_launch'],
-            'call_duration': df['caller_hangup'] - df['caller_create'],
-            'failed_calls': df['failed_calls'],
-            'active_sessions': df['active_sessions'],
-            'call_rate': clippedcr,
-            'avg_call_rate': pd.rolling_mean(clippedcr, 100),
-            'seizure_fail_rate': df['failed_calls'] / df.index.max(),
-        },
-        # data will be sorted by 'caller_create` but re-indexed
-        index=range(len(df)),
-    ).assign(answer_seizure_ratio=lambda df: 1 - df['seizure_fail_rate'])
-    return mdf
+    from mpl_helpers import multiplot
+    return multiplot(df, figspec=figspec, **kwargs)
 
 
-# def hcm(df):
-#     ''''Hierarchical indexed call metrics
-#     '''
-#     cm = call_metrics(df)
-#     return pd.DataFrame(
-#         cm.values,
-#         index=pd.MultiIndex.from_arrays(
-#             [df['switchy_app'], df['hangup_cause'], cm.index]),
-#         columns=cm.columns,
-#     )
+Measurer = namedtuple("Measurer", 'app ppkwargs storer ops')
 
 
-def call_types(df, figspec=None):
-    """Hangup-cause and app plotting annotations
+class Measurers(object):
+    """A dict-like collection of measurement apps with
+    sub-references to each app's `DataStorer` and optional metrics
+    computing callables.
+
+    The purpose of this type is two-fold:
+    1) provide micro-management of apps which collect data/measurements
+    (measurers) such that they can be loaded and referenced as a group under
+    different scopes (eg. per call control app).
+    2) provide an interface for adding operator functions which process
+    a single pandas.DataFrame and provide a new frame output for analysis.
+
+    Each `Measurer` tuple can be accessed using dict-like subscript syntax.
     """
-    # sort by create time
-    df = df.sort_values(by=['caller_create'])
-    ctdf = pd.DataFrame(
-        data={
-            'hangup_cause': df['hangup_cause'],
-        },
-        # data will be sorted by 'caller_create` but re-indexed
-        index=range(len(df)),
-    )
-
-    # create step funcs for each hangup cause
-    for cause in ctdf.hangup_cause.value_counts().keys():
-        ctdf[cause.lower()] = (ctdf.hangup_cause == cause).astype(pd.np.float)
-
-    return ctdf
-
-
-call_metrics.figspec = {
-    (1, 1): [
-        'call_setup_latency',
-        'answer_latency',
-        'invite_latency',
-        'originate_latency',
-    ],
-    (2, 1): [
-        'active_sessions',
-        'failed_calls',
-    ],
-    (3, 1): [
-        'call_rate',
-        'avg_call_rate',  # why so many NaN?
-    ],
-}
-
-
-class CDR(object):
-    """Collect call detail record info including call oriented event time
-    stamps and and active sessions data which can be used for per call metrics
-    computations.
-    """
-    fields = [
-        # since we're mixing numeric and str types we must be explicit
-        # about each field
-        ('switchy_app', 'S50'),
-        ('hangup_cause', 'S50'),
-        ('caller_create', np.float64),
-        ('caller_answer',  np.float64),
-        ('caller_req_originate', np.float64),
-        ('caller_originate', np.float64),
-        ('caller_hangup', np.float64),
-        ('job_launch', np.float64),
-        ('callee_create', np.float64),
-        ('callee_answer', np.float64),
-        ('callee_hangup', np.float64),
-        ('failed_calls', np.uint32),
-        ('active_sessions', np.uint32),
-    ]
-
-    operators = {
-        'call_metrics': call_metrics,
-        'call_types': call_types,
-        # 'hcm': hcm,
-    }
-
     def __init__(self):
-        self.log = utils.get_logger(__name__)
-        self._call_counter = itertools.count(0)
+        self._apps = OrderedDict()
+        # delegate to `_apps` for subscript access
+        for meth in '__getitem__ __contains__'.split():
+            setattr(self.__class__, meth, getattr(self._apps, meth))
 
-    def new_storer(self):
-        return DataStorer(self.__class__.__name__, dtype=self.fields)
+        # add attr access for references to data frame operators
+        self._ops = OrderedDict()
+        self.ops = utils.DictProxy(self._ops)
+        # do the same for data stores
+        self._stores = OrderedDict()
+        self.stores = utils.DictProxy(self._stores)
+        # same for figspecs
+        self._figspecs = OrderedDict()
+        self.figspecs = utils.DictProxy(self._figspecs)
 
-    def prepost(self, listener, storer=None, pool=None, orig=None):
-        self.listener = listener
-        self.orig = orig
-        # create our own storer if we're not loaded as a `Measurer`
-        self._ds = storer if storer else self.new_storer()
-        self.pool = weakref.proxy(pool) if pool else self.listener
+    def __repr__(self):
+        return repr(self._apps).replace(
+            type(self._apps).__name__, type(self).__name__)
+
+    def add(self, app, name=None, operators={}, **ppkwargs):
+        name = name or utils.get_name(app)
+        prepost = getattr(app, 'prepost', None)
+        if not prepost:
+            raise AttributeError(
+                "'{}' must define a `prepost` method".format(name))
+        args, kwargs = utils.get_args(app.prepost)
+        if 'storer' not in kwargs:
+            raise TypeError("'{}' must define a 'storer' kwarg"
+                            .format(app.prepost))
+
+        # acquire storer factory
+        factory = getattr(app, 'new_storer', None)
+        storer_kwargs = getattr(app, 'storer_kwargs', {})
+        # app may not define a storer factory method
+        storer = DataStorer(
+                name, dtype=app.fields, **storer_kwargs
+        ) if not factory else factory()
+
+        self._apps[name] = Measurer(app, ppkwargs, storer, {})
+        # provide attr access off `self.stores`
+        self._stores[name] = storer
+        setattr(
+            self.stores.__class__,
+            name,
+            # make instance lookups access the `data` attr
+            property(partial(storer.__class__.data.__get__, storer))
+        )
+        # add any app defined operator functions
+        ops = getattr(app, 'operators', {})
+        ops.update(operators)
+        for opname, func in ops.items():
+            self.add_operator(name, func, opname=opname)
+
+        return name
+
+    def add_operator(self, measurername, func, opname):
+        m = self._apps[measurername]
+        m.ops[opname] = func
+
+        def operator(self, storer):
+            return storer.data.pipe(func)
+
+        # provides descriptor protocol access for interactive work
+        self._ops[opname] = func
+        setattr(self.ops.__class__, opname,
+                property(partial(operator, storer=m.storer)))
+
+        # append any figure specification
+        figspec = getattr(func, 'figspec', None)
+        if figspec:
+            self._figspecs[opname] = figspec
+
+    def items(self):
+        return list(reversed(self._apps.items()))
+
+    def to_store(self, dirpath):
+        """Dump all data + operator combinations to a hierarchical HDF store
+        on disk.
+        """
+        if not os.path.isdir(dirpath):
+            raise ValueError("You must provide a directory")
+
+        storepath = os.path.join(dirpath, "switchy_measures.hdf5")
+        with pd.HDFStore(storepath) as store:
+            # raw data sets
+            for name, m in self._apps.items():
+                data = m.storer.data
+                if len(data):
+                    store.append(
+                        "{}".format(name), data, min_itemsize=min_size)
+
+                    # processed (metrics) data sets
+                    for opname, op in m.ops.items():
+                        store.append(
+                            '{}/{}'.format(name, opname),
+                            op(data),
+                            dropna=False,
+                            min_itemsize=min_size,
+                        )
+        # dump pickle file containing figspec (and possibly other meta-data)
+        pklpath = os.path.join(dirpath, 'switchy_measures.pkl')
+        with open(pklpath, 'w') as pklfile:
+            pickle.dump(
+                {'storepath': storepath, 'figspecs': self._figspecs},
+                pklfile,
+            )
+        return pklpath
 
     @property
-    def storer(self):
-        return self._ds
-
-    @event_callback('CHANNEL_CREATE')
-    def on_create(self, sess):
-        """Store total (cluster) session count at channel create time
+    def merged_ops(self):
+        """Merge and return all function operator frames from all measurers
         """
-        call_vars = sess.call.vars
-        # call number tracking
-        if not call_vars.get('call_index', None):
-            call_vars['call_index'] = next(self._call_counter)
-        # capture the current erlangs / call count
-        call_vars['session_count'] = self.pool.count_sessions()
+        # concat along the columns
+        return pd.concat(
+            (getattr(self.ops, name) for name in self._ops),
+            axis=1
+        )
 
-    @event_callback('CHANNEL_ORIGINATE')
-    def on_originate(self, sess):
-        # store local time stamp for originate
-        sess.times['originate'] = sess.time
-        sess.times['req_originate'] = time.time()
-
-    @event_callback('CHANNEL_ANSWER')
-    def on_answer(self, sess):
-        sess.times['answer'] = sess.time
-
-    @event_callback('CHANNEL_HANGUP')
-    def log_stats(self, sess, job):
-        """Append measurement data only once per call
+    def plot(self, **kwargs):
+        """Plot all figures specified in the `figspecs` dict.
         """
-        sess.times['hangup'] = sess.time
-        call = sess.call
+        return [
+            (figspec, plot_df(self.merged_ops, figspec, **kwargs))
+            for figspec in self._figspecs.values()
+        ]
 
-        if call.sessions:  # still session(s) remaining to be hungup
-            call.caller = call.first
-            call.callee = call.last
-            if job:
-                call.job = job
-            return  # stop now since more sessions are expected to hangup
 
-        # all other sessions have been hungup so store all measurements
-        caller = getattr(call, 'caller', None)
-        if not caller:
-            # most likely only one leg was established and the call failed
-            # (i.e. call.caller was never assigned above)
-            caller = sess
+def load(path):
+    """Load a previously pickled data set from the filesystem and return it as
+    a loaded `pandas.DataFrame`.
+    """
+    with open(path, 'r') as pkl:
+        obj = pickle.load(pkl)
+        if not isinstance(obj, dict):
+            return load_legacy(obj)
 
-        callertimes = caller.times
-        callee = getattr(call, 'callee', None)
-        calleetimes = callee.times if callee else None
+        # attempt to find the hdf file
+        hdfpath = obj['storepath']
+        if not os.path.exists(hdfpath):
+            # it might be a sibling file
+            hdfpath = os.path.basename(hdfpath)
+            assert os.path.exists(hdfpath), "Can't find hdf file?"
 
-        pool = self.pool
-        job = getattr(call, 'job', None)
-        # NOTE: the entries here correspond to the listed `CDR.fields`
-        rollover = self._ds.append_row((
-            caller.appname,
-            caller['Hangup-Cause'],
-            callertimes['create'],  # invite time index
-            callertimes['answer'],
-            callertimes['req_originate'],  # local time stamp
-            callertimes['originate'],
-            callertimes['hangup'],
-            # 2nd leg may not be successfully established
-            job.launch_time if job else None,
-            calleetimes['create'] if callee else None,
-            calleetimes['answer'] if callee else None,
-            calleetimes['hangup'] if callee else None,
-            pool.count_failed(),
-            call.vars['session_count'],
-        ))
-        if rollover:
-            self.log.debug('wrote data to disk')
+        store = pd.HDFStore(hdfpath)
+        merged = pd.concat(
+            (store[key] for key in store.keys()),
+            axis=1,
+        )
+        figspecs = obj.get('figspecs', {})
+        # XXX evetually we should support multiple figures
+        figspec = figspecs[figspecs.keys()[0]]
+        merged._plot = partial(plot_df, merged, figspec)
+        return merged
+
+
+def load_legacy(array):
+    '''Load a pickeled numpy structured array from the filesystem into a
+    `DataFrame`.
+    '''
+    # calc and assign rate info
+    def calc_rates(df):
+        df = df.sort(['time'])
+        mdf = pd.DataFrame(
+            df, index=range(len(df))).assign(hangup_index=df.index).assign(
+            inst_rate=lambda df: 1 / df['time'].diff()
+        ).assign(
+            wm_rate=lambda df: pd.rolling_mean(df['inst_rate'], 30)
+        )
+        return mdf
+
+    # adjust field spec to old record array record names
+    figspec = {
+        (1, 1): [
+            'call_setup_latency',
+            'answer_latency',
+            'invite_latency',
+            'originate_latency',
+        ],
+        (2, 1): [
+            'num_sessions',
+            'num_failed_calls',
+        ],
+        (3, 1): [
+            'inst_rate',
+            'wm_rate',  # why so many NaN?
+        ]
+    }
+    df = calc_rates(pd.DataFrame.from_records(array))
+    df._plot = partial(plot_df, df, figspec)
+    return df
