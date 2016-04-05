@@ -58,7 +58,9 @@ class SysStats(object):
         self.count = 0
         self._collect_period = 1. / collect_rate
         self._last_collect_time = 0
-        self._last_cpu_times = None
+
+        # initial cpu usage
+        self._last_cpu_times = self.psutil.cpu_times()
 
     @property
     def collect_rate(self):
@@ -80,10 +82,6 @@ class SysStats(object):
 
                 psutil = self.psutil
                 self.log.debug("writing psutil row at time '{}'".format(now))
-
-                # only on first call
-                if not self._last_cpu_times:
-                    self._last_cpu_times = psutil.cpu_times()
 
                 curr_times = psutil.cpu_times()
 
