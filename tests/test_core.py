@@ -7,10 +7,8 @@ Tests for core components
 from __future__ import division
 import time
 import pytest
-import logging
 from distutils import spawn
 from pprint import pformat
-from contextlib import contextmanager
 from switchy.utils import ConfigurationError
 
 
@@ -142,14 +140,8 @@ def checkcalls(proxy_dp, scenario, ael):
             "SIPp cmds: {}".format(pformat(scenario.cmditems()))
         )
 
-        @contextmanager
-        def runscen(*args, **kwargs):
+        try:
             scenario(block=False)
-            yield
-            scenario.finalize()
-
-        # verify call counting
-        with runscen():
 
             # wait for events to arrive and be processed
             time.sleep(sleep)
@@ -160,6 +152,8 @@ def checkcalls(proxy_dp, scenario, ael):
 
             if hasattr(ael, 'call_times'):  # check call_times tracking
                 assert len(ael.call_times.storer.data) == limit
+        finally:
+            scenario.finalize()
 
     return inner
 
