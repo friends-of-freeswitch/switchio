@@ -235,13 +235,13 @@ def test_with_orig(get_orig):
     """Test that using a `DataStorer` with a single row dataframe
     stores data correctly
     """
-    orig = get_orig('doggy', rate=70)
+    orig = get_orig('doggy', rate=60)
     orig.load_app(players.TonePlay)
     # configure max calls originated to length of of storer buffer
-    ct_storer = orig.measurers['CDR'].storer
-    assert len(ct_storer.data) == 0
-    orig.limit = orig.max_offered = ct_storer._len or 1
-    assert ct_storer.bindex == 0
+    cdr_storer = orig.measurers['CDR'].storer
+    assert len(cdr_storer.data) == 0
+    orig.limit = orig.max_offered = cdr_storer._len or 1
+    assert cdr_storer.bindex == 0
     orig.start()
 
     # wait for all calls to come up then hupall
@@ -249,21 +249,21 @@ def test_with_orig(get_orig):
     orig.hupall()
     start = time.time()
     orig.waitwhile(
-        lambda: orig.pool.count_calls() and ct_storer._iput < orig.max_offered,
+        lambda: orig.pool.count_calls() and cdr_storer._iput < orig.max_offered,
         timeout=10
     )
     print("'{}' secs since all queue writes".format(time.time() - start))
 
     start = time.time()
-    orig.waitwhile(lambda: ct_storer.rindex < orig.max_offered, timeout=10)
+    orig.waitwhile(lambda: cdr_storer.rindex < orig.max_offered, timeout=10)
     print("'{}' secs since all written to frame".format(time.time() - start))
 
     # index is always post-incremented after each row append
     # (WARNING: the below check may intermittently fail due to thread raciness
     # when determining if max_offered has been surpassed in an event callback)
-    assert orig.max_offered == ct_storer.rindex
-    assert not len(ct_storer.store)
-    assert not ct_storer._store.keys()  # no flush to disk yet
+    assert orig.max_offered == cdr_storer.rindex
+    assert not len(cdr_storer.store)
+    assert not cdr_storer._store.keys()  # no flush to disk yet
 
     # verify that making one addtional call results in data being inserted
     # into the beginning of the df buffer and a flush to disk
@@ -272,9 +272,9 @@ def test_with_orig(get_orig):
     orig.start()
     time.sleep(1)
     orig.hupall()
-    orig.waitwhile(lambda: ct_storer.rindex < orig.max_offered, timeout=10)
-    assert ct_storer.rindex == orig.max_offered
+    orig.waitwhile(lambda: cdr_storer.rindex < orig.max_offered, timeout=10)
+    assert cdr_storer.rindex == orig.max_offered
     # post increment means 1 will be the next insertion index
-    assert ct_storer.bindex == 1
-    assert ct_storer.store.keys()  # flushed to disk
-    assert len(ct_storer.store['data']) == orig.total_originated_sessions - 1
+    assert cdr_storer.bindex == 1
+    assert cdr_storer.store.keys()  # flushed to disk
+    assert len(cdr_storer.store['data']) == orig.total_originated_sessions - 1
