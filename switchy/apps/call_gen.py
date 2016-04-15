@@ -487,7 +487,7 @@ class Originator(object):
         if self._thread is None or not self._thread.is_alive():
             self.log.debug("starting burst loop thread")
             self._thread = Thread(target=self._serve_forever,
-                                  name='burst-loop')
+                                  name='switchy_burst_loop')
             self._thread.daemon = True  # die with parent
             self._thread.start()
             time.sleep(0.1)

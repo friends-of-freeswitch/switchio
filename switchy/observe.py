@@ -271,8 +271,10 @@ class EventListener(object):
 
         if self._thread is None or not self._thread.is_alive():
             self.log.debug("starting event loop thread...")
-            self._thread = Thread(target=self._listen_forever, args=(),
-                                  name='event_loop')
+            self._thread = Thread(
+                target=self._listen_forever, args=(),
+                name='switchy_event_loop[{}]'.format(self.host),
+            )
             self._thread.daemon = True  # die with parent
             self._thread.start()
 
@@ -643,7 +645,7 @@ class EventListener(object):
     @staticmethod
     @handler('SOCKET_DATA')
     def _handle_socket_data(event):
-        body = event.getBody()
+        body = event.getBody() if event else None
         if not body:
             return False, None
         if '-ERR' in body.splitlines()[-1]:
