@@ -33,11 +33,11 @@ performance measurements. See the :code:`setup.py`'s
 Using pip
 ---------
 At the moment :code:`switchy` is still pre major release software and we recommend
-downloading and installing directly from this repo:
+cloning and installing directly from this repo:
 
 ::
 
-    pip download git+git://github.com/sangoma/switchy.git -b switchy/
+    git clone git://github.com/sangoma/switchy.git
     pip install -r switchy/requirements.txt switchy/
 
 Documentation
