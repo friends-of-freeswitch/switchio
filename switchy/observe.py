@@ -793,7 +793,9 @@ class EventListener(object):
 
         # allocate a session model
         sess = Session(e, uuid=uuid, con=con)
-        self.log.debug("session created with uuid '{}'".format(uuid))
+        direction = sess['Call-Direction']
+        self.log.debug("{} session created with uuid '{}'".format(
+                       direction, uuid))
         sess.cid = self.get_id(e, 'default')
 
         # Use our specified "call identification variable" to try and associate
@@ -802,8 +804,9 @@ class EventListener(object):
         call_uuid = e.getHeader(self.call_id_var)  # could be 'None'
         if not call_uuid:
             self.log.warn(
-                "Unable to associate session '{}' with a call using "
-                "variable '{}'".format(sess.uuid, self.call_id_var))
+                "Unable to associate {} session '{}' with a call using "
+                "variable '{}'".format(direction, sess.uuid, self.call_id_var))
+            call_uuid = uuid
 
         # associate sessions into a call
         # (i.e. set the relevant sessions to reference each other)
@@ -864,6 +867,7 @@ class EventListener(object):
         '''
         uuid = e.getHeader('Unique-ID')
         sess = self.sessions.pop(uuid, None)
+        direction = sess['Call-Direction'] if sess else 'unknown'
         if not sess:
             return False, None
         sess.update(e)
@@ -876,32 +880,37 @@ class EventListener(object):
         call_uuid = e.getHeader(self.call_id_var)
         if not call_uuid:
             self.log.warn(
-                "handling HANGUP for session '{}' which can not be associated "
-                "with an active call?".format(sess.uuid))
-        else:
-            # XXX seems like sometimes FS changes the `call_uuid`
-            # between create and hangup oddly enough
-            call = self.calls.get(call_uuid, sess.call)
-            if call:
-                if sess in call.sessions:
-                    self.log.debug("hungup Session '{}' for Call '{}'".format(
-                                   uuid, call.uuid))
-                    call.sessions.remove(sess)
-                else:
-                    self.log.warn("no call for Session '{}'".format(sess.uuid))
+                "handling HANGUP for {} session '{}' which can not be "
+                "associated with an active call using {}?"
+                .format(direction, sess.uuid, self.call_id_var))
+            call_uuid = uuid
 
-                # all sessions hungup
-                if len(call.sessions) == 0:
-                    self.log.debug("all sessions for Call '{}' were hung up"
-                                   .format(call_uuid))
-                    # remove call from our set
-                    call = self.calls.pop(call.uuid, None)
-                    if not call:
-                        self.log.warn(
-                            "Call with id '{}' containing Session '{}' was "
-                            "already removed".format(call.uuid, sess.uuid))
+        # XXX seems like sometimes FS changes the `call_uuid`
+        # between create and hangup oddly enough
+        call = self.calls.get(call_uuid, sess.call)
+        if call:
+            if sess in call.sessions:
+                self.log.debug("hungup {} session '{}' for Call '{}'".format(
+                               direction, uuid, call.uuid))
+                call.sessions.remove(sess)
             else:
-                self.log.warn("no call was found for '{}'".format(call_uuid))
+                # session was somehow tracked by the wrong call
+                self.log.err("session '{}' mismatched with call '{}'?"
+                             .format(sess.uuid, call.uuid))
+
+            # all sessions hungup
+            if len(call.sessions) == 0:
+                self.log.debug("all sessions for call '{}' were hung up"
+                               .format(call_uuid))
+                # remove call from our set
+                call = self.calls.pop(call.uuid, None)
+                if not call:
+                    self.log.warn(
+                        "Call with id '{}' containing Session '{}' was "
+                        "already removed".format(call.uuid, sess.uuid))
+        else:
+            # we should never get hangups for calls we never saw created
+            self.log.err("no call found for '{}'".format(call_uuid))
 
         # pop any corresponding job
         job = sess.bg_job
