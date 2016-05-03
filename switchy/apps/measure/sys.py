@@ -36,8 +36,11 @@ class SysStats(object):
         'sys_stats': sys_stats,
     }
 
-    def __init__(self, psutil):
-        self.psutil = psutil
+    def __init__(self, psutil, rpyc=None):
+        self._psutil = psutil
+        self.rpyc = rpyc
+        self._conn = None
+        self.log = utils.get_logger(__name__)
         # required to define the columns for the data frame storer
         self.fields = [
             'call_index',
@@ -53,14 +56,27 @@ class SysStats(object):
         self._times_tup_type = psutil.cpu_times().__class__
         self.log = utils.get_logger(type(self).__name__)
 
+        # initial cpu usage
+        self._last_cpu_times = self.psutil.cpu_times()
+
+    @property
+    def psutil(self):
+        try:
+            return self._psutil
+        except ReferenceError, EOFError:  # rpyc and its weakrefs being flaky
+        # except Exception:
+            if self.rpyc:
+                self.log.warn("resetting rypc connection...")
+                self._conn = conn = self.rpyc.classic_connect()
+                self._psutil = conn.modules.psutil
+                return self._psutil
+            raise
+
     def prepost(self, collect_rate=2, storer=None):
         self.storer = storer
         self.count = 0
         self._collect_period = 1. / collect_rate
         self._last_collect_time = 0
-
-        # initial cpu usage
-        self._last_cpu_times = self.psutil.cpu_times()
 
     @property
     def collect_rate(self):
@@ -83,7 +99,7 @@ class SysStats(object):
                 psutil = self.psutil
                 self.log.debug("writing psutil row at time '{}'".format(now))
 
-                curr_times = psutil.cpu_times()
+                curr_times = self.psutil.cpu_times()
 
                 delta = self._times_tup_type(*tuple(
                         now - last for now, last in
