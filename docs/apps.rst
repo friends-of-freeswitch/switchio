@@ -10,13 +10,14 @@ Call Applications
 Switchy supports composing *applications* written in pure python which
 roughly correspond to the actions taken by `extensions` in *FreeSWITCH*'s
 xml dialplan interface. In fact, Switchy's *apps* offer extended control and
-flexibility since they can be implemented as a standalone python
+flexibility since they can be implemented each as a standalone Python
 :py:class:`class` which can hold state and be mutated at runtime.
 
 Applications are :ref:`loaded <appload>` using :py:class:`~switchy.observe.Client`
 instances which have been associated with a respective
 :py:class:`~switchy.observe.EventListener` the latter of which normally
-have a one-to-one correspondence with deployed *FreeSWITCH* slave servers.
+have a one-to-one correspondence with deployed *FreeSWITCH* slave
+processes.
 
 
 API
@@ -34,7 +35,7 @@ list as detailed `here <https://freeswitch.org/confluence/display/FREESWITCH/Eve
 
 Additionally, app types can support a :py:func:`prepost` callable which serves
 as a setup/teardown fixture mechanism for the app to do pre/post app loading
-execution.
+execution. It can beither of a function or generator.
 
 
 Event Callbacks
@@ -73,16 +74,16 @@ Event Handlers
 An event handler is any callable marked by :py:meth:`handler` which
 is expected to handle a received `ESLEvent` object and process it within the
 :py:class:`~switchy.observe.EventListener` event loop. It's function signature
-should expect a single argument being the received event.
+should expect a single argument, that being the received event.
 
 Example handlers can be found in the :py:class:`~switchy.observe.EventListener`
-such as the default `CHANNEL_ORIGINATE` handler
+such as the default `CHANNEL_ANSWER` handler
 
 .. literalinclude:: ../switchy/observe.py
-    :pyobject: EventListener._handle_originate
+    :pyobject: EventListener._handle_answer
 
-As you can see a knowledge of the underlying :ref:`ESL SWIG python
-package` usually is required for `handler` implementations.
+As you can see a knowledge of the underlying `ESL SWIG python
+package`_ usually is required for `handler` implementations.
 
 
 Example applications
@@ -142,3 +143,7 @@ audio quality checking:
 For further examples check out the :py:mod:`~switchy.apps`
 sub-package which also includes the very notorious
 :py:class:`switchy.apps.call_gen.Originator`.
+
+.. hyperlinks
+.. _ESL SWIG python package:
+    https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
