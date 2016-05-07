@@ -5,47 +5,42 @@
 
     api
 
-Call generation and load testing
---------------------------------
-|   Switchy enables you to drive multiple switch instances as a call
-    generation cluster.
+Call generation and stress testing
+----------------------------------
+Switchy enables you to drive multiple *FreeSWITCH* processes as a
+call generator cluster.
 
 Once you have a set of slave servers :ref:`deployed <fsconfig>`,
-have started :program:`freeswitch` processes on each slave **and**
+have started :program:`FreeSWITCH` processes on each slave **and**
 have configured the *ESL* to listen on the default *8021* port, simply
 load the originator app passing in a sequence of slave server host names::
 
     >>> from switchy import get_originator
     >>> originator = get_originator(['hostnameA', 'hostnameB', 'hostnameC'])
-    ...
-    # Log messages should show on console describing connections and app initializations
-    ...
-
     >>> originator
-     <Originator: '0' active calls, state=[INITIAL], rate=30 limit=1 max_sessions=inf duration=10.0333333333>
+    <Originator: '0' active calls, state=[INITIAL], rate=30 limit=1
+    max_sessions=inf duration=10.03>
 
 .. note::
     If using ESL ports different then the default *8021*, simply pass
     a sequence of `(host, port)` socket pairs to the
-    :py:class:`~switchy.apps.call_gen.get_originator` factory
+    :py:class:`~switchy.apps.call_gen.get_originator` factory.
 
-|   Now we have a binding to an :py:class:`~switchy.apps.call_gen.Originator`
-    instance which is a non-blocking Switchy :doc:`application <apps>` allowing us
-    to originate calls from our *FreeSWITCH* cluster.
+Now we have a binding to an :py:class:`~switchy.apps.call_gen.Originator`
+instance which is a non-blocking Switchy :doc:`application <apps>` allowing us
+to originate calls from our *FreeSWITCH* cluster.
 
-|   Notice the load settings such as `rate`, `limit` and `duration` shown in the
-    output of the originator's :py:func:`__repr__` method.
-|   These parameters determine the degree of load which will be
-    originated from the cluster to your target :term:`intermediary` and
-    downstream :term:`callee` systems.
+Notice the load settings such as `rate`, `limit` and `duration` shown in the
+output of the originator's :py:func:`__repr__` method. These parameters
+determine the type of traffic which will be originated from the cluster
+to your target :term:`intermediary` and downstream :term:`callee` systems.
 
-|   In order to ensure that calls are made successfully it is recommended that
-    the :term:`intermediary` system :ref:`loop calls back <proxydp>` to the
-    originating slave server's :term:`caller`.
-|   This allows switchy to associate *outbound* and *inbound*
-    SIP sessions into calls. As an example if the called system is another
-    FreeSWITCH server under test then you can configure a :ref:`proxy
-    dialplan <proxydp>`.
+In order to ensure that calls are made successfully it is recommended that
+the :term:`intermediary` system :ref:`loop calls back <proxydp>` to the
+originating slave server's :term:`caller`. This allows switchy to associate
+*outbound* and *inbound* SIP sessions into calls. As an example if the called
+system is another FreeSWITCH server under test then you can configure a
+:ref:`proxy dialplan <proxydp>`.
 
 A single slave generator
 ************************
@@ -68,12 +63,15 @@ and stays active::
     ConfigurationError: you must first set an originate command
 
 Before we can start loading we must set the command which will be used by the
-application when instructing each slave to `originate` a call. Note that the error
-above was not raised as a Python exception but instead just printed to the screen to
-avoid terminating the event processing loop in the :py:class:`switchy.observe.EventListener`.
+application when instructing each slave to `originate` a call. 
+
+.. note::
+    The error above was not raised as a Python exception but instead just printed to
+    the screen to avoid terminating the event processing loop in the
+    :py:class:`switchy.observe.EventListener`.
 
 Let's set an originate command which will call our :term:`intermediary`
-as it's first hop with a destination of ourselves using the default
+as it's first hop with a destination of *ourselves* using the default
 *external* profile and the *FreeSWITCH* built in *park* application for
 the outbound session's post-connect execution::
 
@@ -141,7 +139,7 @@ in real-time as you please to suit your load test requirements.
 
 Currently, the default Switchy app loaded by the `Originator` is :py:class:`switchy.apps.bert.Bert`
 which provides a decent media *tranparency* test useful in auditting :term:`intermediary` DUTs.
-This app requires that the `mod_bert` has been successfully initialized/loaded on the *FreeSWITCH* slave(s).
+This app requires that the `mod_bert`_ has been successfully initialized/loaded on the *FreeSWITCH* slave(s).
 
 To tear down calls you can use one of :py:meth:`~switchy.apps.call_gen.Originator.stop` or
 :py:meth:`~switchy.apps.call_gen.Originator.hupall`.  The former will simply stop the *burst*
@@ -176,9 +174,11 @@ where you expect. A clever and succint way to accomplish this is by
 using the :py:class:`switchy.distribute.SlavePool`. Luckily the
 `Originator` app is built with one internally by default.
 
-Configuration can now be done with something like::
+Configuration can now be done with something like:
 
-    >>> originator.pool.evals(
+.. code-block:: python
+
+    originator.pool.evals(
         ("""client.set_orig_cmd('park@{}:5080'.format(client.server),
          app_name='park',
          proxy='doggy@{}:5060'.format(ip_addr))"""),
@@ -217,9 +217,9 @@ If you have `matplotlib` installed you can also plot the results using
 
 .. _originate:
     https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-originate
-
 .. _erlang formula:
     http://en.wikipedia.org/wiki/Erlang_%28unit%29#Traffic_measurements_of_a_telephone_circuit
-
 .. _fs_cli:
     https://freeswitch.org/confluence/display/FREESWITCH/Command-Line+Interface+fs_cli
+.. _mod_bert:
+    https://freeswitch.org/confluence/display/FREESWITCH/mod_bert
