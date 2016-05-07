@@ -21,7 +21,7 @@ Currently there are 3 main objects in Switchy for driving
 *FreeSWITCH*:
 
 :py:class:`~switchy.connection.Connection` - a thread safe wrapper around the
-:ref:`ESL SWIG python package`'s `ESLConnection`
+`ESL SWIG python package`_'s `ESLConnection`
 
 :py:class:`~switchy.observe.EventListener` - the type that contains the core
 event processing loop and logic
@@ -50,7 +50,7 @@ instantiation::
 
     >>> from switchy import Client
     >>> client = Client('vm-host')
-    >>> client.connect()
+    >>> client.connect()  # could have passed the hostname here as well
     >>> client.api('status')  # call ESL `api` command directly
     <ESL.ESLevent; proxy of <Swig Object of type 'ESLevent *' at 0x28c1d10> >
 
@@ -69,7 +69,7 @@ instantiation::
     switchy.utils.CommandError: -ERR not Command not found!
 
 Now let's initiate a call originating from the slave process's
-:term:`caller` which is by default the *external* sip profile::
+:term:`caller` which is by default the `external`_ sip profile::
 
     >>> client.originate(dest_url='9196@intermediary_hostname:5060')
     Traceback (most recent call last):
@@ -89,7 +89,7 @@ collect the state changes triggered by the command (i.e. as received in
 event data from the slave process).
 
 With this current architecture you can think of a *listener* as an object
-from which you can read *FreeSWITCH* state and a *client* as an interface
+from which you can track *FreeSWITCH* state and a *client* as an interface
 which drives the slave process using commands to trigger **new** state(s).
 Again, any time a `Client` makes an **asynchronous** call an `EventListener` is
 needed to handle and report back the result(s).
@@ -128,8 +128,8 @@ extension, *9196*, at the :term:`callee` end::
 
 .. note::
     See the *default* dialplan packaged with stock *FreeSWITCH*.
-    Use of these extensions assumes you have assigned the *external* sip profile to use
-    the *default* dialplan by assigning it's *context* parameter
+    Use of these extensions assumes you have assigned the `external`_ sip
+    profile to use the *default* dialplan by assigning it's *context* parameter
 
 
 The async `originate` call returns to us a :py:class:`switchy.models.Job`
@@ -169,8 +169,8 @@ slave configurations thanks to Switchy's use of the
 App Loading
 ***********
 Switchy apps are loaded using :py:meth:`switchy.observe.Client.load_app`.
-Each app is associated with a `uuid` if none is provided which allows for
-the appropriate callback lookups to be completed by the `EventListener`.
+Each app is referenced by it's appropriate name (if none is provided) which
+allows for the appropriate callback lookups to be completed by the `EventListener`.
 
 We can now accomplish the same tone play steps from above using the
 built-in :ref:`TonePlay <toneplayapp>` app::
@@ -191,7 +191,7 @@ built-in :ref:`TonePlay <toneplayapp>` app::
     to worry that inserted callbacks are left registered with the `EventListener`
 
 Assuming the Switchy :ref:`park-only dialplan <parkonly>` is used by the
-*external* sip profile we can now originate our call again::
+`external`_ sip profile we can now originate our call again::
 
     >>> job = client.originate('park@vm-host:5080',
         proxy='intermediary_hostname:5060',
@@ -238,3 +238,9 @@ Conveniently enough, the boilerplate here
 is almost exactly what the :py:func:`~switchy.observe.active_client`
 context manager does internally.  An example of usage can be found in
 the :doc:`quickstart <quickstart>` guide.
+
+.. hyperlinks
+.. _ESL SWIG python package:
+    https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
+.. _external:
+    https://freeswitch.org/confluence/display/FREESWITCH/Configuring+FreeSWITCH#ConfiguringFreeSWITCH-External
