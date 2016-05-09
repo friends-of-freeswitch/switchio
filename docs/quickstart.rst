@@ -9,9 +9,9 @@ Quick-Start - Originating a single call
 =======================================
 Assuming you've gone through the required :doc:`deployment steps
 <fsconfig>` to setup at least one slave, initiating a call becomes
-very simple using the switchy command line::
+very simple using the Switchy command line::
 
-    $ switchy run vm-host sip-cannon --profile external --proxy dut-008 --rate 1 --limit 1 --max-offered 1  --duration 5
+    $ switchy run vm-host sip-cannon --profile external --proxy myproxy.com --rate 1 --limit 1 --max-offered 1
 
     ...
 
@@ -30,13 +30,13 @@ very simple using the switchy command line::
     Load test finished!
 
 
-| The switchy `run` sub-command takes several options and a list
-  of slaves (or at least one) IP address or hostname. In this
-  example switchy connected to the specified slaves, found the specified SIP
-  profile and initiated a single call with a duration of 5 seconds to the
-  device under test (set with the `proxy` option).
+The Switchy `run` sub-command takes several options and a list
+of slaves (or at least one) IP address or hostname. In this
+example switchy connected to the specified slaves, found the specified SIP
+profile and initiated a single call with a duration of 5 seconds to the
+device under test (set with the `proxy` option).
 
-| For more information on the switchy command line see :doc:`here <cmdline>`.
+For more information on the switchy command line see :doc:`here <cmdline>`.
 
 Originating a single call programatically from Python
 =====================================================
@@ -44,21 +44,47 @@ Making a call with switchy is quite simple using the built-in
 :py:func:`~switchy.sync.sync_caller` context manager.
 Again, if you've gone through the required :doc:`deployment steps
 <fsconfig>`, initiating a call becomes as simple as a few lines of python
-code::
+code
 
-  from switchy import sync_caller
-  from switchy.apps.players import TonePlay
+.. code-block:: python
+    :linenos:
 
-  # here '192.168.0.10' would be the address of the server running an FS process
-  with sync_caller('192.168.0.10', apps={"tone": TonePlay}) as caller:
+    from switchy import sync_caller
+    from switchy.apps.players import TonePlay
 
-      # initiates a call to the originating profile on port 5080
-      # and block until answered / the originate job completes
-      sess, waitfor = caller('Fred@{}:{}'.format(caller.client.host, 5080), "tone")
-      # let the tone play a bit
-      time.sleep(5)
-      # tear down the call
-      sess.hangup()
+    # here '192.168.0.10' would be the address of the server running a
+    # FS process to be used as the call generator
+    with sync_caller('192.168.0.10', apps={"tone": TonePlay}) as caller:
+
+        # initiates a call to the originating profile on port 5080 using
+        # the `TonePlay` app and block until answered / the originate job completes
+        sess, waitfor = caller('Fred@{}:{}'.format(caller.client.host, 5080), "tone")
+        # let the tone play a bit
+        time.sleep(5)
+        # tear down the call
+        sess.hangup()
+
+
+The most important lines are the `with` statement and line 10.
+What happens behind the scenes here is the following:
+
+    * at the `with`, necessary internal Switchy components are instantiated in memory
+      and connected to the :term:`slave` *FreeSWITCH* process listening on the `fsip`
+      ESL ip address.
+    * at the `caller()`, an :py:meth:`~switchy.observe.Client.originate` command is
+      invoked asynchronously via a :py:meth:`~switchy.observe.Client.bgapi` call.
+    * the background :py:class:`~switchy.models.Job` returned by that command is handled
+      to completion **synchronously** wherein the call blocks until the originating session has
+      reached the connected state.
+    * the corresponding origininating :py:class:`~switchy.models.Session` is returned along with
+      a reference to a :py:meth:`switchy.observe.EventListener.waitfor` blocker method.
+    * the call is kept up for 1 second and then :py:meth:`hungup <switchy.models.Session.hangup>`.
+    * internal Switchy components are disconnected from the :term:`slave` process at the close of
+      the `with` block.
+
+Note that the `sync_caller` api is not normally used for :doc:`stress testing <callgen>`
+as it used to initiate calls *synchronously*. It becomes far more useful when using
+*FreeSWITCH* for functional testing using your own custom call flow :doc:`apps <apps>`.
 
 
 Example source code
@@ -68,22 +94,6 @@ Some more extensive examples are found in the unit tests sources :
 .. literalinclude:: ../tests/test_sync_call.py
     :caption: test_sync_call.py
     :linenos:
-
-The most important lines are the `with` statement and lines 17-21.
-What happens behind the scenes here is the following:
-
-    * necessary internal Switchy components are instantiated in memory
-      and connected to the :term:`slave` *FreeSWITCH* process listening on
-      the `fsip` ESL ip address
-    * an :py:meth:`~switchy.observe.Client.originate` command is invoked asynchronously
-      via a :py:meth:`~switchy.observe.Client.bgapi` call
-    * the background :py:class:`~switchy.models.Job` returned by that command is handled
-      to completion **synchronously** wherein the call blocks until the originating session has
-      reached the connected state
-    * the corresponding origininating :py:class:`~switchy.models.Session` is returned along with
-      a reference to a :py:meth:`switchy.observe.EventListener.waitfor` blocker method.
-    * the call is kept up for 1 second and then :py:meth:`hungup <switchy.models.Session.hangup>`
-    * internal Switchy components are disconnected from the :term:`slave` process at the close of the `with` block
 
 
 Run manually

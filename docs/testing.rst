@@ -8,14 +8,17 @@ To run simply invoke pytest from the source dir with one extra param::
 
     py.test --fshost='fs_slave_hostname' tests/
 
-`SIPp <sipp>`_ is required to be installed locally in order to run call/load tests.
+`SIPp`_ and `pysipp`_ are required to be installed locally in order to run call/load tests.
 
 To run multi-slave tests at least two slave hostnames are required::
 
     py.test --fsslaves='["fs_slave_hostname1","fs_slave_hostname2"]' tests/
 
 
+.. hyperlinks
 .. _pytest:
     http://pytest.org
-.. _sipp:
-    http://sipp.sourceforge.net
+.. _SIPp:
+    https://github.com/SIPp/sipp
+.. _pysipp:
+    https://github.com/SIPp/pysipp

@@ -333,11 +333,8 @@ class Session(object):
         self.con.api('uuid_park {}'.format(self.uuid))
 
     def broadcast(self, path, leg=''):
-        """Usage:
-        uuid_broadcast <uuid> <path> [aleg|bleg|both]
-
-        Execute an application on a chosen leg(s) with optional hangup
-        afterwards:
+        """Execute an application on a chosen leg(s) with optional hangup
+        afterwards.
         Usage:
             uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]
         """
