@@ -1,8 +1,5 @@
 # FreeSWITH ESL pkg from Sangoma
 -e git+https://github.com/sangoma/python-ESL.git#egg=ESL
 
-# docs gen without requiring ESL.py
-mock
-
 # testing
 pytest

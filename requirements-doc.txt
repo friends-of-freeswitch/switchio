@@ -1,0 +1,2 @@
+# docs gen without requiring ESL.py
+mock
