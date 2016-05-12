@@ -8,18 +8,26 @@ import traceback
 import signal
 import atexit
 import itertools
+from collections import OrderedDict, deque
+from contextlib import contextmanager
 import tempfile
-import pandas as pd
-import numpy as np
+import csv
+import os
 import shmarray
 from switchy import utils
 import multiprocessing as mp
 from multiprocessing import queues
 import time
 
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+else:
+    # use the entire screen width + wrapping when viewing frames in the console
+    pd.set_option('display.expand_frame_repr', False)
 
-# use the entire screen width + wrapping
-pd.set_option('display.expand_frame_repr', False)
+
 # app names should generally be shorter then this...
 min_size = 30
 
@@ -28,17 +36,26 @@ def moving_avg(x, n=100):
     '''Compute the windowed arithmetic mean of `x` with window length `n`
     '''
     n = min(x.size, n)
-    cs = np.cumsum(x)
+    cs = pd.np.cumsum(x)
     cs[n:] = cs[n:] - cs[:-n]
     # cs[n - 1:] / n  # true means portion
     return cs / n  # NOTE: first n-2 vals are not true means
 
 
-def mkhdf(path=None, mode='a'):
-    # disk storage via HDF
-    path = path or tempfile.mktemp() + '_switchy_data.h5'
-    store = pd.HDFStore(path, mode)
-    return store
+_storetypes = {}
+
+
+def store(cls):
+    _storetypes[cls.ext] = cls
+    return cls
+
+
+def get_storetype(ext):
+    return _storetypes[ext]
+
+
+def tmpfile(ext):
+    return tempfile.mktemp() + '_switchy_data.{}'.format(ext)
 
 
 class Terminate(Exception):
@@ -46,26 +63,246 @@ class Terminate(Exception):
     """
 
 
-class DataStorer(object):
-    """Wraps a `pd.DataFrame` which buffers recent data in memory and
-    offloads excess to disk using the HDF5 format.
+@store
+class HDFStore(object):
+    """HDF5 storage.
+    Wraps a `pandas.HDFStore` for use with multiple processes.
     """
-    def __init__(self, name, dtype, data=None, buf_size=2**10, hdf_path=None,
-                 bg_writer=True):
+    key = 'data'  # table key
+    # app names should generally be shorter then this...
+    min_size = 30
+    ext = 'hdf5'
+
+    def __init__(self, path, dtypes=None):
+        self.path = path
+        self.dtypes = dtypes
+        self._store = pd.HDFStore(path=path, mode='a')
+        self._store.close()
+
+    @classmethod
+    @contextmanager
+    def reader(cls, path, dtypes=None):
+        with cls(path).open(mode='r') as store:
+            yield store
+
+    @classmethod
+    @contextmanager
+    def writer(cls, path, dtypes=None, mode='a'):
+        with cls(path).open(mode=mode) as store:
+            yield store
+
+    @contextmanager
+    def open(self, mode='r'):
+        self._store.open(mode=mode)
+        yield self
+        self._store.close()
+
+    def append(self, df, key=None):
+        """Write a `pd.DataFrame` to disk by appending it to the HDF table.
+        Note: the store must already have been opened by the caller.
+        """
+        self._store.append(
+            key or self.key,
+            df,
+            dropna=False,
+            min_itemsize=self.min_size,
+        )
+        self._store.flush(fsync=True)
+
+    def read(self):
+        with self.open():
+            return self._store[self.key]
+
+    @property
+    def data(self):
+        return self.read()
+
+    def __len__(self):
+        with self.open():
+            return len(self._store.keys())
+
+    @classmethod
+    def multiwrite(cls, storepath, dfitems):
+        """"Store all data frames (from `dfitems`) in a single hdf5 file.
+        """
+        with cls.writer("{}.{}".format(storepath, cls.ext)) as store:
+            for path, df in dfitems:
+                store.append(df, key=path)
+
+            return store.path
+
+    @classmethod
+    def multiread(cls, storepath, dtypes=None):
+        with cls.reader(storepath) as store:
+            store = store._store
+            return pd.concat(
+                (store[key] for key in store.keys()),
+                axis=1,
+            )
+
+
+@store
+class CSVStore(object):
+    """CSV storage.
+    """
+    ext = 'csv'
+
+    def __init__(self, path, dtypes=None):
+        self.path = path
+
+        # check for a literal numpy dtype
+        dtypes = getattr(dtypes, 'descr', dtypes)
+
+        if dtypes is not None and iter(dtypes):
+            # handle pandas `DataFrame.dtypes`
+            iteritems = getattr(dtypes, 'iteritems', None)
+            if iteritems:
+                dtypes = iteritems()
+            self.dtypes = OrderedDict(dtypes)
+            self.fields = self.dtypes.keys()
+        else:
+            self.dtypes = self.fields = dtypes
+
+        self._ondisk = False
+        self.csvfile = self.csvreader = self.csvwriter = None
+
+        if not os.path.exists(path):
+            self._headerlen = 0
+        else:
+            with self.open():
+                self._headerlen = self.bytelen()
+
+    def bytelen(self):
+        """Report the current length bytes written to disk
+        """
+        self.csvfile.seek(0, 2)
+        return self.csvfile.tell()
+
+    def ondisk(self):
+        if not self._ondisk:
+            try:
+                with self.open():
+                    self._ondisk = bool(self.bytelen() > self._headerlen)
+                return self._ondisk
+            except IOError:
+                return False
+        return True
+
+    @contextmanager
+    def open(self, mode='r', path=None):
+        with open(path or self.path, mode=mode) as csvfile:
+            self.csvfile = csvfile
+            yield self
+            self.csvfile = None
+
+    @classmethod
+    @contextmanager
+    def reader(cls, path, dtypes=None):
+        with cls(path, dtypes=dtypes).open() as self:
+            self.csvreader = csv.DictReader(
+                self.csvfile, fieldnames=self.fields)
+            yield self
+            self.csvreader = None
+
+    @classmethod
+    @contextmanager
+    def writer(cls, path, dtypes=None, mode='a'):
+        existed = os.path.exists(path)
+        with cls(path, dtypes=dtypes).open(mode=mode) as self:
+            self.csvwriter = csv.DictWriter(
+                self.csvfile, fieldnames=self.fields)
+
+            # write a header line if no prior file existed
+            if not existed and self.fields:
+                self.csvwriter.writeheader()
+                self._headerlen = self.bytelen()
+
+            yield self
+            self.csvwriter = None
+
+    if pd:
+        def append(self, df):
+            """Append a `pd.DataFrame` to our csv file
+            """
+            df.to_csv(self.path, header=False, mode='a')
+
+        def read(self):
+            """Read the entire csv data set into a `pd.DataFrame`
+            """
+            return pd.read_csv(self.path, dtype=self.dtypes)
+
+    else:
+        def append(self, array):
+            """Append an array's worth of data points to to our csv file
+            """
+            self.csvwriter.writerows(map(dict, array))
+
+        def read(self):
+            """Read the entire csv data set into a `list(csv.DictReader())`
+            """
+            return list(self.csvreader)
+
+    @property
+    def data(self):
+        return self.read()
+
+    def __len__(self):
+        return len(self.read()) if self.ondisk() else 0
+
+    @classmethod
+    def multiwrite(cls, storepath, dfitems):
+        os.makedirs(os.path.dirname(storepath + '/'))  # make a subdir
+        for path, df in dfitems:
+            filename = '{}.{}'.format(path.replace('/', '-'), cls.ext)
+            filepath = os.path.join(storepath, filename)
+            with cls.writer(filepath, dtypes=df.dtypes) as store:
+                store.append(df)
+
+        return storepath
+
+    @classmethod
+    def multiread(cls, storepath, dtypes=None):
+        files = deque()
+        for dirpath, dirnames, filenames in os.walk(storepath):
+            for csvfile in filter(lambda name: cls.ext in name, filenames):
+                fullpath = os.path.join(dirpath, csvfile)
+
+                # sort frames by placing the operator data sets at the end
+                if '-' in csvfile:
+                    files.append(fullpath)
+                else:
+                    files.appendleft(fullpath)
+
+        frames = []
+        for path in files:
+            with cls.reader(path, dtypes=dtypes) as store:
+                frames.append(store.read())
+
+        return pd.concat(frames, axis=1) if pd else frames
+
+
+class DataStorer(object):
+    """Receive and store row-oriented data points from switchy apps.
+
+    A shared-memory buffer array is used to store the most recently written
+    data (rows) and is flushed incrementally the to the chosen storage backend.
+    """
+    def __init__(self, name, dtype, data=None, buf_size=2**10, path=None,
+                 storetype=None):
         self.name = name
         try:
-            self.dtype = np.dtype(dtype)
+            self.dtype = pd.np.dtype(dtype)
         except TypeError:
             # set all columns to float64
-            self.dtype = np.dtype(zip(dtype, itertools.repeat(np.float64)))
+            self.dtype = pd.np.dtype(
+                zip(dtype, itertools.repeat(pd.np.float64)))
 
         if data is None:
             # allocated a shared mem np structured array
             self._shmarr = shmarray.create(buf_size, dtype=self.dtype)
         else:
             # whatever array was passed in (eg. loaded data)
-            self._shmarr = np.array(data)
-            bg_writer = False
+            self._shmarr = pd.np.array(data)
 
         self._len = len(self._shmarr)
         self.log = utils.get_logger(type(self).__name__)
@@ -74,18 +311,19 @@ class DataStorer(object):
         self._ri = mp.Value('i', 0 if data is None else self._len, lock=False)
 
         # parent proc read-only access to disk store
-        self._store = mkhdf(hdf_path)
-        self._store.close()
+        self.storetype = storetype or CSVStore
+        self._storepath = path or tmpfile(self.storetype.ext)
+        self.store = self.storetype(self._storepath, dtypes=self.dtype)
 
-        # setup bg writer
-        self.queue = queues.Queue()
-        if bg_writer:
+        if data is None:
+            # setup bg writer
+            self.queue = queues.Queue()
             # disable SIGINT while we spawn
             signal.signal(signal.SIGINT, signal.SIG_IGN)
             self._writer = mp.Process(
                 target=_consume_and_write,
                 args=(
-                    self.queue, self._store.filename, self._ri,
+                    self.queue, self._storepath, self.store, self._ri,
                     self._shmarr),
                 name='{}_frame_writer'.format(self.name),
             )
@@ -93,14 +331,11 @@ class DataStorer(object):
             # re-enable SIGINT
             signal.signal(signal.SIGINT, signal.default_int_handler)
             # kill subproc on exit
-            atexit.register(self._stopwriter)
+            atexit.register(self.stopwriter)
 
-    @property
-    def store(self):
-        """HDF5 Store for offloading data to disk
-        """
-        self._store.open('r')
-        return self._store
+            # ensure writer is initialized
+            path = self.queue.get(timeout=3)
+            assert path == self._storepath
 
     @property
     def buffer(self):
@@ -112,9 +347,9 @@ class DataStorer(object):
     def data(self):
         """Copy of the entire data set recorded thus far
         """
-        if self.store.keys():
+        if self.store:
             return pd.concat(
-                (self.store['data'], self.buffer),
+                (self.store.data, self.buffer),
                 ignore_index=True
             )
         return self.buffer
@@ -153,57 +388,53 @@ class DataStorer(object):
         if diff > 0.005:  # any more then 5ms warn the user
             self.log.warn("queue.put took '{}' seconds".format(diff))
 
-    def _stopwriter(self):
+    def stopwriter(self):
         """Trigger the background frame writer to terminate
         """
         self.queue.put(Terminate, timeout=3)
 
 
-def _consume_and_write(queue, path, ri, sharr):
-    '''Insert :var:`row` pushed onto the queue into the internal data
-    frame at the current index and increment.
+def _consume_and_write(queue, path, store, ri, sharr):
+    """Insert :var:`row` pushed onto the queue into the shared memory array
+    at the current index and increment.
     Return a boolean indicating whether the current entry
-    has caused a flush to disk. Empty rows are always written to disk
-    (keeps stores 'call-index-aligned').
-    '''
+    has caused a flush to the storage backend (normally onto disk).
+    Empty rows are always written to disk (keeps stores 'call-index-aligned').
+    """
     proc = mp.current_process()
     slog = utils.get_logger(proc.name)
     log = mp.log_to_stderr(slog.getEffectiveLevel())
-    log.info("hdf path is '{}'".format(path))
-    log.info("starting frame writer '{}'".format(proc.name))
+    log.info("starting storage writer '{}'".format(proc.name))
+    log.info("storage path is '{}'".format(path))
 
-    # set up child process HDF store
-    store = mkhdf(path)
-    store.open('a')
+    convert = pd.DataFrame.from_records if pd else None
+
     _len = len(sharr)
 
-    # consume and process
-    for row in iter(queue.get, Terminate):
-        now = time.time()
-        i = ri.value % _len
-        if ri.value > _len - 1 and i == 0:
-            # write frame to disk on buffer fill
-            log.debug('writing with pytables...')
+    # set up a new store instance for writing
+    with store.writer(path, dtypes=store.dtypes) as store:
+        queue.put(path)  # notify parent that file has been created
+        # consume and process
+        for row in iter(queue.get, Terminate):
+            now = time.time()
+            i = ri.value % _len
+            if ri.value > _len - 1 and i == 0:
+                # write frame to disk on buffer fill
+                log.debug('writing to {} storage...'.format(store.ext))
+                try:
+                    store.append(convert(sharr) if convert else sharr)
+                except ValueError:
+                    log.error(traceback.format_exc())
+                log.debug("disk write took '{}'".format(time.time() - now))
+            # insert into numpy structured array by row int-index
             try:
-                store.append(
-                    'data',
-                    pd.DataFrame.from_records(sharr),
-                    dropna=False,
-                    min_itemsize=min_size,
-                )
-                store.flush(fsync=True)
+                sharr[i] = row
+                log.debug("shmarray insert took '{}'".format(
+                          time.time() - now))
+                # increment row insertion index for the next entry (this means
+                # the last entry is at now at i - 1)
+                ri.value += 1
             except ValueError:
                 log.error(traceback.format_exc())
-            log.debug("disk write took '{}'".format(time.time() - now))
-        try:
-            # insert into numpy structured array by row int-index
-            sharr[i] = row
-            log.debug("shmarray insert took '{}'".format(time.time() - now))
-            # increment row insertion index for the next entry (this means
-            # the last entry is at now at i - 1)
-            ri.value += 1
-        except ValueError:
-            log.error(traceback.format_exc())
 
-    store.close()
     log.debug("terminating frame writer '{}'".format(proc.name))

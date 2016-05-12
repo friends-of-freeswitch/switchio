@@ -6,7 +6,7 @@ import itertools
 import time
 from switchy.marks import event_callback
 from switchy import utils
-from .storage import pd, DataStorer, np
+from .storage import pd, DataStorer
 
 
 def call_metrics(df):
@@ -103,18 +103,18 @@ class CDR(object):
         # about each field
         ('switchy_app', 'S50'),
         ('hangup_cause', 'S50'),
-        ('caller_create', np.float64),
-        ('caller_answer',  np.float64),
-        ('caller_req_originate', np.float64),
-        ('caller_originate', np.float64),
-        ('caller_hangup', np.float64),
-        ('job_launch', np.float64),
-        ('callee_create', np.float64),
-        ('callee_answer', np.float64),
-        ('callee_hangup', np.float64),
-        ('failed_calls', np.uint32),
-        ('active_sessions', np.uint32),
-        ('erlangs', np.uint32),
+        ('caller_create', pd.np.float64),
+        ('caller_answer',  pd.np.float64),
+        ('caller_req_originate', pd.np.float64),
+        ('caller_originate', pd.np.float64),
+        ('caller_hangup', pd.np.float64),
+        ('job_launch', pd.np.float64),
+        ('callee_create', pd.np.float64),
+        ('callee_answer', pd.np.float64),
+        ('callee_hangup', pd.np.float64),
+        ('failed_calls', pd.np.uint32),
+        ('active_sessions', pd.np.uint32),
+        ('erlangs', pd.np.uint32),
     ]
 
     operators = {

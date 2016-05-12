@@ -156,6 +156,8 @@ class AppManager(object):
                         client.load_app(
                             m.app,
                             on_value=app_id,
+                            # use a common storer across app instances
+                            # (since each measurer are keyed by name)
                             storer=m.storer,
                             prepend=True,  # give measurers highest priority
                             **m.ppkwargs

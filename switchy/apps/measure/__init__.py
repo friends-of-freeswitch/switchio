@@ -6,7 +6,7 @@ import pickle
 from functools import partial
 from collections import OrderedDict, namedtuple
 from switchy import utils
-from .storage import DataStorer, min_size
+from .storage import DataStorer, get_storetype
 import pandas as pd
 
 # re-export(s)
@@ -37,8 +37,9 @@ class Measurers(object):
 
     Each `Measurer` tuple can be accessed using dict-like subscript syntax.
     """
-    def __init__(self):
+    def __init__(self, storetype=None):
         self._apps = OrderedDict()
+        self.storetype = storetype
         # delegate to `_apps` for subscript access
         for meth in '__getitem__ __contains__'.split():
             setattr(self.__class__, meth, getattr(self._apps, meth))
@@ -57,20 +58,23 @@ class Measurers(object):
         return repr(self._apps).replace(
             type(self._apps).__name__, type(self).__name__)
 
-    def add(self, app, name=None, operators={}, **ppkwargs):
+    def add(self, app, name=None, operators={}, **kwargs):
         name = name or utils.get_name(app)
         prepost = getattr(app, 'prepost', None)
         if not prepost:
             raise AttributeError(
                 "'{}' must define a `prepost` method".format(name))
-        args, kwargs = utils.get_args(app.prepost)
-        if 'storer' not in kwargs:
+        args, ppkwargs = utils.get_args(app.prepost)
+        if 'storer' not in ppkwargs:
             raise TypeError("'{}' must define a 'storer' kwarg"
                             .format(app.prepost))
+        ppkwargs = {key: kwargs.pop(key) for key in ppkwargs if key in kwargs}
 
         # acquire storer factory
         factory = getattr(app, 'new_storer', None)
         storer_kwargs = getattr(app, 'storer_kwargs', {})
+        storer_kwargs.update(kwargs)
+        storer_kwargs.setdefault('storetype', self.storetype)
         # app may not define a storer factory method
         storer = DataStorer(
                 name, dtype=app.fields, **storer_kwargs
@@ -114,34 +118,36 @@ class Measurers(object):
         return list(reversed(self._apps.items()))
 
     def to_store(self, dirpath):
-        """Dump all data + operator combinations to a hierarchical HDF store
+        """Dump all data + operator combinations to a backend storage format
         on disk.
         """
         if not os.path.isdir(dirpath):
             raise ValueError("You must provide a directory")
 
-        storepath = os.path.join(dirpath, "switchy_measures.hdf5")
-        with pd.HDFStore(storepath) as store:
-            # raw data sets
-            for name, m in self._apps.items():
-                data = m.storer.data
-                if len(data):
-                    store.append(
-                        "{}".format(name), data, min_itemsize=min_size)
+        iterapps = self._apps.iteritems()
+        # infer storage backend from first store
+        name, m = next(iterapps)
+        storetype = m.storer.storetype
+        storepath = os.path.join(dirpath, "switchy_measures")
 
-                    # processed (metrics) data sets
-                    for opname, op in m.ops.items():
-                        store.append(
-                            '{}/{}'.format(name, opname),
-                            op(data),
-                            dropna=False,
-                            min_itemsize=min_size,
-                        )
+        framedict = OrderedDict()
+        # raw data sets
+        for name, m in self._apps.items():
+            data = m.storer.data
+            if len(data):
+                framedict[name] = data
+
+                # processed (metrics) data sets
+                for opname, op in m.ops.items():
+                    framedict[os.path.join(name, opname)] = op(data)
+
+        storepath = storetype.multiwrite(storepath, framedict.items())
         # dump pickle file containing figspec (and possibly other meta-data)
         pklpath = os.path.join(dirpath, 'switchy_measures.pkl')
         with open(pklpath, 'w') as pklfile:
             pickle.dump(
-                {'storepath': storepath, 'figspecs': self._figspecs},
+                {'storepath': storepath, 'figspecs': self._figspecs,
+                 'storetype': storetype.ext},
                 pklfile,
             )
         return pklpath
@@ -165,9 +171,9 @@ class Measurers(object):
         ]
 
 
-def load(path):
+def load(path, **kwargs):
     """Load a previously pickled data set from the filesystem and return it as
-    a loaded `pandas.DataFrame`.
+    a merged data frame
     """
     with open(path, 'r') as pkl:
         obj = pickle.load(pkl)
@@ -175,19 +181,20 @@ def load(path):
             return load_legacy(obj)
 
         # attempt to find the hdf file
-        hdfpath = obj['storepath']
-        if not os.path.exists(hdfpath):
+        storepath = obj['storepath']
+        if not os.path.exists(storepath):
             # it might be a sibling file
-            hdfpath = os.path.basename(hdfpath)
-            assert os.path.exists(hdfpath), "Can't find hdf file?"
+            storepath = os.path.basename(storepath)
+            assert os.path.exists(storepath), "Can't find data store path?"
 
-        store = pd.HDFStore(hdfpath)
-        merged = pd.concat(
-            (store[key] for key in store.keys()),
-            axis=1,
-        )
-        figspecs = obj.get('figspecs', {})
+        # XXX should be removed once we don't have any more legacy hdf5
+        # data sets to worry about
+        storetype = get_storetype(obj.get('storetype', 'hdf5'))
+
+        merged = storetype.multiread(storepath, **kwargs)
+
         # XXX evetually we should support multiple figures
+        figspecs = obj.get('figspecs', {})
         figspec = figspecs[figspecs.keys()[0]]
         merged._plot = partial(plot_df, merged, figspec)
         return merged
