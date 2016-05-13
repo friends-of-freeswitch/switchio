@@ -26,27 +26,16 @@ def scenario(request, fssock, loglevel):
     except ImportError:
         pytest.skip("pysipp is required to run call/speed tests")
 
-    import socket
     pl = pysipp.utils.get_logger()
     pl.setLevel(loglevel)
-    scen = pysipp.scenario(defaults={
-        'local_host': socket.gethostbyname(socket.getfqdn()),
-    })
+
+    # first hop should be fs server
+    scen = pysipp.scenario(proxyaddr=fssock)
     scen.log = pl
 
-    # server
-    uas = scen.agents['uas']
-    uas.local_port = 8888
-
-    # client
-    uac = scen.agents['uac']
-    uac.local_port = 9999
-    uac.destaddr = scen.local_host, uas.local_port
-
+    # set client destination
     # NOTE: you must add a park extension to your default dialplan!
-    uac.uri_username = 'park'
-    # first hop should be fs server
-    uac.proxyaddr = fssock
+    scen.agents['uac'].uri_username = 'park'
 
     return scen
 
