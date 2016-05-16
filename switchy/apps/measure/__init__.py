@@ -6,8 +6,8 @@ import pickle
 from functools import partial
 from collections import OrderedDict, namedtuple
 from switchy import utils
-from .storage import DataStorer, get_storetype
-import pandas as pd
+import storage
+from .storage import pd
 
 # re-export(s)
 from cdr import CDR
@@ -46,7 +46,9 @@ class Measurers(object):
 
         # add attr access for references to data frame operators
         self._ops = OrderedDict()
-        self.ops = utils.DictProxy(self._ops)
+        if storage.pd:
+            self.ops = utils.DictProxy(self._ops)
+
         # do the same for data stores
         self._stores = OrderedDict()
         self.stores = utils.DictProxy(self._stores)
@@ -76,7 +78,7 @@ class Measurers(object):
         storer_kwargs.update(kwargs)
         storer_kwargs.setdefault('storetype', self.storetype)
         # app may not define a storer factory method
-        storer = DataStorer(
+        storer = storage.DataStorer(
                 name, dtype=app.fields, **storer_kwargs
         ) if not factory else factory()
 
@@ -106,8 +108,9 @@ class Measurers(object):
 
         # provides descriptor protocol access for interactive work
         self._ops[opname] = func
-        setattr(self.ops.__class__, opname,
-                property(partial(operator, storer=m.storer)))
+        if storage.pd:
+            setattr(self.ops.__class__, opname,
+                    property(partial(operator, storer=m.storer)))
 
         # append any figure specification
         figspec = getattr(func, 'figspec', None)
@@ -137,9 +140,10 @@ class Measurers(object):
             if len(data):
                 framedict[name] = data
 
-                # processed (metrics) data sets
-                for opname, op in m.ops.items():
-                    framedict[os.path.join(name, opname)] = op(data)
+                if storage.pd:
+                    # processed (metrics) data sets
+                    for opname, op in m.ops.items():
+                        framedict[os.path.join(name, opname)] = op(data)
 
         storepath = storetype.multiwrite(storepath, framedict.items())
         # dump pickle file containing figspec (and possibly other meta-data)
@@ -152,23 +156,24 @@ class Measurers(object):
             )
         return pklpath
 
-    @property
-    def merged_ops(self):
-        """Merge and return all function operator frames from all measurers
-        """
-        # concat along the columns
-        return pd.concat(
-            (getattr(self.ops, name) for name in self._ops),
-            axis=1
-        )
+    if storage.pd:
+        @property
+        def merged_ops(self):
+            """Merge and return all function operator frames from all measurers
+            """
+            # concat along the columns
+            return storage.pd.concat(
+                (getattr(self.ops, name) for name in self._ops),
+                axis=1
+            )
 
-    def plot(self, **kwargs):
-        """Plot all figures specified in the `figspecs` dict.
-        """
-        return [
-            (figspec, plot_df(self.merged_ops, figspec, **kwargs))
-            for figspec in self._figspecs.values()
-        ]
+        def plot(self, **kwargs):
+            """Plot all figures specified in the `figspecs` dict.
+            """
+            return [
+                (figspec, plot_df(self.merged_ops, figspec, **kwargs))
+                for figspec in self._figspecs.values()
+            ]
 
 
 def load(path, **kwargs):
@@ -189,7 +194,7 @@ def load(path, **kwargs):
 
         # XXX should be removed once we don't have any more legacy hdf5
         # data sets to worry about
-        storetype = get_storetype(obj.get('storetype', 'hdf5'))
+        storetype = storage.get_storetype(obj.get('storetype', 'hdf5'))
 
         merged = storetype.multiread(storepath, **kwargs)
 
@@ -204,6 +209,11 @@ def load_legacy(array):
     '''Load a pickeled numpy structured array from the filesystem into a
     `DataFrame`.
     '''
+    if not storage.pd:
+        raise RuntimeError("pandas is required to load legacy data sets")
+
+    pd = storage.pd
+
     # calc and assign rate info
     def calc_rates(df):
         df = df.sort(['time'])

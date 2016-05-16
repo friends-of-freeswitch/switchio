@@ -99,22 +99,20 @@ class CDR(object):
     computations.
     """
     fields = [
-        # since we're mixing numeric and str types we must be explicit
-        # about each field
         ('switchy_app', 'S50'),
         ('hangup_cause', 'S50'),
-        ('caller_create', pd.np.float64),
-        ('caller_answer',  pd.np.float64),
-        ('caller_req_originate', pd.np.float64),
-        ('caller_originate', pd.np.float64),
-        ('caller_hangup', pd.np.float64),
-        ('job_launch', pd.np.float64),
-        ('callee_create', pd.np.float64),
-        ('callee_answer', pd.np.float64),
-        ('callee_hangup', pd.np.float64),
-        ('failed_calls', pd.np.uint32),
-        ('active_sessions', pd.np.uint32),
-        ('erlangs', pd.np.uint32),
+        ('caller_create', 'float64'),
+        ('caller_answer',  'float64'),
+        ('caller_req_originate', 'float64'),
+        ('caller_originate', 'float64'),
+        ('caller_hangup', 'float64'),
+        ('job_launch', 'float64'),
+        ('callee_create', 'float64'),
+        ('callee_answer', 'float64'),
+        ('callee_hangup', 'float64'),
+        ('failed_calls', 'uint32'),
+        ('active_sessions', 'uint32'),
+        ('erlangs', 'uint32'),
     ]
 
     operators = {

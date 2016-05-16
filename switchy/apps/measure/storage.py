@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-This module includes helpers for capturing measurements using pandas.
+This module includes helpers for capturing and storing measurement data.
 """
 import traceback
 import signal
@@ -13,7 +13,6 @@ from contextlib import contextmanager
 import tempfile
 import csv
 import os
-import shmarray
 from switchy import utils
 import multiprocessing as mp
 from multiprocessing import queues
@@ -21,7 +20,9 @@ import time
 
 try:
     import pandas as pd
-except ImportError:
+    import shmarray
+except ImportError as ie:
+    utils.log_to_stderr().warn(ie.message)
     pd = None
 else:
     # use the entire screen width + wrapping when viewing frames in the console
@@ -97,7 +98,7 @@ class HDFStore(object):
         yield self
         self._store.close()
 
-    def append(self, df, key=None):
+    def put(self, df, key=None):
         """Write a `pd.DataFrame` to disk by appending it to the HDF table.
         Note: the store must already have been opened by the caller.
         """
@@ -127,7 +128,7 @@ class HDFStore(object):
         """
         with cls.writer("{}.{}".format(storepath, cls.ext)) as store:
             for path, df in dfitems:
-                store.append(df, key=path)
+                store.put(df, key=path)
 
             return store.path
 
@@ -199,8 +200,7 @@ class CSVStore(object):
     @contextmanager
     def reader(cls, path, dtypes=None):
         with cls(path, dtypes=dtypes).open() as self:
-            self.csvreader = csv.DictReader(
-                self.csvfile, fieldnames=self.fields)
+            self.csvreader = csv.reader(self.csvfile)
             yield self
             self.csvreader = None
 
@@ -209,19 +209,18 @@ class CSVStore(object):
     def writer(cls, path, dtypes=None, mode='a'):
         existed = os.path.exists(path)
         with cls(path, dtypes=dtypes).open(mode=mode) as self:
-            self.csvwriter = csv.DictWriter(
-                self.csvfile, fieldnames=self.fields)
+            self.csvwriter = csv.writer(self.csvfile)
 
             # write a header line if no prior file existed
             if not existed and self.fields:
-                self.csvwriter.writeheader()
+                self.csvwriter.writerow(self.fields)
                 self._headerlen = self.bytelen()
 
             yield self
             self.csvwriter = None
 
     if pd:
-        def append(self, df):
+        def put(self, df):
             """Append a `pd.DataFrame` to our csv file
             """
             df.to_csv(self.path, header=False, mode='a')
@@ -232,15 +231,19 @@ class CSVStore(object):
             return pd.read_csv(self.path, dtype=self.dtypes)
 
     else:
-        def append(self, array):
-            """Append an array's worth of data points to to our csv file
+        def put(self, row):
+            """Append an array's worth of data points to to our csv file.
+            Note: this store must be opened as a writer prior to using this
+            method.
             """
-            self.csvwriter.writerows(map(dict, array))
+            self.csvwriter.writerow(row)
+            self.csvfile.flush()
 
         def read(self):
-            """Read the entire csv data set into a `list(csv.DictReader())`
+            """Read the entire csv data set into a list of lists (the rows).
             """
-            return list(self.csvreader)
+            with self.reader(self.path, dtypes=self.dtypes) as store:
+                return list(store.csvreader)
 
     @property
     def data(self):
@@ -256,7 +259,7 @@ class CSVStore(object):
             filename = '{}.{}'.format(path.replace('/', '-'), cls.ext)
             filepath = os.path.join(storepath, filename)
             with cls.writer(filepath, dtypes=df.dtypes) as store:
-                store.append(df)
+                store.put(df)
 
         return storepath
 
@@ -281,102 +284,139 @@ class CSVStore(object):
         return pd.concat(frames, axis=1) if pd else frames
 
 
+class RingBuffer(object):
+    """A circular buffer interface to a shared `numpy` array
+    """
+    def __init__(self, dtype, size=2**10):
+        # allocated a shared mem np structured array
+        self._shmarr = shmarray.create(size, dtype=dtype)
+        self._len = len(self._shmarr)
+
+        # shared current absolute row insertion-index
+        self.ri = mp.Value('i', 0, lock=False)
+
+    def put(self, row):
+        bi = self.bi
+        # increment row insertion index for the next entry (this means
+        # the last entry is at now at i - 1)
+        self.ri.value += 1
+        try:
+            self._shmarr[bi] = row
+        except ValueError:
+            # XXX should never happen during production (since it's
+            # means the dtype has been setup wrong)
+            self.ri.value -= 1
+
+    def read(self):
+        """Return the contents of the FIFO array without incrementing the
+        start index.
+        """
+        return self._shmarr[:len(self)]
+
+    @property
+    def df(self):
+        """The buffer's current contents as a `pd.DataFrame`.
+        """
+        return pd.DataFrame.from_records(self.read())
+
+    def __len__(self):
+        """Current array length up the last inserted data point
+        """
+        bi = self.bi
+        ri = self.ri
+        l = self._len
+        if not bi:
+            # handles the 1 % 1 == 0 case when l == 1
+            return bi if ri.value < l else l
+        return bi
+
+    @property
+    def bi(self):
+        """Current insertion index of in mem frame buffer
+        (i.e. the index where the next value should be inserted)
+        """
+        return self.ri.value % self._len
+
+    def is_full(self):
+        return self.bi == 0 and self.ri.value > self._len - 1
+
+
 class DataStorer(object):
     """Receive and store row-oriented data points from switchy apps.
 
     A shared-memory buffer array is used to store the most recently written
     data (rows) and is flushed incrementally the to the chosen storage backend.
     """
-    def __init__(self, name, dtype, data=None, buf_size=2**10, path=None,
+    def __init__(self, name, dtype, buf_size=2**10, path=None,
                  storetype=None):
         self.name = name
         try:
-            self.dtype = pd.np.dtype(dtype)
+            self.dtype = pd.np.dtype(dtype) if pd else dtype
         except TypeError:
             # set all columns to float64
             self.dtype = pd.np.dtype(
-                zip(dtype, itertools.repeat(pd.np.float64)))
+                zip(dtype, itertools.repeat('float64')))
 
-        if data is None:
-            # allocated a shared mem np structured array
-            self._shmarr = shmarray.create(buf_size, dtype=self.dtype)
-        else:
-            # whatever array was passed in (eg. loaded data)
-            self._shmarr = pd.np.array(data)
-
-        self._len = len(self._shmarr)
         self.log = utils.get_logger(type(self).__name__)
-        # shared current row insertion-index
-        self._iput = 0
-        self._ri = mp.Value('i', 0 if data is None else self._len, lock=False)
+
+        # allocated a shared mem np structured array
+        self._buf_size = buf_size  # purely for testing
+        self._buffer = RingBuffer(
+            dtype=self.dtype, size=buf_size) if pd else None
 
         # parent proc read-only access to disk store
         self.storetype = storetype or CSVStore
         self._storepath = path or tmpfile(self.storetype.ext)
         self.store = self.storetype(self._storepath, dtypes=self.dtype)
 
-        if data is None:
-            # setup bg writer
-            self.queue = queues.Queue()
-            # disable SIGINT while we spawn
-            signal.signal(signal.SIGINT, signal.SIG_IGN)
-            self._writer = mp.Process(
-                target=_consume_and_write,
-                args=(
-                    self.queue, self._storepath, self.store, self._ri,
-                    self._shmarr),
-                name='{}_frame_writer'.format(self.name),
-            )
-            self._writer.start()
-            # re-enable SIGINT
-            signal.signal(signal.SIGINT, signal.default_int_handler)
-            # kill subproc on exit
-            atexit.register(self.stopwriter)
+        self.queue = queues.Queue()
+        self._iput = 0  # queue put counter
 
-            # ensure writer is initialized
-            path = self.queue.get(timeout=3)
-            assert path == self._storepath
+        # disable SIGINT while we spawn
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        # setup bg writer
+        self._writer = mp.Process(
+            target=_consume_and_write,
+            args=(
+                self.queue, self._storepath, self.store, self._buffer),
+            name='{}_frame_writer'.format(self.name),
+        )
+        self._writer.start()
+        # re-enable SIGINT
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+        # kill subproc on exit
+        atexit.register(self.stopwriter)
 
-    @property
-    def buffer(self):
-        """The latest set of buffered data points not yet pushed to disk
-        """
-        return pd.DataFrame.from_records(self._shmarr[:self.buflen])
+        # ensure writer is initialized
+        path = self.queue.get(timeout=3)
+        assert path == self._storepath
 
-    @property
-    def data(self):
-        """Copy of the entire data set recorded thus far
-        """
-        if self.store:
-            return pd.concat(
-                (self.store.data, self.buffer),
-                ignore_index=True
-            )
-        return self.buffer
+    if pd:
+        @property
+        def buffer(self):
+            """The latest set of buffered data points not yet pushed to disk
+            """
+            return self._buffer.df
 
-    @property
-    def buflen(self):
-        """Current buffer length up the last inserted data point
-        """
-        bi = self.bindex
-        l = self._len
-        if not bi:
-            # handles the 1 % 1 == 0 case when l == 1
-            return bi if self.rindex < l else l
-        return bi
-
-    @property
-    def rindex(self):
-        '''Current absolute row insertion index
-        '''
-        return self._ri.value
-
-    @property
-    def bindex(self):
-        """Current insertion index of in mem frame buffer
-        (i.e. the index where the next value should be inserted)
-        """
-        return self._ri.value % self._len
+        @property
+        def data(self):
+            """Copy of the entire data set recorded thus far
+            """
+            if self.store:
+                return pd.concat(
+                    (self.store.data, self.buffer),
+                    ignore_index=True
+                )
+            return self.buffer
+    else:
+        @property
+        def data(self):
+            """Copy of the data points recorded thus far
+            """
+            with self.store.reader(
+                self.store.path, dtypes=self.dtype
+            ) as reader:
+                return reader.data[1:]
 
     def append_row(self, row=None):
         """Push a row of data onto the consumer queue
@@ -394,46 +434,45 @@ class DataStorer(object):
         self.queue.put(Terminate, timeout=3)
 
 
-def _consume_and_write(queue, path, store, ri, sharr):
-    """Insert :var:`row` pushed onto the queue into the shared memory array
-    at the current index and increment.
-    Return a boolean indicating whether the current entry
-    has caused a flush to the storage backend (normally onto disk).
-    Empty rows are always written to disk (keeps stores 'call-index-aligned').
+def _consume_and_write(queue, path, store, sharr):
+    """Insert :var:`row` received from the queue into the shared memory array
+    at the current index and increment. Empty rows are always written to disk
+    (keeps stores 'call-index-aligned').
     """
     proc = mp.current_process()
     slog = utils.get_logger(proc.name)
     log = mp.log_to_stderr(slog.getEffectiveLevel())
-    log.info("starting storage writer '{}'".format(proc.name))
+    log.debug("starting storage writer '{}'".format(proc.name))
     log.info("storage path is '{}'".format(path))
-
-    convert = pd.DataFrame.from_records if pd else None
-
-    _len = len(sharr)
+    log.debug("sharr is '{}'".format(sharr))
 
     # set up a new store instance for writing
     with store.writer(path, dtypes=store.dtypes) as store:
-        queue.put(path)  # notify parent that file has been created
-        # consume and process
-        for row in iter(queue.get, Terminate):
+        # notify parent that file has been created
+        queue.put(path)
+
+        # handle no pandas/np case
+        buff = store if sharr is None else sharr
+        bufftype = type(buff)
+        log.debug('buffer type is {}'.format(bufftype))
+
+        for row in iter(queue.get, Terminate):  # consume and process
             now = time.time()
-            i = ri.value % _len
-            if ri.value > _len - 1 and i == 0:
-                # write frame to disk on buffer fill
+
+            # write frame to disk on buffer fill
+            if sharr and sharr.is_full():
                 log.debug('writing to {} storage...'.format(store.ext))
                 try:
-                    store.append(convert(sharr) if convert else sharr)
+                    # push a data frame
+                    store.put(pd.DataFrame.from_records(buff.read()))
                 except ValueError:
                     log.error(traceback.format_exc())
-                log.debug("disk write took '{}'".format(time.time() - now))
-            # insert into numpy structured array by row int-index
-            try:
-                sharr[i] = row
-                log.debug("shmarray insert took '{}'".format(
-                          time.time() - now))
-                # increment row insertion index for the next entry (this means
-                # the last entry is at now at i - 1)
-                ri.value += 1
+                log.debug("storage put took '{}'".format(time.time() - now))
+
+            try:  # push to ring buffer (or store if no pd)
+                buff.put(row)
+                log.debug("{} insert took '{}'".format(
+                          bufftype, time.time() - now))
             except ValueError:
                 log.error(traceback.format_exc())
 

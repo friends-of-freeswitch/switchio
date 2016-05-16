@@ -8,6 +8,7 @@ from .. import utils, marks
 from collections import OrderedDict
 import itertools
 import operator
+from measure import Measurers
 
 # registry
 _apps = OrderedDict()
@@ -115,16 +116,9 @@ def load(packages=(), imp_excs=('pandas',)):
 class AppManager(object):
     """Manage apps over a cluster/slavepool
     """
-    def __init__(self, pool):
+    def __init__(self, pool, **kwargs):
         self.pool = pool
-        # attempt measurement apps setup (requires pandas)
-        try:
-            from measure import Measurers
-        except ImportError as ie:
-            utils.log_to_stderr().warn(ie.message)
-            self.measurers = None
-        else:
-            self.measurers = Measurers()
+        self.measurers = Measurers(**kwargs)
 
     def load_multi_app(self, apps_iter, app_id=None, **kwargs):
         for app in apps_iter:
