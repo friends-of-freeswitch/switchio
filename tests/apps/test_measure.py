@@ -10,32 +10,26 @@ import time
 import tempfile
 from functools import partial
 import switchy
-from switchy.apps import players
+from switchy.apps.measure import pd
 
 
-@pytest.fixture(autouse=True)
-def measure():
+@pytest.fixture
+def measure(request):
     """Load the measurement sub-module as long as there are no import issues
     otherwise skip this test set.
     """
-    try:
-        from switchy.apps import measure
-        return measure
-    except ImportError as ie:
-        pytest.skip(
-            "'{}' is required to run measurement tests"
-            .format(ie.message.split()[-1])
-        )
+    from switchy.apps import measure
+    return measure
 
 
-@pytest.fixture(params=[
-    'CSVStore',
-    'HDFStore'],
-)
+@pytest.fixture(params=['CSVStore', 'HDFStore'])
 def storetype(request, measure):
     """Deliver a storage type
     """
-    return getattr(measure.storage, request.param)
+    name = request.param
+    if 'HDF' in name:
+        pytest.importorskip("pandas")
+    return getattr(measure.storage, name)
 
 
 @pytest.fixture
@@ -45,14 +39,14 @@ def storer(request, measure, storetype):
     return partial(measure.storage.DataStorer, storetype=storetype)
 
 
+@pytest.mark.skipif(not pd, reason="No pandas installed")
 @pytest.mark.parametrize("length", [1, 128])
 def test_buffered(measure, storer, length):
     """Verify the storer's internal in-mem buffering and disk flushing logic
     """
-    np = measure.storage.pd.np
     ds = storer(
         'test_buffered_ds',
-        dtype=[('ints', np.uint32), ('strs', 'S5')],
+        dtype=[('ints', 'uint32'), ('strs', 'S5')],
         buf_size=length,
     )
     assert len(ds.data) == 0
@@ -63,7 +57,7 @@ def test_buffered(measure, storer, length):
         ds.append_row(entry)
         time.sleep(0.005)  # sub-proc write delay
         # in mem array entries
-        assert tuple(ds._shmarr[i]) == entry
+        assert tuple(ds._buffer._shmarr[i]) == entry
         assert tuple(ds.data.iloc[i]) == entry
         assert tuple(ds.data.iloc[-1]) == entry
         assert len(ds.data) == i + 1
@@ -71,7 +65,7 @@ def test_buffered(measure, storer, length):
     # no write uo disk yet
     assert not len(ds.store)
     # buffer should have filled once
-    assert len(ds.data) == len(ds._shmarr)
+    assert len(ds.data) == len(ds._buffer._shmarr)
 
     # 1st buffer flush point
     i += 1
@@ -87,7 +81,7 @@ def test_buffered(measure, storer, length):
     # last on-disk value should be last buffer value
     assert ds.store.data.iloc[i - 1][0] == length - 1
     # latest in buffer value should be at first index
-    assert ds._shmarr[0][0] == length == i
+    assert ds._buffer._shmarr[0][0] == length == i
     # combined `data` should be contiguous
     assert ds.data.iloc[i][0] == length == i
 
@@ -99,7 +93,7 @@ def test_buffered(measure, storer, length):
         ds.append_row(entry)
 
     # verify 2nd buf not yet flushed to disk
-    assert len(ds.store.data) == len(ds._shmarr)
+    assert len(ds.store.data) == len(ds._buffer._shmarr)
     # last on-disk value should still be the last from the first buffer
     assert ds.store.data.iloc[-1][0] == length - 1
     with pytest.raises(IndexError):
@@ -122,6 +116,7 @@ def test_buffered(measure, storer, length):
         assert ds.data.iloc[i][0] == i
 
 
+@pytest.mark.skipif(not pd, reason="No pandas installed")
 def test_no_dtypes(measure, storer):
     """Ensure that When no explicit dtype is provided, all row entries are cast
     to float internally.
@@ -138,17 +133,6 @@ def test_no_dtypes(measure, storer):
     assert tuple(ds.data.iloc[-1]) == entry
 
 
-def test_loaded_datastorer(measure, storer):
-    """A loaded array should work just as well
-    """
-    np = measure.storage.pd.np
-    rarr = np.random.randn(100, 4)
-    ds = storer('test_loaded_ds', rarr.dtype, data=rarr)
-    assert not hasattr(ds, '_writer')  # no sub-proc launched
-    assert ds.data.shape == rarr.shape
-    assert (ds.data == rarr).all().all()
-
-
 def write_bufs(
     num,
     ds,
@@ -160,16 +144,16 @@ def write_bufs(
             'test_buffered_ds',
             dtype=dtype,
         )
-    numentries = num * len(ds._shmarr)
+    numentries = num * ds._buf_size
     for i in range(numentries):
         entry = func(i)
         ds.append_row(entry)
     return ds
 
 
+@pytest.mark.skipif(not pd, reason="No pandas installed")
 def test_measurers(measure, tmpdir, storetype):
     pd = measure.storage.pd
-    np = pd.np
 
     # an operator
     def concat(df):
@@ -181,7 +165,7 @@ def test_measurers(measure, tmpdir, storetype):
     }
 
     class MeasureBuddy(object):
-        fields = [('ints', np.uint32), ('strs', 'S5')]
+        fields = [('ints', 'uint32'), ('strs', 'S5')]
         storer_kwargs = {'buf_size': 10}
         operators = {'concat': concat}
 
@@ -256,22 +240,28 @@ def test_write_speed(measure, storer):
     """Assert we can write and read quickly to the storer
     """
     ds = write_bufs(3, ds=storer)
-    numentries = 3 * len(ds._shmarr)
+    numentries = 3 * ds._buf_size
     time.sleep(0.03)  # 30ms to flush 3 bufs...
     assert len(ds.data) == numentries
+    if measure.storage.pd:
+        assert len(ds._buffer) == ds._buf_size
 
 
-def test_with_orig(get_orig):
+def test_with_orig(get_orig, measure, storer):
     """Test that using a `DataStorer` with a single row dataframe
     stores data correctly
     """
+    from switchy.apps import players
+    pd = measure.pd
     orig = get_orig('doggy', rate=60)
     orig.load_app(players.TonePlay)
+
     # configure max calls originated to length of of storer buffer
     cdr_storer = orig.measurers['CDR'].storer
     assert len(cdr_storer.data) == 0
-    orig.limit = orig.max_offered = cdr_storer._len or 1
-    assert cdr_storer.bindex == 0
+    orig.limit = orig.max_offered = cdr_storer._buf_size or 1
+    if pd:
+        assert cdr_storer._buffer.bi == 0
     orig.start()
 
     # wait for all calls to come up then hupall
@@ -285,25 +275,32 @@ def test_with_orig(get_orig):
     print("'{}' secs since all queue writes".format(time.time() - start))
 
     start = time.time()
-    orig.waitwhile(lambda: cdr_storer.rindex < orig.max_offered, timeout=10)
+    orig.waitwhile(
+        lambda: len(cdr_storer.data) < orig.max_offered, timeout=10)
     print("'{}' secs since all written to frame".format(time.time() - start))
 
     # index is always post-incremented after each row append
-    # (WARNING: the below check may intermittently fail due to thread raciness
+    # (WARNING: the below checks may intermittently vary due to thread raciness
     # when determining if max_offered has been surpassed in an event callback)
-    assert orig.max_offered == cdr_storer.rindex
-    assert not len(cdr_storer.store)  # no flush to disk yet
+    if pd:
+        if orig.total_originated_sessions <= orig.max_offered:
+            assert not len(cdr_storer.store)  # no flush to disk yet
+            # verify that making one addtional call results in data being
+            # inserted into the beginning of the buffer and a flush to disk
+            orig.max_offered += 1
+            orig.limit = 1
+            orig.start()
+            time.sleep(1)
+            orig.hupall()
+            orig.waitwhile(
+                lambda: len(cdr_storer.data) < orig.max_offered, timeout=10)
 
-    # verify that making one addtional call results in data being inserted
-    # into the beginning of the df buffer and a flush to disk
-    orig.max_offered += 1
-    orig.limit = 1
-    orig.start()
-    time.sleep(1)
-    orig.hupall()
-    orig.waitwhile(lambda: cdr_storer.rindex < orig.max_offered, timeout=10)
-    assert cdr_storer.rindex == orig.max_offered
-    # post increment means 1 will be the next insertion index
-    assert cdr_storer.bindex == 1
+            assert cdr_storer._buffer.ri.value == orig.max_offered
+            # post increment means 1 will be the next insertion index
+            assert cdr_storer._buffer.bi == 1
+
+        # only one row is in the buffer while the rest is in the store
+        assert len(cdr_storer.store.data) == orig.total_originated_sessions - 1
+
     assert len(cdr_storer.store)  # flushed to disk
-    assert len(cdr_storer.store.data) == orig.total_originated_sessions - 1
+    assert len(cdr_storer.data) == orig.total_originated_sessions

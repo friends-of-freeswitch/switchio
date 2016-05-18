@@ -2,7 +2,7 @@
 Apps testing
 """
 import pytest
-from switchy import get_originator
+import switchy
 
 
 @pytest.yield_fixture
@@ -13,7 +13,7 @@ def get_orig(request, fsip):
     origs = []
 
     def factory(userpart, port=5080, limit=1, rate=1, offer=1, **kwargs):
-        orig = get_originator(
+        orig = switchy.get_originator(
             fsip,
             limit=limit,
             rate=rate,
@@ -21,7 +21,7 @@ def get_orig(request, fsip):
             **kwargs
         )
 
-        # each slave profile should call originate calls to itself
+        # each profile should originate calls back to itself
         # to avoid dependency on another server
         orig.pool.evals(
             ("""client.set_orig_cmd('{}@{}:{}'.format(
