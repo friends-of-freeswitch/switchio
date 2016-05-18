@@ -1,0 +1,4 @@
+pytest
+
+# pysipp for call tracking testing
+-e git+git://github.com/SIPp/pysipp.git#egg=pysipp
