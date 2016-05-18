@@ -194,25 +194,43 @@ For more details see :ref:`clustertools` .
 
 Measurement collection
 **********************
-Given that you have `numpy` installed, the `Originator` collects call latency measurements
-by default using the built-in :ref:`metrics <metricsapp>` app. The array
-is referenced by the :py:attr:`switchy.apps.call_gen.Originator.metrics`
-attribute::
+By default, the `Originator` collects call detail records using the built-in
+:ref:`CDR <cdrapp>` app. Given that you have `pandas`_ installed this data and
+additional stress testing metrics can be accessed in `pandas` `DataFrames`_ via the
+:py:attr:`switchy.apps.call_gen.Originator.measurers` object::
 
-    >>> originator.metrics
-    array([
-    (1431052903.824296, 0.01998305320739746, 0.0199739933013916, 0.05997896194458008, 0.01702594757080078, 0L, 1999L),
-    (1431052903.864301, 0.0, 0.020053863525390625, 0.05999898910522461, 0.0016980171203613281, 0L, 1998L),
-    (1431052903.884275, 0.019971132278442383, 0.019969940185546875, 0.05999493598937988, 0.007421970367431641, 0L, 1997L),
-    ...,
-    (1431053015.88425, 0.06000018119812012, 0.019997835159301758, 0.09999799728393555, 0.01164388656616211, 0L, 1934L),
-    (1431053015.924249, 0.02000117301940918, 0.019997835159301758, 0.05999898910522461, 0.01691603660583496, 0L, 1933L),
-    (1431053015.96425, 0.019997835159301758, 0.03999900817871094, 0.09999799728393555, 0.013684988021850586, 0L, 1932L)],
-    dtype=[('time', '<f8'), ('invite_latency', '<f8'), ('answer_latency', '<f8'), ('call_setup_latency', '<f8'),
-    ('originate_latency', '<f8'), ('num_failed_calls', '<u4'), ('num_sessions', '<u4')])
+    >>> orig.measurers.stores.CDR
+          switchy_app  hangup_cause     caller_create  caller_answer caller_req_originate  caller_originate  caller_hangup job_launch   callee_create  callee_answer  callee_hangup failed_calls  active_sessions  erlangs
+    0     Bert         NORMAL_CLEARING  1.463601e+09   1.463601e+09  1.463601e+09          1.463601e+09      1.463601e+09  1.463601e+09 1.463601e+09   1.463601e+09   1.463601e+09  0             8                4
+    1     Bert         NORMAL_CLEARING  1.463601e+09   1.463601e+09  1.463601e+09          1.463601e+09      1.463601e+09  1.463601e+09 1.463601e+09   1.463601e+09   1.463601e+09  0             12               6
+    2     Bert         NORMAL_CLEARING  1.463601e+09   1.463601e+09  1.463601e+09          1.463601e+09      1.463601e+09  1.463601e+09 1.463601e+09   1.463601e+09   1.463601e+09  0             22               11
+    3     Bert         NORMAL_CLEARING  1.463601e+09   1.463601e+09  1.463601e+09          1.463601e+09      1.463601e+09  1.463601e+09 1.463601e+09   1.463601e+09   1.463601e+09  0             6                3
+    ...
+    1056  Bert         NORMAL_CLEARING  1.463601e+09   1.463601e+09  1.463601e+09          1.463601e+09      1.463601e+09  1.463601e+09 1.463601e+09   1.463601e+09   1.463601e+09  0             1992             996
 
-If you have `matplotlib` installed you can also plot the results using
-:py:meth:`switchy.apps.call_gen.Originator.metrics.plot`.
+    >>> originator.measurers.ops.call_metrics
+           active_sessions  answer_latency  avg_call_rate  call_duration \
+    0      8                0.020000        NaN             20.880000
+    1      12               0.020000        NaN             20.820000
+    2      22               0.020000        NaN             20.660000
+    3      2                0.020000        NaN             20.980000
+    ...
+
+           call_rate  call_setup_latency  erlangs  failed_calls  \
+    0      25.000024  0.060000            4        0
+    1      49.999452  0.060000            6        0
+    2      50.000048  0.060000            11       0
+    3      NaN        0.120000            1        0
+    ...
+
+If you have `matplotlib`_ installed you can also plot the results using
+:py:meth:`Originator.measurers.plot`.
+
+If you do not have have `pandas` installed then the CDR records are
+still stored in a local `csv` file and can be read into a list of lists
+using the same :py:attr:`orig.measurers.stores.CDR` attribute.
+
+More to come...
 
 
 .. _originate:
@@ -223,3 +241,9 @@ If you have `matplotlib` installed you can also plot the results using
     https://freeswitch.org/confluence/display/FREESWITCH/Command-Line+Interface+fs_cli
 .. _mod_bert:
     https://freeswitch.org/confluence/display/FREESWITCH/mod_bert
+.. _pandas:
+    http://pandas.pydata.org/pandas-docs/stable/
+.. _DataFrames:
+    http://pandas.pydata.org/pandas-docs/stable/dsintro.html#dataframe
+.. _matplotlib:
+    http://matplotlib.org/
