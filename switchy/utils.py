@@ -17,46 +17,38 @@ import pkgutil
 
 
 class ESLError(Exception):
-    pass
+    """An error pertaining to the connection"""
+
+
+class TimeoutError(Exception):
+    """Timing error"""
 
 
 class ConfigurationError(Exception):
-    pass
+    """Config error"""
 
 
 class CommandError(ESLError):
-    pass
+    """Console command error"""
 
 
 # fs-like log format
 LOG_FORMAT = ("%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d "
               ": %(message)s")
 DATE_FORMAT = '%b %d %H:%M:%S'
-_log = None
-
-
-def get_root_log():
-    '''Get the root switchy log
-    '''
-    global _log
-    if not _log:
-        _log = logging.getLogger('switchy')
-        _log.info("creating new logger")
-        _log.propagate = True
-    return _log
 
 
 def get_logger(name=None):
-    '''Return a sub-log for `name` or the pkg log by default
+    '''Return the package log or a sub-log for `name` if provided.
     '''
-    log = get_root_log()
+    log = logging.getLogger('switchy')
     return log.getChild(name) if name else log
 
 
 def log_to_stderr(level=None):
     '''Turn on logging and add a handler which writes to stderr
     '''
-    log = get_root_log()
+    log = logging.getLogger()  # the root logger
     if level:
         log.setLevel(level)
     if not any(
@@ -83,6 +75,7 @@ def log_to_stderr(level=None):
             logging.warning("Colour logging not supported. Please install"
                             " the colorlog module to enable\n")
             formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+
         handler.setFormatter(formatter)
         log.addHandler(handler)
     return log
@@ -101,12 +94,31 @@ def xheaderify(header_name):
     return 'sip_h_X-{}'.format(header_name)
 
 
+def param2header(name):
+    """Return the appropriate event header name corresponding to the named
+    parameter `name` which should be used when the param is received as a
+    header in event data.
+
+    Most often this is just the original parameter name with a 'variable_'
+    prefix. This is pretty much a shitty hack (thanks goes to FS for the
+    asymmetry in variable referencing...)
+    """
+    var_keys = {
+        'sip_h_X-',  # is it an x-header?
+        'switchy',  # custom switchy variable?
+    }
+    for key in var_keys:
+        if key in name:
+            return 'variable_{}'.format(name)
+    return name
+
+
 def pstr(self):
     """Pretty str repr of connection-like instances
     """
     return '{}@{}'.format(
         type(self).__name__,
-        getattr(self, 'server', getattr(self, 'host', ''))
+        getattr(self, 'server', getattr(self, 'host', 'unknown-host'))
     )
 
 
@@ -239,6 +251,22 @@ class Timer(object):
         return self._last
 
 
+def DictProxy(d, extra_attrs={}):
+    """A dictionary proxy object which provides attribute access to elements
+    """
+    attrs = [
+        '__repr__',
+        '__getitem__',
+        '__setitem__',
+        '__contains__',
+    ]
+    attr_map = {attr: getattr(d, attr) for attr in attrs}
+    attr_map.update(extra_attrs)
+    proxy = type('DictProxy', (), attr_map)()
+    proxy.__dict__ = d
+    return proxy
+
+
 # based on
 # http://stackoverflow.com/questions/3365740/how-to-import-all-submodules
 def iter_import_submods(packages, recursive=False, imp_excs=()):
@@ -275,3 +303,25 @@ def iter_import_submods(packages, recursive=False, imp_excs=()):
                         [full_name], recursive=recursive, imp_excs=imp_excs
                     ):
                         yield res
+
+
+def waitwhile(predicate, timeout=float('inf'), period=0.1, exc=True):
+    """Block until `predicate` evaluates to `False`.
+
+    :param predicate: predicate function
+    :type predicate: function
+    :param float timeout: time to wait in seconds for predicate to eval False
+    :param float period: poll loop sleep period in seconds
+    :raises TimeoutError: if predicate does not eval to False within `timeout`
+    """
+    start = time.time()
+    while predicate():
+        time.sleep(period)
+        if time.time() - start > timeout:
+            if exc:
+                raise TimeoutError(
+                    "'{}' failed to be True".format(
+                        predicate)
+                )
+            return False
+    return True

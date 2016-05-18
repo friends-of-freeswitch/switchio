@@ -8,64 +8,36 @@ from __future__ import division
 import time
 import pytest
 from distutils import spawn
+from pprint import pformat
 from switchy.utils import ConfigurationError
 
 
-@pytest.yield_fixture
-def scenario(request, fssock):
+@pytest.fixture
+def scenario(request, fssock, loglevel):
     '''provision and return a SIPp scenario with the
     remote proxy set to the current fs server
     '''
     sipp = spawn.find_executable('sipp')
     if not sipp:
         pytest.skip("SIPp is required to run call/speed tests")
-    import socket
-    from helpers import CmdStr, get_runner
-    # build command template
-    template = (
-        '{remote_host}:{remote_port}',
-        '-i {local_ip}',
-        '-p {local_port}',
-        '-recv_timeout {msg_timeout}',
-        '-sn {scen_name}',
-        '-s {uri_username}',
-        '-rsa {proxy}',
-        # load settings
-        '-d {duration}',
-        '-r {rate}',
-        '-l {limit}',
-        '-m {call_count}'
-    )
 
-    # common
-    ua = CmdStr(sipp, template)
-    ua.local_ip = socket.gethostbyname(socket.getfqdn())
-    ua.duration = 10000
-    ua.call_count = 1
-    ua.limit = 1
-    # uas
-    uas = ua.copy()
-    uas.scen_name = 'uas'
-    uas.local_port = 8888
-    # uac
-    uac = ua.copy()
-    uac.scen_name = 'uac'
-    uac.local_port = 9999
-    uac.remote_host = uas.local_ip
-    uac.remote_port = uas.local_port
-    # NOTE: you must add a park extension to your default dialplan!
-    uac.uri_username = 'park'  # call the park extension
+    try:
+        import pysipp
+    except ImportError:
+        pytest.skip("pysipp is required to run call/speed tests")
+
+    pl = pysipp.utils.get_logger()
+    pl.setLevel(loglevel)
+
     # first hop should be fs server
-    uac.proxy = ':'.join(map(str, fssock))
+    scen = pysipp.scenario(proxyaddr=fssock)
+    scen.log = pl
 
-    runner = get_runner((uas, uac))
-    yield runner
-    # print output
-    for name, (out, err) in runner.results.items():
-        print("{} stderr: {}".format(name, err))
-    # ensure no failures
-    for ua, proc in runner.procs.items():
-        assert proc.returncode == 0
+    # set client destination
+    # NOTE: you must add a park extension to your default dialplan!
+    scen.agents['uac'].uri_username = 'park'
+
+    return scen
 
 
 @pytest.yield_fixture
@@ -103,7 +75,7 @@ def proxy_dp(ael, client):
 
     # attempt to add measurement collection
     try:
-        from switchy.apps.measure import Metrics
+        from switchy.apps.measure import CDR
     except ImportError:
         print("WARNING: numpy measurements not available")
     else:
@@ -111,10 +83,10 @@ def proxy_dp(ael, client):
         client.listener = ael
         # assigning a listener overrides it's call lookup var so restore it
         client.listener.call_id_var = 'variable_call_uuid'
-        # insert the `Metrics` app
-        assert 'default' == client.load_app(Metrics, on_value="default")
-        app = client.apps.default['Metrics']
-        ael.metrics = app
+        # insert the `CDR` app
+        assert 'default' == client.load_app(CDR, on_value="default")
+        app = client.apps.default['CDR']
+        ael.call_times = app
     # sanity
     assert ael.connected()
     assert ael.is_alive()
@@ -136,8 +108,43 @@ def monitor(el):
     from datetime import datetime
     calls = el.count_calls()
     while calls:
-        print("[{1}] call count is '{0}'".format(calls, datetime.now()))
+        el.log.info("[{1}] call count is '{0}'".format(calls, datetime.now()))
         calls = el.count_calls()
+
+
+@pytest.fixture
+def checkcalls(proxy_dp, scenario, ael):
+    """Return a function that can be used to make calls and check that call
+    counting is fast and correct.
+    """
+    def inner(rate=1, limit=1, duration=3, call_count=None, sleep=1.1):
+        # configure cmds
+        scenario.rate = rate
+        scenario.limit = limit
+        scenario.call_count = call_count or limit
+        scenario.pause_duration = int(duration * 1000)
+        scenario.recv_timeout = scenario.pause_duration + 5000
+
+        scenario.log.info(
+            "SIPp cmds: {}".format(pformat(scenario.cmditems()))
+        )
+
+        try:
+            scenario(block=False)
+
+            # wait for events to arrive and be processed
+            time.sleep(sleep)
+            msg = "Wasn't quite fast enough to track {} cps".format(rate)
+            assert ael.count_calls() == limit, msg
+            time.sleep(duration + 1.05)
+            assert ael.count_calls() == 0
+
+            if hasattr(ael, 'call_times'):  # check call_times tracking
+                assert len(ael.call_times.storer.data) == limit
+        finally:
+            scenario.finalize()
+
+    return inner
 
 
 @pytest.mark.usefixtures('load_limits')
@@ -208,21 +215,31 @@ class TestListener:
         # remove connection from listener set
         delattr(el, 'con')
 
-    def test_call(self, ael, proxy_dp, scenario):
-        duration = 3
-        for ua in scenario.cmds:
-            ua.rate = 1
-            ua.limit = 1
-            ua.call_count = 1
-            ua.duration = int(duration * 1000)
-            print("SIPp cmd: {}".format(ua.render()))
-        with scenario():
-            time.sleep(1.3)  # we can track up to around 250cps (very rough)
-            assert ael.count_calls() == 1
-            time.sleep(duration + 0.5)
-            assert ael.count_calls() == 0
+    def test_call(self, checkcalls):
+        """Test a simple call (a pair of sessions) through FreeSWITCH
+        """
+        checkcalls(duration=3, sleep=1.3)
 
-    def test_track_cps(self, proxy_dp, ael, scenario, cps):
+    def test_cb_err(self, ael, checkcalls):
+        """Verify that the callback chain is never halted due to a single
+        callback's error
+        """
+        var = [None]
+
+        def throw_err(sess):
+            raise Exception("Callback failed on purpose")
+
+        def set_var(sess):
+            var[0] = 'yay'
+
+        ael.add_callback('CHANNEL_CREATE', 'default', throw_err)
+        ael.add_callback('CHANNEL_CREATE', 'default', set_var)
+
+        checkcalls(duration=3, sleep=1.3)
+        # ensure callback chain wasn't halted
+        assert var
+
+    def test_track_cps(self, checkcalls, cps):
         '''load fs with up to 250 cps and test that we're fast enough
         to track all the created session within a 1 sec period
 
@@ -230,26 +247,9 @@ class TestListener:
         this test may fail intermittently as it depends on the
         speed of the fs server under test
         '''
-        duration = 4
-        for ua in scenario.cmds:
-            ua.rate = cps
-            ua.limit = cps
-            ua.call_count = cps
-            ua.duration = int(duration * 1000)
-            print("SIPp cmd: {}".format(ua.render()))
+        checkcalls(rate=cps, limit=cps, call_count=cps, duration=4)
 
-        with scenario():
-            # wait for events to arrive and be processed
-            time.sleep(1.1)
-            msg = "Wasn't quite fast enough to track {} cps".format(cps)
-            assert ael.count_calls() == cps, msg
-            time.sleep(duration + 1.05)
-            assert ael.count_calls() == 0
-
-        if hasattr(ael, 'metrics'):  # check metrics tracking
-            assert ael.metrics.array.size == cps
-
-    def test_track_1kcapacity(self, ael, proxy_dp, scenario, cps):
+    def test_track_1kcapacity(self, checkcalls, cps):
         '''load fs with up to 1000 simultaneous calls
         and test we (are fast enough to) track all the created sessions
 
@@ -259,22 +259,7 @@ class TestListener:
         '''
         limit = 1000
         duration = limit / cps + 1  # h = E/lambda (erlang formula)
-        for ua in scenario.cmds:
-            ua.rate = cps
-            ua.limit = limit
-            ua.call_count = limit
-            ua.duration = int(duration * 1000)
-            print("SIPp cmd: {}".format(ua.render()))
-
-        with scenario():
-            # wait for events to arrive and be processed
-            time.sleep(duration)
-            assert ael.count_calls() == limit
-            time.sleep(duration + 1.5)
-            assert ael.count_calls() == 0
-
-        if hasattr(ael, 'metrics'):
-            assert ael.metrics.array.size == limit
+        checkcalls(rate=cps, limit=limit, duration=duration, sleep=duration)
 
 
 class TestClient:

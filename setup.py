@@ -15,8 +15,8 @@ with open('README.rst') as f:
 setup(
     name="switchy",
     version='0.1.alpha',
-    description='Switchy is a fast FreeSWITCH ESL control library with '
-                'an emphasis on load testing.',
+    description='Switchy is a fast FreeSWITCH control library purpose-built on'
+                'traffic theory and stress testing.',
     long_description=readme,
     license='Mozilla',
     author='Sangoma Technologies',
@@ -27,7 +27,6 @@ setup(
         'switchy',
         'switchy.apps',
         'switchy.apps.measure',
-        # 'tests',
     ],
     entry_points={
         'console_scripts': [
@@ -40,11 +39,10 @@ setup(
     package_data={
         'switchy': ['../conf/switchydp.xml']
     },
-    # use_2to3 = False
-    # zip_safe=True,
     extras_require={
-        'metrics': ['numpy'],
-        'graphing': ['matplotlib'],
+        'metrics': ['pandas>=0.18'],
+        'hdf5': ['tables==3.2.1.1'],
+        'graphing': ['matplotlib', 'pandas>=0.18'],
         'testing': ['pytest'],
     },
     classifiers=[

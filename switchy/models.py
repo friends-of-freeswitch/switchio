@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-Models representing freeSWITCH entities
+Models representing FreeSWITCH entities
 """
 import time
 import utils
@@ -68,7 +68,7 @@ class Events(object):
     def pprint(self, index=0):
         """Print serialized event data in chronological order to stdout
         """
-        for ev in reversed(self._events):
+        for ev in reversed(list(self._events)[index:]):
             print(ev.serialize())
 
 
@@ -145,6 +145,13 @@ class Session(object):
     @property
     def appname(self):
         return self.get('variable_switchy_app')
+
+    @property
+    def host(self):
+        '''Return the hostname/ip address for the host which this session is
+        currently active
+        '''
+        return self.con.host
 
     @property
     def time(self):
@@ -382,6 +389,15 @@ class Session(object):
         """Unmute the write buffer for this session
         """
         self.mute(level=0, **kwargs)
+
+    def respond(self, response):
+        """Respond immediately with the following `response` code.
+        see the FreeSWITCH `respond`_ dialplan application
+
+        .. _respond:
+            https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+respond
+        """
+        self.broadcast('respond::{}'.format(response))
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session

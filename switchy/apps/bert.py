@@ -7,7 +7,7 @@ Bert testing
 from collections import deque
 from ..apps import app
 from ..marks import event_callback
-from ..utils import get_logger
+from ..utils import get_logger, CommandError
 
 
 @app
@@ -24,22 +24,47 @@ class Bert(object):
     """
     bert_sync_lost_var = 'bert_stats_sync_lost'
 
-    def prepost(self, client, listener):
-        # add custom event handlers
-        for evname in ('lost_sync', 'timeout', 'in_sync'):
-            listener.add_handler('mod_bert::' + evname, listener.lookup_sess)
-
+    def prepost(self, client, listener, **opts):
         self.log = get_logger(self.__class__.__name__)
-        self.hangup_on_error = True  # hangup on desyncs by default
         self._two_sided = False  # toggle whether to run bert on both ends
+        self.opts = {
+            'bert_timer_name': 'soft',
+            'bert_max_err': '30',
+            'bert_timeout_ms': '3000',
+            'bert_hangup_on_error': 'yes',
+            "jitterbuffer_msec": "100:200:40",
+            'absolute_codec_string': 'PCMU',
+            # "bert_debug_io_file": "/tmp/bert_debug_${uuid}",
+        }
+        self.opts.update(opts)
+        self.log.debug("using mod_bert config: {}".format(self.opts))
 
         # make sure the module is loaded
-        client.api('reload mod_bert')
+        try:
+            client.api('reload mod_bert')
+        except CommandError:
+            self.log.debug("mod_bert already loaded")
 
         # collections of failed sessions
         self.lost_sync = deque(maxlen=1e3)
         self.timed_out = deque(maxlen=1e3)
         yield
+
+    @property
+    def hangup_on_error(self):
+        """Toggle whether to hangup calls when a bert test fails
+        """
+        return {
+            'yes': True,
+            'no': False
+        }[self.opts.get('bert_hangup_on_error', 'no')]
+
+    @hangup_on_error.setter
+    def hangup_on_error(self, val):
+        self.opts['bert_hangup_on_error'] = {
+            True: 'yes',
+            False: 'no'
+        }[val]
 
     @property
     def two_sided(self):
@@ -54,28 +79,15 @@ class Bert(object):
         assert isinstance(enable, bool)
         self._two_sided = enable
 
-    def setup(self, sess):
-        """Apply bert config settings
-        """
-        sess.setvar('bert_timer_name', 'soft')
-        sess.setvar('bert_max_err', '30')
-        sess.setvar('bert_timeout_ms', '3000')
-        if self.hangup_on_error:
-            sess.setvar('bert_hangup_on_error', 'yes')
-        sess.setvar("jitterbuffer_msec", "100:200:40")
-        # sess.setvar("bert_debug_io_file", "/tmp/bert_debug_${uuid}")
-
     @event_callback('CHANNEL_PARK')
-    def ernie(self, sess):
+    def on_park(self, sess):
         '''Knows how to get us riled up
         '''
         # assumption is that inbound calls will be parked immediately
         if sess.is_inbound():
-            sess.setvar('absolute_codec_string', 'PCMU')
             sess.answer()  # next step will be in answer handler
-            sess.setvar("jitterbuffer_msec", "100:200:40")
+            sess.setvars(self.opts)
             if self._two_sided:  # bert run on both sides
-                self.setup(sess)
                 sess.broadcast('bert_test::')
             else:  # one-sided looping audio back to source
                 sess.broadcast('echo::')
@@ -84,8 +96,7 @@ class Bert(object):
         # initiated by the inbound leg given that the originate command
         # specified the `park` application as its argument
         if sess.is_outbound():
-            self.setup(sess)
-            sess.setvar('absolute_codec_string', 'PCMU')
+            sess.setvars(self.opts)
             sess.broadcast('bert_test::')
 
     desync_stats = (
@@ -97,7 +108,7 @@ class Bert(object):
 
     # custom event handling
     @event_callback('mod_bert::lost_sync')
-    def _handle_lost_sync(self, sess):
+    def on_lost_sync(self, sess):
         """Increment counters on synchronization failure
 
         The following stats can be retrieved using the latest version of
@@ -128,7 +139,7 @@ class Bert(object):
         sess.vars['bert_sync'] = False
 
     @event_callback('mod_bert::timeout')
-    def _handle_timeout(self, sess):
+    def on_timeout(self, sess):
         """Mark session as bert time out
         """
         sess.vars['bert_timeout'] = True
@@ -136,6 +147,6 @@ class Bert(object):
         self.timed_out.append(sess)
 
     @event_callback('mod_bert::in_sync')
-    def _handle_synced(self, sess):
+    def on_synced(self, sess):
         sess.vars['bert_sync'] = True
         self.log.debug('BERT sync on session {}'.format(sess.uuid))

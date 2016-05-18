@@ -8,33 +8,16 @@ from __future__ import division
 import time
 import sched
 import traceback
-from itertools import cycle, chain
-from collections import namedtuple, deque, Counter
+import functools
+import inspect
+from itertools import cycle
+from collections import Counter
 from threading import Thread
 import multiprocessing as mp
 from .. import utils
 from .. import marks
-from ..observe import EventListener, Client
-from ..distribute import SlavePool
-
-
-def get_pool(contacts, **kwargs):
-    """Construct and return a slave pool from a sequence of
-    contact information
-    """
-    SlavePair = namedtuple("SlavePair", "client listener")
-    pairs = deque()
-
-    # instantiate all pairs
-    for contact in contacts:
-        if isinstance(contact, (basestring)):
-            contact = (contact,)
-        # create pairs
-        listener = EventListener(*contact, **kwargs)
-        client = Client(*contact, listener=listener)
-        pairs.append(SlavePair(client, listener))
-
-    return SlavePool(pairs)
+from .. import observe
+from . import AppManager
 
 
 def get_originator(contacts, *args, **kwargs):
@@ -44,13 +27,13 @@ def get_originator(contacts, *args, **kwargs):
         contacts = (contacts,)
 
     # pop kwargs destined for the listener
-    argname, kwargnames = utils.get_args(EventListener.__init__)
+    argname, kwargnames = utils.get_args(observe.EventListener.__init__)
     lkwargs = {}
     for name in kwargnames:
         if name in kwargs:
             lkwargs[name] = kwargs.pop(name)
 
-    slavepool = get_pool(contacts, **lkwargs)
+    slavepool = observe.get_pool(contacts, **lkwargs)
     return Originator(slavepool, *args, **kwargs)
 
 
@@ -139,7 +122,7 @@ class Originator(object):
     }
 
     def __init__(self, slavepool, debug=False, auto_duration=True,
-                 app_id=None, apps=None, **kwargs):
+                 app_id=None, **kwargs):
         '''
         Parameters
         ----------
@@ -159,7 +142,7 @@ class Originator(object):
         self.count_calls = self.pool.fast_count
         self.debug = debug
         self.auto_duration = auto_duration
-        self.server = self.pool.evals('client.server')
+        self.server = self.pool.evals('client.host')
         self.log = utils.get_logger(utils.pstr(self))
         self._thread = None
         self._start = mp.Event()
@@ -172,18 +155,14 @@ class Originator(object):
         self._max_rate = 250  # a realistic hard cps limit
         self.duration_offset = 5  # calls must be at least 5 secs
 
-        # attempt measurement capture setup
-        try:
-            from measure.metrics import new_array
-        except ImportError:
-            if not self.log.handlers:
-                utils.log_to_stderr()
-            self.log.warn(
-                "Numpy is not installed; no call metrics will be collected"
+        self.app_manager = AppManager(self.pool)
+        self.measurers = self.app_manager.measurers
+        if self.measurers:
+            from measure import CDR
+            self.measurers.add(
+                CDR(),
+                pool=self.pool,
             )
-            self.metrics = None
-        else:
-            self.metrics = new_array()  # shared by whole cluster
 
         # don't worry so much about call state for load testing
         self.pool.evals('listener.unsubscribe("CALL_UPDATE")')
@@ -191,15 +170,13 @@ class Originator(object):
         self.pool.evals('client.connect()')
 
         self.app_weights = WeightedIterator()
-        if apps:
-            self.load_app(apps, with_metrics=True)
         self.iterappids = iter(self.app_weights)
 
         # apply default load settings
         if len(kwargs):
             self.log.debug("kwargs contents : {}".format(kwargs))
 
-        # assign instance vars
+        # assign defaults
         for name, val in type(self).default_settings.iteritems():
             setattr(self, name, kwargs.pop(name, None) or val)
 
@@ -231,45 +208,25 @@ class Originator(object):
             self.pool.evals('client.api("fsctl loglevel warning")')
             self.pool.evals('client.api("console loglevel warning")')
 
-    def load_app(self, apps, app_id=None, weight=1, with_metrics=True):
-        """Load app(s) for use across all slaves in the cluster
+    def load_app(self, app, app_id=None, ppkwargs={}, weight=1,
+                 with_metrics=True):
+        """Load a call control app for use across the entire slave cluster.
+
+        If `app` is an instance then it's state will be shared by all slaves.
+        If it is a class then new instances will be instantiated for each
+        `Client`-`Observer` pair and thus state will have per slave scope.
         """
-        for app in apps:
-            try:
-                app, ppkwargs = app  # user can optionally pass doubles
-            except TypeError:
-                ppkwargs = {}
-
-            # load each app under a common id
-            app_id = self.pool.evals(
-                'client.load_app(app, on_value=appid, **prepostkwargs)',
-                app=app, appid=app_id, prepostkwargs=ppkwargs)[0]
-
-        # always register our local callbacks for each app
-        self.pool.evals('client.load_app(Originator, on_value=appid)',
-                        Originator=self, appid=app_id)
-
-        if with_metrics and self.metrics:
-                from measure import Metrics
-                self.pool.evals(
-                    ('''client.load_app(
-                            Metrics, on_value=appid, array=array, pool=pool
-                    )'''),
-                    Metrics=Metrics, array=self.metrics, appid=app_id,
-                    pool=self.pool
-                )
-
-        self.app_weights[app_id] = weight
-
-    def iterapps(self):
-        """Iterable over all unique contained subapps
-        """
-        return set(
-            app for app_map in chain.from_iterable(
-                self.pool.evals('client._apps.values()')
-            )
-            for app in app_map.values()
+        appid = self.app_manager.load_multi_app(
+            # always register our local callbacks for all apps/slaves
+            [(app, ppkwargs), self],
+            app_id=app_id,
+            with_measurers=with_metrics
         )
+        self.app_weights[appid] = weight
+        # refresh load settings
+        for attr in 'duration rate limit'.split():
+            setattr(self, attr, getattr(self, attr))
+        return app_id
 
     @property
     def max_rate(self):
@@ -289,7 +246,7 @@ class Originator(object):
         self._rate = value
 
         # update any sub-apps
-        for app in self.iterapps():
+        for app in self.app_manager.iterapps():
             callback = getattr(app, '__setrate__', None)
             if callback:
                 # XXX assumes equal delegation to all slaves
@@ -306,7 +263,7 @@ class Originator(object):
     # TODO: auto_duration should be applied via decorator?
     def _set_limit(self, value):
         # update any sub-apps
-        for app in self.iterapps():
+        for app in self.app_manager.iterapps():
             callback = getattr(app, '__setlimit__', None)
             if callback:
                 callback(value)
@@ -323,7 +280,7 @@ class Originator(object):
 
     def _set_duration(self, value):
         # update any sub-apps
-        for app in self.iterapps():
+        for app in self.app_manager.iterapps():
             callback = getattr(app, '__setduration__', None)
             if callback:
                 callback(value)
@@ -338,7 +295,8 @@ class Originator(object):
     def __repr__(self):
         """Repr with [<state>] <load_settings> slapped in
         """
-        props = "state total_originated_sessions rate limit max_offered duration".split()
+        props = "state total_originated_sessions rate limit max_offered "\
+                "duration".split()
         rep = type(self).__name__
         return "<{}: active-calls={} {}>".format(
             rep, self.pool.fast_count(),
@@ -346,10 +304,9 @@ class Originator(object):
                 attr.replace('_', '-'), getattr(self, attr)) for attr in props)
         )
 
-    def _stop_on_none(self):
+    def _report_on_none(self):
         if self.pool.count_jobs() == 0 and self.pool.count_sessions() == 0:
             self.log.info('all sessions have ended...')
-            self._change_state("STOPPED")
 
     @marks.event_callback("BACKGROUND_JOB")
     def _handle_bj(self, sess, job):
@@ -364,11 +321,17 @@ class Originator(object):
 
         # failed jobs and sessions should be popped in the listener's
         # default bg job handler
-        self._stop_on_none()
+        self._report_on_none()
 
     @marks.event_callback("CHANNEL_HANGUP")
-    def _handle_hangup(self, *args):
-        self._stop_on_none()
+    def _handle_hangup(self, sess, job):
+        self._report_on_none()
+        # if sess.call.sessions and sess.is_outbound():
+        #     # we normally expect that the caller hangs up
+        #     self.log.warn(
+        #         'received hangup for inbound session {}'
+        #         .format(sess.uuid)
+        #     )
 
     @marks.event_callback("CHANNEL_ORIGINATE")
     def _handle_originate(self, sess):
@@ -418,7 +381,7 @@ class Originator(object):
                 break
             self.log.debug("count calls = {}".format(count_calls()))
             # originate a call
-            job = slave.client.originate(
+            slave.client.originate(
                 app_id=next(iterappids),
                 uuid_func=self.uuid_gen,
                 rep_fields=self.rep_fields_func()
@@ -440,7 +403,6 @@ class Originator(object):
         try:
             while not self._exit.is_set():
                 # block until start cmd recieved
-                self.log.info("Waiting for start command...")
                 self._start.wait()
                 # check again for exit event just after start trigger
                 if self._exit.is_set():
@@ -478,8 +440,9 @@ class Originator(object):
             # exit gracefully
             self.log.info("terminating originate thread...")
         except Exception:
-            self.log.error("'{}' failed with:\n{}".format(
-                mp.current_process().name, traceback.format_exc()))
+            self.log.exception(
+                "'{}' failed with:".format(mp.current_process().name)
+            )
 
     @property
     def state(self):
@@ -510,6 +473,9 @@ class Originator(object):
 
         Change State INITIAL | STOPPED -> ORIGINATING
         """
+        if not self.app_weights.weights:
+            raise utils.ConfigurationError("No apps have been loaded")
+
         if not any(self.pool.evals('listener.is_alive()')):
             # Do listener(s) startup here so that additional apps
             # can be loaded just prior. Currently there is a restriction
@@ -521,7 +487,7 @@ class Originator(object):
         if self._thread is None or not self._thread.is_alive():
             self.log.debug("starting burst loop thread")
             self._thread = Thread(target=self._serve_forever,
-                                  name='burst-loop')
+                                  name='switchy_burst_loop')
             self._thread.daemon = True  # die with parent
             self._thread.start()
             time.sleep(0.1)
@@ -556,8 +522,9 @@ class Originator(object):
 
     def hard_hupall(self):
         """Hangup all calls for all slaves, period, even if they weren't originated by
-        this instance.
+        this instance and stop the burst loop.
         """
+        self.stop()
         return self.pool.evals("client.cmd('hupall')")
 
     def shutdown(self):
@@ -574,3 +541,45 @@ class Originator(object):
         """Originate str used for making calls
         """
         return self.pool.evals('client.originate_cmd')
+
+    def _clearall(self):
+        """Clear all observer model collections.
+        (Handy if a bunch of stale calls are present)
+        """
+        self.pool.evals('listener.sessions.clear()')
+        self.pool.evals('listener.calls.clear()')
+        self.pool.evals('listener.bg_jobs.clear()')
+
+    def _reset_connections(self):
+        self.pool.evals('listener.disconnect()')
+        self.pool.evals('listener.connect()')
+
+    def waitwhile(
+        self,
+        state_or_predicate=lambda orig:
+            orig.count_calls() or not orig.stopped(),
+        **kwargs
+    ):
+        """If `state_or_predicate' is a func, block until it evaluates to `False`.
+        If it is a `str` block until the internal state matches that value.
+        The default predicate waits for all calls to end and for activation of
+        the "STOPPED" state.
+        See `switchy.utils.waitwhile` for more details on predicate usage.
+        """
+        if isinstance(state_or_predicate, str):
+            getattr(State, state_or_predicate)  # ensure state exists
+            predicate = functools.partial(self.check_state, state_or_predicate)
+        else:
+            predicate = state_or_predicate
+            assert inspect.isfunction(
+                predicate), "{} must be a state str or func".format(predicate)
+            numargs = len(utils.get_args(state_or_predicate)[0][:1])
+            if numargs == 1:
+                predicate = functools.partial(predicate, self)
+            elif numargs > 1:
+                raise TypeError(
+                    "func '{}' must accept at most one argument"
+                    .format(state_or_predicate)
+                )
+        # poll for predicate to eval False
+        return utils.waitwhile(predicate=predicate, **kwargs)

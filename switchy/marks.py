@@ -51,8 +51,11 @@ def get_callbacks(ns, skip=(), only=False):
             obj = object.__getattribute__(ns, name)
         except AttributeError:
             continue
-        ev_types = getattr(obj, '_switchy_event', False)
-        cb_type = getattr(obj, '_switchy_cb_type', None)
+        try:
+            ev_types = getattr(obj, '_switchy_event', False)
+            cb_type = getattr(obj, '_switchy_cb_type', None)
+        except ReferenceError:  # handle weakrefs
+            continue
 
         if ev_types:  # only marked attrs
             if not only or cb_type == only:

@@ -58,6 +58,7 @@ class EventListener(object):
                  bg_jobs=None,
                  rx_con=None,
                  call_id_var='variable_call_uuid',
+                 app_id_vars=None,
                  autorecon=30,
                  max_limit=float('inf'),
                  # proxy_mng=None,
@@ -73,7 +74,8 @@ class EventListener(object):
             Authentication password for connecting via esl
         call_id_var : string
             Name of the freeswitch variable (including the 'variable_' prefix)
-            to use for associating sessions into calls (see `_handle_create`).
+            to use for associating sessions into tracked calls
+            (see `_handle_create`).
 
             It is common to set this to an Xheader variable if attempting
             to track calls "through" an intermediary device (i.e. the first
@@ -83,19 +85,20 @@ class EventListener(object):
             intermediary device must be configured to forward the Xheaders
             it receives.
         autorecon : int, bool
-            Enable reconnection attempts on server disconnect. An integer
-            value specifies the of number seconds to spend re-trying the
-            connection before bailing. A bool of 'True' will poll
-            indefinitely and 'False' will not poll at all.
+            Enable reconnection attempts on loss of a server connection.
+            An integer value specifies the of number seconds to spend
+            re-trying the connection before bailing. A bool of 'True'
+            will poll indefinitely and 'False' will not poll at all.
         '''
-        self.server = host
+        self.host = host
         self.port = port
         self.auth = auth
+        self.log = utils.get_logger(utils.pstr(self))
         self._sessions = session_map or OrderedDict()
         self._bg_jobs = bg_jobs or OrderedDict()
         self._calls = OrderedDict()  # maps aleg uuids to Sessions instances
         self.hangup_causes = Counter()  # record of causes by category
-        self.failed_sessions = OrderedDict()
+        self.failed_sessions = OrderedDict()  # store last 1k failed sessions
         self._handlers = self.default_handlers  # active handler set
         self._unsub = ()
         self.consumers = {}  # callback chains, one for each event type
@@ -109,6 +112,12 @@ class EventListener(object):
         self.autorecon = autorecon
         self._call_var = None
         self.call_id_var = call_id_var
+        self.app_id_vars = map(
+            utils.param2header, (Client.id_var, Client.id_xh)
+        )
+        if app_id_vars:
+            self.app_id_vars = list(app_id_vars) + self.app_id_vars
+            self.log.debug("app lookup vars are: {}".format(self.app_id_vars))
         self.max_limit = max_limit
         self._id = utils.uuid()
 
@@ -125,12 +134,11 @@ class EventListener(object):
         self._exit = mp.Event()  # indicate when event loop should terminate
         self._lookup_blocker = mp.Event()  # used block event loop temporarily
         self._lookup_blocker.set()
-        self.log = utils.get_logger(utils.pstr(self))
         self._epoch = self._fs_time = 0.0
 
         # set up contained connections
-        self._rx_con = rx_con or Connection(self.server, self.port, self.auth)
-        self._tx_con = Connection(self.server, self.port, self.auth)
+        self._rx_con = rx_con or Connection(self.host, self.port, self.auth)
+        self._tx_con = Connection(self.host, self.port, self.auth)
 
         # mockup thread
         self._thread = None
@@ -160,7 +168,9 @@ class EventListener(object):
     def count_failed(self):
         '''Return the failed session count
         '''
-        return sum(map(len, self.failed_sessions.values()))
+        return sum(
+            self.hangup_causes.values()
+        ) - self.hangup_causes['NORMAL_CLEARING']
 
     @property
     def bg_jobs(self):
@@ -190,7 +200,8 @@ class EventListener(object):
 
     @property
     def call_id_var(self):
-        """Channel variable used for associating sip legs into a 'call'
+        """Channel variable name used for associating sip sessions into a 'call'
+        (i.e. not the call-id from telephony).
         """
         return self._call_var
 
@@ -260,8 +271,10 @@ class EventListener(object):
 
         if self._thread is None or not self._thread.is_alive():
             self.log.debug("starting event loop thread...")
-            self._thread = Thread(target=self._listen_forever, args=(),
-                                  name='event_loop')
+            self._thread = Thread(
+                target=self._listen_forever, args=(),
+                name='switchy_event_loop[{}]'.format(self.host),
+            )
             self._thread.daemon = True  # die with parent
             self._thread.start()
 
@@ -286,7 +299,7 @@ class EventListener(object):
             self._rx_con.disconnect()
         self._tx_con.disconnect()
         self.log.info("Disconnected listener '{}' from '{}'".format(self._id,
-                      self.server))
+                      self.host))
 
     def _stop(self):
         '''Stop bg thread by allowing it to fall through the
@@ -318,7 +331,7 @@ class EventListener(object):
         self._rx_con.subscribe(
             (ev for ev in self._handlers if ev not in self._unsub))
         self.log.info("Connected listener '{}' to '{}'".format(self._id,
-                      self.server))
+                      self.host))
 
     def get_new_con(self, server=None, port=None, auth=None,
                     register_events=False,
@@ -345,7 +358,7 @@ class EventListener(object):
         -------
         con : Connection
         '''
-        con = Connection(server or self.server, port or self.port,
+        con = Connection(server or self.host, port or self.port,
                          auth or self.auth, **kwargs)
         if register_events:
             con.subscribe(self._handlers)
@@ -389,15 +402,14 @@ class EventListener(object):
         args, kwargs : initial arguments which will be partially applied to
             callback right now
         '''
+        prepend = kwargs.pop('prepend', False)
         # TODO: need to check outputs and error on signature mismatch!
         if not utils.is_callback(callback):
             return False
         if args or kwargs:
             callback = functools.partial(callback, *args, **kwargs)
-        self.consumers.setdefault(
-            ident, {}).setdefault(
-                evname, deque()
-            ).append(callback)
+        d = self.consumers.setdefault(ident, {}).setdefault(evname, deque())
+        getattr(d, 'appendleft' if prepend else 'append')(callback)
         return True
 
     def remove_callback(self, evname, ident, callback):
@@ -521,6 +533,8 @@ class EventListener(object):
             evname = e.getHeader('Event-Subclass')
         self.log.debug("receive event '{}'".format(evname))
 
+        uid = e.getHeader('Unique-ID')
+
         handler = self._handlers.get(evname, False)
         if handler:
             self.log.debug("handler is '{}'".format(handler))
@@ -534,7 +548,7 @@ class EventListener(object):
                 if consumers and consumed:
                     cbs = consumers.get(evname, ())
                     self.log.debug(
-                        "consumer '{}' has callback '{}' registered for ev {}"
+                        "consumer '{}' has callback {} registered for ev {}"
                         .format(cid, cbs, evname)
                     )
                     # look up the client's callback chain and run
@@ -544,7 +558,14 @@ class EventListener(object):
                     # XXX assign ret on each interation in an attempt to avoid
                     # python's dynamic scope lookup
                     for cb, ret in zip(cbs, itertools.repeat(ret)):
-                        cb(*ret)
+                        try:
+                            cb(*ret)
+                        except Exception:
+                            self.log.exception(
+                                "Failed to execute callback {} for event "
+                                "with uid {}".format(cb, uid)
+                            )
+
                     # unblock `session.vars` waiters
                     if model in self._waiters:
                         for varname, events in self._waiters[model].items():
@@ -557,8 +578,10 @@ class EventListener(object):
                 self.log.warning("Caught ESL error for event '{}':\n{}"
                                  .format(evname, traceback.format_exc()))
             except Exception:
-                self.log.error("Failed to process event '{}':\n{}"
-                               .format(evname, traceback.format_exc()))
+                self.log.exception(
+                    "Failed to process event {} with uid {}"
+                    .format(evname, uid)
+                )
             return consumed
         else:
             self.log.error("Unknown event '{}'".format(evname))
@@ -566,12 +589,11 @@ class EventListener(object):
     def get_id(self, e, default=None):
         """Acquire the client/consumer id for event :var:`e`
         """
-        var = 'variable_{}'
-        for var in map(var.format, (Client.id_var, Client.id_xh)):
+        for var in self.app_id_vars:
             ident = e.getHeader(var)
             if ident:
                 self.log.debug(
-                    "sess lookup for id '{}' successfully returned '{}'"
+                    "app id lookup using '{}' successfully returned '{}'"
                     .format(var, ident)
                 )
                 return ident
@@ -623,7 +645,7 @@ class EventListener(object):
     @staticmethod
     @handler('SOCKET_DATA')
     def _handle_socket_data(event):
-        body = event.getBody()
+        body = event.getBody() if event else None
         if not body:
             return False, None
         if '-ERR' in body.splitlines()[-1]:
@@ -642,7 +664,7 @@ class EventListener(object):
         """
         self.disconnect()
         self.log.warning("handling DISCONNECT from server '{}'"
-                         .format(self.server))
+                         .format(self.host))
         count = self.autorecon
         if count:
             while count:
@@ -661,7 +683,7 @@ class EventListener(object):
         self._exit.set()
         self.log.warning("Reconnection attempts to '{}' failed. Please call"
                          " 'connect' manually when server is ready "
-                         .format(self.server))
+                         .format(self.host))
         return True, None
 
     @handler('BACKGROUND_JOB')
@@ -712,14 +734,17 @@ class EventListener(object):
                     # session may already have been popped in hangup handler?
                     # TODO make a special method for popping sessions?
                     sess = self.sessions.pop(job.sess_uuid, None)
-                    if not sess:
-                        self.log.debug("No session corresponding to bj "
-                                       "'{}'".format(job_uuid))
-                    # remove any call repr by this sess
-                    call = self.calls.pop(job.sess_uuid, None)
-                    if not call:
-                        self.log.debug("No call corresponding to uuid "
-                                       "'{}'".format(call))
+                    if sess:
+                        # remove any call containing this session
+                        call = sess.call
+                        if call:
+                            call = self.calls.pop(call.uuid, None)
+                        else:
+                            self.log.debug("No Call containing Session "
+                                           "'{}'".format(sess.uuid))
+                    else:
+                        self.log.warn("No session corresponding to bj '{}'"
+                                      .format(job_uuid))
                 job.fail(resp)  # fail the job
                 # always pop failed jobs
                 self.bg_jobs.pop(job_uuid)
@@ -756,11 +781,9 @@ class EventListener(object):
         `Session` and `Call` objects for state tracking.
         '''
         uuid = e.getHeader('Unique-ID')
-        self.log.debug("channel created for session '{}'".format(uuid))
         # Record the newly activated session
         # TODO: pass con as weakref?
         con = self._tx_con if not self._shared else None
-        uuid = e.getHeader('Unique-ID')
 
         # short circuit if we have already allocated a session since FS is
         # indeterminate about which event create|originate will arrive first
@@ -770,10 +793,10 @@ class EventListener(object):
 
         # allocate a session model
         sess = Session(e, uuid=uuid, con=con)
+        direction = sess['Call-Direction']
+        self.log.debug("{} session created with uuid '{}'".format(
+                       direction, uuid))
         sess.cid = self.get_id(e, 'default')
-        # note the start time and current load
-        # TODO: move this to Session __init__??
-        sess.times['create'] = get_event_time(e)
 
         # Use our specified "call identification variable" to try and associate
         # sessions into calls. By default the 'variable_call_uuid' channel
@@ -781,8 +804,9 @@ class EventListener(object):
         call_uuid = e.getHeader(self.call_id_var)  # could be 'None'
         if not call_uuid:
             self.log.warn(
-                "Unable to associate session '{}' with a call using "
-                "variable '{}'".format(sess.uuid, self.call_id_var))
+                "Unable to associate {} session '{}' with a call using "
+                "variable '{}'".format(direction, sess.uuid, self.call_id_var))
+            call_uuid = uuid
 
         # associate sessions into a call
         # (i.e. set the relevant sessions to reference each other)
@@ -826,11 +850,10 @@ class EventListener(object):
                            .format(uuid,  e.getHeader('Call-Direction')))
             sess.answered = True
             self.total_answered_sessions += 1
-            sess.times['answer'] = get_event_time(e)
             sess.update(e)
             return True, sess
         else:
-            self.log.info('skipping answer of {}'.format(uuid))
+            self.log.warn('Skipping answer of {}'.format(uuid))
             return False, None
 
     @handler('CHANNEL_HANGUP')
@@ -844,11 +867,11 @@ class EventListener(object):
         '''
         uuid = e.getHeader('Unique-ID')
         sess = self.sessions.pop(uuid, None)
+        direction = sess['Call-Direction'] if sess else 'unknown'
         if not sess:
             return False, None
         sess.update(e)
         sess.hungup = True
-        sess.times['hangup'] = get_event_time(e)
         cause = e.getHeader('Hangup-Cause')
         self.hangup_causes[cause] += 1  # count session causes
         self.sessions_per_app[sess.cid] -= 1
@@ -857,29 +880,37 @@ class EventListener(object):
         call_uuid = e.getHeader(self.call_id_var)
         if not call_uuid:
             self.log.warn(
-                "handling HANGUP for session '{}' which can not be associated "
-                "with an active call?".format(sess.uuid))
-        else:
-            # XXX seems like sometimes FS changes the `call_uuid`
-            # between create and hangup oddly enough
-            call = self.calls.get(call_uuid, sess.call)
-            if call:
-                if sess in call.sessions:
-                    self.log.debug("hungup session '{}' for call '{}'".format(
-                                   uuid, call.uuid))
-                    call.sessions.remove(sess)
-                else:
-                    self.log.warn("no call for session '{}'".format(sess.uuid))
+                "handling HANGUP for {} session '{}' which can not be "
+                "associated with an active call using {}?"
+                .format(direction, sess.uuid, self.call_id_var))
+            call_uuid = uuid
 
-                # all sessions hungup
-                if len(call.sessions) == 0:
-                    self.log.debug("all sessions for call '{}' were hung up"
-                                   .format(call_uuid))
-                    # remove call from our set
-                    self.calls.pop(call.uuid)
+        # XXX seems like sometimes FS changes the `call_uuid`
+        # between create and hangup oddly enough
+        call = self.calls.get(call_uuid, sess.call)
+        if call:
+            if sess in call.sessions:
+                self.log.debug("hungup {} session '{}' for Call '{}'".format(
+                               direction, uuid, call.uuid))
+                call.sessions.remove(sess)
             else:
-                self.log.warn("no call was found for '{}'".format(call_uuid))
-        self.log.debug("handling HANGUP for call_uuid: {}".format(call_uuid))
+                # session was somehow tracked by the wrong call
+                self.log.err("session '{}' mismatched with call '{}'?"
+                             .format(sess.uuid, call.uuid))
+
+            # all sessions hungup
+            if len(call.sessions) == 0:
+                self.log.debug("all sessions for call '{}' were hung up"
+                               .format(call_uuid))
+                # remove call from our set
+                call = self.calls.pop(call.uuid, None)
+                if not call:
+                    self.log.warn(
+                        "Call with id '{}' containing Session '{}' was "
+                        "already removed".format(call.uuid, sess.uuid))
+        else:
+            # we should never get hangups for calls we never saw created
+            self.log.err("no call found for '{}'".format(call_uuid))
 
         # pop any corresponding job
         job = sess.bg_job
@@ -892,7 +923,7 @@ class EventListener(object):
             self.failed_sessions.setdefault(
                 cause, deque(maxlen=1e3)).append(sess)
 
-        self.log.debug("hungup session '{}'".format(uuid))
+        self.log.debug("hungup Session '{}'".format(uuid))
         # hangups are always consumed
         return True, sess, job
 
@@ -924,16 +955,17 @@ class Client(object):
     '''
     id_var = 'switchy_app'
     id_xh = utils.xheaderify(id_var)
-    # works under the assumption that x-headers are forwarded by the proxy/B2BUA
-    call_id_var = 'sip_h_X-switchy_originating_session'
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
-                 listener=None,
-                 logger=None):
+                 call_id_var=None, listener=None, logger=None):
 
-        self.host = self.server = host
+        self.host = host
         self.port = port
         self.auth = auth
+        # works under the assumption that x-headers are forwarded by the proxy
+        self.call_id_var = call_id_var or utils.xheaderify(
+            'switchy_originating_session')
+
         self._id = utils.uuid()
         self._orig_cmd = None
         self.log = logger or utils.get_logger(utils.pstr(self))
@@ -945,7 +977,7 @@ class Client(object):
 
         # WARNING: order of these next steps matters!
         # create a local connection for sending commands
-        self._con = Connection(self.server, self.port, self.auth)
+        self._con = Connection(self.host, self.port, self.auth)
         # if the listener is provided it is expected that the
         # user will run the set up methods (i.e. connect, start, etc..)
         self.listener = listener
@@ -964,7 +996,7 @@ class Client(object):
         # add our con to the listener's set so that it will be
         # managed on server disconnects
         if inst:
-            self._listener.call_id_var = 'variable_{}'.format(self.call_id_var)
+            self._listener.call_id_var = utils.param2header(self.call_id_var)
             self.log.debug("set call lookup variable to '{}'".format(
                 self._listener.call_id_var))
             inst._client_con = weakref.proxy(self._con)
@@ -983,7 +1015,7 @@ class Client(object):
 
     loglevel = property(get_loglevel, set_loglevel)
 
-    def load_app(self, ns, on_value=None, **prepost_kwargs):
+    def load_app(self, ns, on_value=None, prepend=False, **prepost_kwargs):
         """Load annotated callbacks and from a namespace and add them
         to this client's listener's callback chain.
 
@@ -1043,7 +1075,8 @@ class Client(object):
                         ev_type,
                         listener.lookup_sess
                     )
-                added = listener.add_callback(ev_type, group_id, obj)
+                added = listener.add_callback(
+                    ev_type, group_id, obj, prepend=prepend)
                 if not added:
                     failed = obj
                     for path in reversed(cb_paths):
@@ -1097,7 +1130,7 @@ class Client(object):
         """
         self._con.connect()
         assert self.connected(), "Failed to connect to '{}'".format(
-            self.server)
+            self.host)
 
     def connected(self):
         """Check if connection is active
@@ -1339,7 +1372,11 @@ def get_pool(contacts, **kwargs):
             contact = (contact,)
         # create pairs
         listener = EventListener(*contact, **kwargs)
-        client = Client(*contact, listener=listener)
+        client = Client(
+            *contact,
+            listener=listener,
+            call_id_var=kwargs.get('call_id_var')
+        )
         pairs.append(SlavePair(client, listener))
 
     return SlavePool(pairs)

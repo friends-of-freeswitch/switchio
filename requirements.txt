@@ -1,5 +1,2 @@
 # FreeSWITH ESL pkg from Sangoma
 -e git+https://github.com/sangoma/python-ESL.git#egg=ESL
-
-# testing
-pytest

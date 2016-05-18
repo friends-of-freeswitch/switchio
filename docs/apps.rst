@@ -118,18 +118,18 @@ implemented quite trivially::
             if sess.is_inbound():
                 sess.bridge(dest_url="${sip_req_user}@${sip_req_host}:${sip_req_port}")
 
-.. _metricsapp:
+.. _cdrapp:
 
-Metrics
-*******
-The sub-application used by the
-:py:class:`~switchy.apps.call_gen.Originator` to gather load
-measurements:
+CDR
+***
+The measurement application used by the
+:py:class:`~switchy.apps.call_gen.Originator` to gather stress testing
+performance metrics from call detail records:
 
-.. literalinclude:: ../switchy/apps/measure/__init__.py
-    :pyobject: Metrics
+.. literalinclude:: ../switchy/apps/measure/cdr.py
+    :pyobject: CDR
 
-It simply inserts measurement data on hangup once for each call.
+It simply inserts the call record data on hangup once for each *call*.
 
 PlayRec
 *******
