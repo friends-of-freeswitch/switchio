@@ -35,9 +35,8 @@ version has been `cobbled together by Sangoma
 
 Optional Python dependencies include:
 
-- `numpy` for performance measurement collection
-- `matplotlib` for metrics plotting
-- `pytest` for running the unit test suite
+- `pandas`_ for performance measurement collection
+- `matplotlib`_ for metrics plotting
 
 
 FreeSWITCH Configuration
@@ -59,6 +58,10 @@ import-and-go usage
     https://github.com/sangoma/switchy
 .. _ESL SWIG python package:
     https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
+.. _pandas:
+    http://pandas.pydata.org/
+.. _matplotlib:
+    http://matplotlib.org/
 
 
 Contents
