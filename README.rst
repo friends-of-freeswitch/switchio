@@ -1,12 +1,14 @@
 Switchy
 =======
-A FreeSWITCH_ control library and stress testing tool
+| FreeSWITCH_ control and stress testing using pure Python_.
+| Feel free to readthedocs_.
 
 .. _FreeSWITCH: https://freeswitch.org/
+.. _Python: https://www.python.org/
+.. _readthedocs: https://switchy.readthedocs.org/
 
 Features
 ========
-Among other things, Switchy let's you
 
 - drive multiple FreeSWITCH processes as a call generator cluster
 - write call control applications (IVRs, auto-dialers, ...) in pure
@@ -20,7 +22,7 @@ Installation
 Dependencies
 ------------
 Currently, Switchy relies on the `ESL SWIG package`_ distributed with the
-FreeSWITCH sources. Luckily, Sangoma has nicely `packaged this with setuptools`_
+FreeSWITCH sources. Luckily, Sangoma has `packaged this with setuptools`_
 so manual installation is not necessary.
 
 .. _ESL SWIG package: https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
@@ -39,12 +41,6 @@ cloning and installing directly from this repo:
 
     git clone git://github.com/sangoma/switchy.git
     pip install -r switchy/requirements.txt switchy/
-
-Documentation
-=============
-Full usage documentation can be found on readthedocs_
-
-.. _readthedocs: https://switchy.readthedocs.org/
 
 License
 =======
