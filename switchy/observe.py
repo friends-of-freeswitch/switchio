@@ -26,7 +26,6 @@ import utils
 from utils import ConfigurationError, ESLError, CommandError, get_event_time
 from models import Session, Job, Call
 from commands import build_originate_cmd
-import multiproc
 import marks
 from marks import handler
 import multiprocessing as mp
@@ -120,15 +119,6 @@ class EventListener(object):
             self.log.debug("app lookup vars are: {}".format(self.app_id_vars))
         self.max_limit = max_limit
         self._id = utils.uuid()
-
-        # if a mng is provided then assume this listener will
-        # be instantiated as a shared object and thus will require
-        # at least one shared lock for the tx connection (since
-        # it is used by internally by Session instances)
-        # if proxy_mng:
-        # self._tx_lock = proxy_mng.Lock() if proxy_mng else None
-        # self._tx_lock = _tx_lock
-        self._shared = False
 
         # sync
         self._exit = mp.Event()  # indicate when event loop should terminate
@@ -783,7 +773,7 @@ class EventListener(object):
         uuid = e.getHeader('Unique-ID')
         # Record the newly activated session
         # TODO: pass con as weakref?
-        con = self._tx_con if not self._shared else None
+        con = self._tx_con
 
         # short circuit if we have already allocated a session since FS is
         # indeterminate about which event create|originate will arrive first
@@ -926,24 +916,6 @@ class EventListener(object):
         self.log.debug("hungup Session '{}'".format(uuid))
         # hangups are always consumed
         return True, sess, job
-
-    @classmethod
-    def build_proxy(cls, mng):
-        # register some attrs and methods to return proxies to shared objects
-        mng.auto_register(Job)
-        mng.auto_register(Session)
-        proxy = multiproc.make_inst_proxy(cls)
-        # redirect some properties to their corresponding getter methods
-        proxy._attr_redirect = {
-            'sessions': 'get_sessions',
-            'bg_jobs': 'get_jobs',
-        }
-        proxy._method_to_typeid_ = {'register_job': 'Job'}
-        name, SessionsDict = multiproc.dict_of_proxies(Session, mng)
-        proxy._method_to_typeid_['get_sessions'] = name
-        name, JobsDict = multiproc.dict_of_proxies(Job, mng)
-        proxy._method_to_typeid_['get_jobs'] = name
-        return proxy
 
 
 class Client(object):
@@ -1302,23 +1274,12 @@ class Client(object):
 
 
 def get_listener(host, port=EventListener.PORT, auth=EventListener.AUTH,
-                 shared=False, mng=None, mng_init=None, **kwargs):
+                 mng=None, mng_init=None, **kwargs):
     '''Listener factory which can be used to load a local instance or a shared
     proxy using `multiprocessing.managers`
     '''
-    if not shared:
-        # return a listener local to this process
-        l = EventListener(host, port, auth, **kwargs)
-    else:
-        if mng is None:
-            mng = multiproc.get_mng()
-        try:
-            mng.start(mng_init)
-        except AssertionError:
-            pass
-        # lock = mng.MpLock()
-        l = mng.EventListener(host, port, auth, **kwargs)
-    return l
+    # return a listener local to this process
+    return EventListener(host, port, auth, **kwargs)
 
 
 @contextmanager

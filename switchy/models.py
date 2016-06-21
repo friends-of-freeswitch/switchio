@@ -7,7 +7,7 @@ Models representing FreeSWITCH entities
 import time
 import utils
 from collections import deque
-from multiproc import mp
+import multiprocessing as mp
 
 
 class JobError(utils.ESLError):
