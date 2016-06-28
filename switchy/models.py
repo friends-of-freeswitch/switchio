@@ -10,6 +10,10 @@ from collections import deque
 import multiprocessing as mp
 
 
+class TimeoutError(Exception):
+        pass
+
+
 class JobError(utils.ESLError):
     pass
 
@@ -26,7 +30,7 @@ class Events(object):
             self.update(event)
 
     def __repr__(self):
-        return repr(self._events)
+        return '{}({})'.format(type(self).__name__, repr(self._events))
 
     def update(self, event):
         '''Append an ESL.ESLEvent
@@ -476,9 +480,6 @@ class Job(object):
         optional session uuid if job is associated with an active
         FS session
     '''
-    class TimeoutError(Exception):
-        pass
-
     def __init__(self, event, sess_uuid=None, callback=None, client_id=None,
                  kwargs={}):
         self.events = Events(event)
