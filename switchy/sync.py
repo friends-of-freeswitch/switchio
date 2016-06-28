@@ -24,11 +24,11 @@ def sync_caller(host, port='8021', password='ClueCon',
                    **orig_kwargs):
             # override the channel variable used to look up the intended
             # switchy app to be run for this call
-            if caller.lookup_var:
-                client.listener.id_var = caller.lookup_var
+            if caller.app_lookup_vars:
+                client.listener.app_id_vars.extend(caller.app_lookup_vars)
 
             job = client.originate(dest_url, app_id=app_name, **orig_kwargs)
-            job.wait(timeout)
+            job.get(timeout)
             if not job.successful():
                 raise job.result
             call = client.listener.sessions[job.sess_uuid].call
@@ -40,7 +40,7 @@ def sync_caller(host, port='8021', password='ClueCon',
             return orig_sess, client.listener.waitfor
 
         # attach apps handle for easy interactive use
-        caller.lookup_var = None
+        caller.app_lookup_vars = []
         caller.apps = client.apps
         caller.client = client
         caller.app_names = client._apps.keys()

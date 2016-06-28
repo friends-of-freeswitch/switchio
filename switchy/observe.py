@@ -110,7 +110,7 @@ class EventListener(object):
         # constants
         self.autorecon = autorecon
         self._call_var = None
-        self.call_id_var = call_id_var
+        self.call_id_var = call_id_var  # call tracking variable name
         self.app_id_vars = map(
             utils.param2header, (Client.id_var, Client.id_xh)
         )
@@ -1072,7 +1072,12 @@ class Client(object):
         If `ns` is provided unload only the callbacks from that particular
         subapp.
         """
-        app_map = self._apps[on_value]
+        app_map = self._apps.get(on_value)
+        if app_map is None:
+            self.log.debug("app for id {} was already unloaded".format(
+                on_value))
+            return
+
         appkeys = [utils.get_name(ns)] if ns else app_map.keys()
 
         for name in appkeys:
@@ -1086,6 +1091,8 @@ class Client(object):
                     pass
             # remove callbacks
             for ev_type, cb_type, obj in marks.get_callbacks(app):
+                # XXX we need a sane way to remove handlers as well!
+                if cb_type == 'callback':
                     self.listener.remove_callback(ev_type, on_value, obj)
 
         if not app_map:
@@ -1293,9 +1300,14 @@ def active_client(host, port='8021', auth='ClueCon',
     )
     client.listener.connect()
     client.connect()
+
+    # TODO: maybe we should (try to) use the app manager here?
     # load app set
     if apps:
-        for on_value, app in apps.items():
+        if getattr(apps, 'iteritems', None):
+            apps = apps.iteritems()
+
+        for on_value, app in apps:
             try:
                 app, ppkwargs = app  # user can optionally pass doubles
             except TypeError:
@@ -1312,7 +1324,7 @@ def active_client(host, port='8021', auth='ClueCon',
 
     # unload app set
     if apps:
-        for value, app in apps.items():
+        for value, app in apps:
             client.unload_app(value)
 
     client.listener.disconnect()
