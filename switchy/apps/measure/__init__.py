@@ -12,6 +12,7 @@ from .storage import pd
 # re-export(s)
 from cdr import CDR
 
+log = utils.get_logger(__name__)
 
 def plot_df(df, figspec, **kwargs):
     """Plot a pandas data frame according to the provided `figspec`
@@ -182,6 +183,7 @@ def load(path, **kwargs):
     """
     with open(path, 'r') as pkl:
         obj = pickle.load(pkl)
+        log.debug("loaded pickled content:\n{}".format(obj))
         if not isinstance(obj, dict):
             return load_legacy(obj)
 

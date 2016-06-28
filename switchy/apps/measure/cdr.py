@@ -36,7 +36,7 @@ def call_metrics(df):
             'active_sessions': df['active_sessions'],
             'erlangs': df['erlangs'],
             'call_rate': clippedcr,
-            'avg_call_rate': pd.rolling_mean(clippedcr, 100),
+            'avg_call_rate': clippedcr.rolling(window=100).mean(),
             'seizure_fail_rate': df['failed_calls'] / df.index.max(),
         },
         # data will be sorted by 'caller_create` but re-indexed
