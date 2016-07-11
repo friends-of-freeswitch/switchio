@@ -18,6 +18,7 @@ from .. import utils
 from .. import marks
 from .. import observe
 from . import AppManager
+from measure import CDR
 
 
 def get_originator(contacts, *args, **kwargs):
@@ -111,15 +112,16 @@ class State(object):
 class Originator(object):
     """An automatic session generator
     """
-    default_settings = {
-        'rate': 30,  # call offer rate in cps
-        'limit': 1,  # concurrent calls limit (i.e. erlangs)
-        'max_offered': float('inf'),  # max offered calls
-        'duration': 0,
-        'period': 1,
-        'uuid_gen': utils.uuid,
-        'rep_fields_func': lambda: {},
-    }
+    default_settings = [
+        ('rate', 30),  # call offer rate in cps
+        ('limit', 1),  # concurrent calls limit (i.e. erlangs)
+        ('max_offered', float('inf')),  # max offered calls
+        ('duration', 0),
+        ('period', 1),
+        ('uuid_gen', utils.uuid),
+        ('rep_fields_func', lambda: {}),
+        ('autohangup', True),
+    ]
 
     def __init__(self, slavepool, debug=False, auto_duration=True,
                  app_id=None, **kwargs):
@@ -157,12 +159,7 @@ class Originator(object):
 
         self.app_manager = AppManager(self.pool)
         self.measurers = self.app_manager.measurers
-        if self.measurers:
-            from measure import CDR
-            self.measurers.add(
-                CDR(),
-                pool=self.pool,
-            )
+        self.measurers.add(CDR(), pool=self.pool)
 
         # don't worry so much about call state for load testing
         self.pool.evals('listener.unsubscribe("CALL_UPDATE")')
@@ -177,7 +174,7 @@ class Originator(object):
             self.log.debug("kwargs contents : {}".format(kwargs))
 
         # assign defaults
-        for name, val in type(self).default_settings.iteritems():
+        for name, val in type(self).default_settings:
             setattr(self, name, kwargs.pop(name, None) or val)
 
         if len(kwargs):
@@ -317,7 +314,15 @@ class Originator(object):
             self.log.debug("scheduling auto hangup for '{}'"
                            .format(sess.uuid))
             # schedule hangup
-            sess.sched_hangup(self.duration - sess.uptime)
+            if self.autohangup:
+                remaining = self.duration - sess.uptime
+                if remaining > 0:
+                    sess.sched_hangup(remaining)
+                else:
+                    sess.hangup()
+            else:
+                # call duration should always be started after the connect
+                sess.sched_hangup(remaining)
 
         # failed jobs and sessions should be popped in the listener's
         # default bg job handler
@@ -395,10 +400,9 @@ class Originator(object):
                            .format(originated))
 
     def _serve_forever(self):
-        """Asynchronous mode process entry point and
-        call burst loop. This method blocks until all calls
-        have finished.
-        A bg thread waits in initial state until started.
+        """Call burst loop entry point.
+        This method blocks until all calls have finished.
+        A background thread waits in initial state until started.
         """
         try:
             while not self._exit.is_set():
@@ -468,10 +472,8 @@ class Originator(object):
         return self._state.value == State.STOPPED
 
     def start(self):
-        """
-        Start the engine by notifying the worker thread to call run.
-
-        Change State INITIAL | STOPPED -> ORIGINATING
+        """Start the originate burst loop by starting and/or notifying a worker
+        thread to begin. Changes state INITIAL | STOPPED -> ORIGINATING.
         """
         if not self.app_weights.weights:
             raise utils.ConfigurationError("No apps have been loaded")
@@ -518,7 +520,7 @@ class Originator(object):
         self.log.warn("Stopping all calls with hupall!")
         # set stopped state - no further bursts will be scheduled
         self._change_state("STOPPED")
-        self.pool.evals('client.hupall()')
+        return self.pool.evals('client.hupall()')
 
     def hard_hupall(self):
         """Hangup all calls for all slaves, period, even if they weren't originated by
