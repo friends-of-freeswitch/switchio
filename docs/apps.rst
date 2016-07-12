@@ -7,11 +7,19 @@
 
 Call Applications
 =================
-Switchy supports composing *applications* written in pure python which
-roughly correspond to the actions taken by `extensions` in *FreeSWITCH*'s
-xml dialplan interface. In fact, Switchy's *apps* offer extended control and
-flexibility since they can be implemented each as a standalone Python
-:py:class:`class` which can hold state and be mutated at runtime.
+Switchy supports writing and composing call control *applications* written in
+pure Python. Apps are somewhat analogous to `extensions`_ in *FreeSWITCH*'s
+xml dialplan interface but aren't necessarily triggered using dialed number
+pattern matching and can additionally be activated using any
+`channel variable`_ or `event type`_ of your choosing.
+
+Switchy's *apps* are quite powerful by offering very detailed call control
+and flexibility using *FreeSWITCH*'s native event system and api - `ESL`_.
+Apps can be implemented each as a standalone Python `namespace`_ which can
+hold state and be mutated at runtime. This allows for all sorts of dynamic
+call processing logic. Apps can also be shared across a *FreeSWITCH* process
+cluster allowing for centralized call processing overtop a scalable service
+system.
 
 Applications are :ref:`loaded <appload>` using :py:class:`~switchy.observe.Client`
 instances which have been associated with a respective
@@ -22,8 +30,8 @@ processes.
 
 API
 ---
-Apps are usually implemented as classes which inherit from `object` and which
-contain methods decorated using the :py:mod:`switchy.marks` module
+Apps are usually implemented as plain old Python `classes`_ which contain
+methods decorated using the :py:mod:`switchy.marks` module.
 
 Currently the marks supported would be one of::
 
@@ -35,7 +43,11 @@ list as detailed `here <https://freeswitch.org/confluence/display/FREESWITCH/Eve
 
 Additionally, app types can support a :py:func:`prepost` callable which serves
 as a setup/teardown fixture mechanism for the app to do pre/post app loading
-execution. It can beither of a function or generator.
+execution. It can be either of a function or generator.
+
+.. note::
+    For examples using :py:func:`prepost` see the extensive set of built-in
+    apps under :py:mod:`switchy.apps`.
 
 
 Event Callbacks
@@ -145,5 +157,17 @@ sub-package which also includes the very notorious
 :py:class:`switchy.apps.call_gen.Originator`.
 
 .. hyperlinks
+.. _extensions:
+    https://freeswitch.org/confluence/display/FREESWITCH/XML+Dialplan#XMLDialplan-Extensions
+.. _channel variable:
+    https://freeswitch.org/confluence/display/FREESWITCH/Channel+Variables
+.. _event type:
+    https://freeswitch.org/confluence/display/FREESWITCH/Event+List
+.. _namespace:
+    https://docs.python.org/3/tutorial/classes.html#python-scopes-and-namespaces
+.. _ESL:
+    https://freeswitch.org/confluence/display/FREESWITCH/Event+Socket+Library
+.. _classes:
+    https://docs.python.org/3/tutorial/classes.html#a-first-look-at-classes
 .. _ESL SWIG python package:
     https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL

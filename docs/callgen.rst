@@ -42,10 +42,10 @@ originating slave server's :term:`caller`. This allows switchy to associate
 system is another FreeSWITCH server under test then you can configure a
 :ref:`proxy dialplan <proxydp>`.
 
-A single slave generator
-************************
+A single call generator
+***********************
 For simplicity's sake let's assume for now that we only wish to use
-**one** *FreeSWITCH* slave as a call generator. This simplifies the following steps
+**one** *FreeSWITCH* process as a call generator. This simplifies the following steps
 which otherwise require the more advanced :py:mod:`switchy.distribute` module's
 cluster helper components for orchestration and config of call routing.
 That is, assume for now we only passed `'vm-host'` to the originator factory
@@ -62,7 +62,7 @@ and stays active::
           "you must first set an originate command")
     ConfigurationError: you must first set an originate command
 
-Before we can start loading we must set the command which will be used by the
+Before we can start generating calls we must set the command which will be used by the
 application when instructing each slave to `originate` a call. 
 
 .. note::
@@ -94,9 +94,39 @@ notice that the command is a :py:class:`format` string which has some
 placeholder variables set. It is the job of the :py:class:`switchy.observe.Client`
 to fill in these values at runtime (i.e. when the :py:meth:`switchy.observe.Client.originate` is called).
 For more info on the `originate` cmd wrapper see :py:func:`~switchy.commands.build_originate_cmd`.
-Also see :doc:`usage`.
+Also see the :doc:`usage`.
 
 Try starting again::
+
+    >>> originator.start()
+    Traceback (most recent call last):
+      File "<stdin>", line 1, in <module>
+      File "switchy/apps/call_gen.py", line 479, in start
+        raise utils.ConfigurationError("No apps have been loaded")
+    switchy.utils.ConfigurationError: No apps have been loaded
+
+
+We need to explicitly load a switchy :doc:`app <apps>` which will be
+used to process originated (and possibly received) calls. For stress
+testing the :py:class:`switchy.apps.bert.Bert` app is recommended as it
+performs a stringent audio check alongside a traditional call flow using
+`mod_bert`_::
+
+    >>> from switchy.apps.bert import Bert
+    >>> originator.load_app(Bert)
+
+.. note::
+    The `Originator` actually supports loading multiple (groups of) apps
+    with different *weights* such that you can execute multiple call
+    flows in parallel. This can be useful for simulating auto-dialer traffic::
+
+        >>> from switchy.apps.blockers import CalleeRingback, CalleeBlockOnInvite
+        >>> originator.load_app(CalleeRingback, ppkwargs={'caller_hup_after': 5, 'ring_response': 'ring_ready'}, weight=33)
+        >>> originator.load_app(CalleeBlockonInvite, ppkwargs={'response': 404}, weight=33)
+        >>> originator.load_app(Bert, weight=34)
+
+
+Try starting once more::
 
     >>> originator.start()
     Feb 24 14:12:35 [INFO] switchy.Originator@['vm-host'] call_gen.py:395 : starting loop thread
@@ -133,13 +163,9 @@ You can now increase the call load parameters::
     <Originator: '148' active calls, state=[INITIAL], rate=50 limit=1000 max_sessions=inf duration=30.0>
 
 Note how the `duration` attribute was changed automatically. This is
-because the `Originator` computes the correct *avergae call-holding time*
+because the `Originator` computes the correct *average call-holding time*
 by the most basic `erlang formula`_. Feel free to modify the load parameters
 in real-time as you please to suit your load test requirements.
-
-Currently, the default Switchy app loaded by the `Originator` is :py:class:`switchy.apps.bert.Bert`
-which provides a decent media *tranparency* test useful in auditting :term:`intermediary` DUTs.
-This app requires that the `mod_bert`_ has been successfully initialized/loaded on the *FreeSWITCH* slave(s).
 
 To tear down calls you can use one of :py:meth:`~switchy.apps.call_gen.Originator.stop` or
 :py:meth:`~switchy.apps.call_gen.Originator.hupall`.  The former will simply stop the *burst*
@@ -157,7 +183,7 @@ abort all calls associated with a given `Client`::
     -ERR NORMAL_CLEARING
     Feb 24 16:37:16 [INFO] switchy.Originator@['vm-host'] call_gen.py:231 : all sessions have ended...
 
-When `hupall`-ing, a couple `'NORMAL_CLEARING'` errors are totally normal.
+When `hupall`-ing, a couple `NORMAL_CLEARING` errors are totally normal.
 
 
 Slave cluster
