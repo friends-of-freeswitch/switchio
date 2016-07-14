@@ -7,9 +7,9 @@ ESL connection wrapper
 import time
 from ESL import ESLconnection
 import functools
-from utils import ESLError
-import utils
 import multiprocessing as mp
+from . import utils
+from .utils import ESLError
 
 
 class ConnectionError(ESLError):
@@ -17,7 +17,7 @@ class ConnectionError(ESLError):
 
 
 def check_con(con):
-    '''Raise a connection error if this connection is down
+    '''Raise a connection error if this connection is down.
     '''
     # XXX sometimes after the 1st cmd sent to the server
     # the connection will be lost? (lib esl bug?)
@@ -28,13 +28,10 @@ def check_con(con):
 
 
 class Connection(object):
-    '''
-    Connection wrapper which can provide mutex attr access making the
-    underlying ESL.ESLconnection thread safe
+    '''Connection wrapper which can provide mutex attr access making the
+    underlying ESL.ESLconnection thread safe.
 
-    Note
-    ----
-    This class must be explicitly connected before use.
+    (Note: must be explicitly connected before use.)
     '''
     def __init__(self, host, port='8021', auth='ClueCon',
                  locked=True, lock=None):

@@ -96,7 +96,7 @@ def test_route_order(router):
         pass
 
     assert ['doggy', 'kitty', 'mousey'] == [
-        p.func.func_name for p in router.route.iter_matches({'did': '0'})
+        p.func.__name__ for p in router.route.iter_matches({'did': '0'})
     ]
 
 
@@ -155,6 +155,7 @@ def test_break_on_true(fs_socks, service, router):
             assert sess.answered and not sess.hungup
 
     # hangup should come shortly after
+    time.sleep(0.5)
     for sess in router.sessions:
         assert sess.hungup
 

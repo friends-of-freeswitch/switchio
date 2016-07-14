@@ -5,9 +5,9 @@
 Models representing FreeSWITCH entities
 """
 import time
-import utils
 from collections import deque
 import multiprocessing as mp
+from . import utils
 
 
 class TimeoutError(Exception):
@@ -181,7 +181,7 @@ class Session(object):
     def setvars(self, params):
         """Set all variables in map `params` with a single command
         """
-        pairs = ('='.join(map(str, pair)) for pair in params.iteritems())
+        pairs = ('='.join(map(str, pair)) for pair in params.items())
         self.con.api("uuid_setvar_multi {} {}".format(
             self.uuid, ';'.join(pairs)))
 
@@ -239,7 +239,7 @@ class Session(object):
         '''
         app = 'endless_playback' if endless else 'playback'
         pairs = ('='.join(map(str, pair))
-                 for pair in params.iteritems()) if params else ''
+                 for pair in params.items()) if params else ''
 
         delim = ';'
         if isinstance(args, str):
@@ -341,7 +341,7 @@ class Session(object):
         Request-URI.
         """
         pairs = ('='.join(map(str, pair))
-                 for pair in params.iteritems()) if params else ''
+                 for pair in params.items()) if params else ''
 
         if gateway:
             profile = 'gateway/{}'.format(gateway)

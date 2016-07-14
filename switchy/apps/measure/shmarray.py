@@ -108,7 +108,7 @@ def create(shape, dtype='d', alignment=32):
     dt = 'b'
 
     # We create the big array first
-    a = sharedctypes.RawArray(dt, N_bytes_big)
+    a = sharedctypes.RawArray(dt, int(N_bytes_big))
     sa = shmarray(a, (N_bytes_big,), dt)
 
     # We pick the first index of the new array that is aligned

@@ -8,7 +8,7 @@ from .. import utils, marks
 from collections import OrderedDict
 import itertools
 import operator
-from measure import Measurers
+from .measure import Measurers
 
 # registry
 _apps = OrderedDict()

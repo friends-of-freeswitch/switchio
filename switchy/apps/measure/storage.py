@@ -15,16 +15,15 @@ import csv
 import os
 from switchy import utils
 import multiprocessing as mp
-from multiprocessing import queues
 import time
 
 try:
     import pandas as pd
-    import shmarray
 except ImportError as ie:
-    utils.log_to_stderr().warn(ie.message)
+    utils.log_to_stderr().warn(str(ie))
     pd = None
 else:
+    from . import shmarray
     # use the entire screen width + wrapping when viewing frames in the console
     pd.set_option('display.expand_frame_repr', False)
 
@@ -156,9 +155,9 @@ class CSVStore(object):
 
         if dtypes is not None and iter(dtypes):
             # handle pandas `DataFrame.dtypes`
-            iteritems = getattr(dtypes, 'iteritems', None)
-            if iteritems:
-                dtypes = iteritems()
+            items = getattr(dtypes, 'iteritems', None)
+            if items:
+                dtypes = items()
             self.dtypes = OrderedDict(dtypes)
             self.fields = self.dtypes.keys()
         else:
@@ -355,7 +354,8 @@ class DataStorer(object):
         except TypeError:
             # set all columns to float64
             self.dtype = pd.np.dtype(
-                zip(dtype, itertools.repeat('float64')))
+                list(zip(dtype, itertools.repeat('float64')))
+            )
 
         self.log = utils.get_logger(type(self).__name__)
 
@@ -369,7 +369,7 @@ class DataStorer(object):
         self._storepath = path or tmpfile(self.storetype.ext)
         self.store = self.storetype(self._storepath, dtypes=self.dtype)
 
-        self.queue = queues.Queue()
+        self.queue = mp.Queue()
         self._iput = 0  # queue put counter
 
         # disable SIGINT while we spawn

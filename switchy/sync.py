@@ -5,7 +5,7 @@
 Make calls synchronously
 """
 from contextlib import contextmanager
-from apps.players import TonePlay
+from switchy.apps.players import TonePlay
 from switchy.observe import active_client
 
 

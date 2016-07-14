@@ -6,8 +6,8 @@ Manage pools of freeswitch slaves
 """
 from itertools import cycle
 from operator import add
-from functools import partial
-from utils import compose
+from functools import partial, reduce
+from .utils import compose
 
 
 class MultiEval(object):

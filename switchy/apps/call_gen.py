@@ -18,7 +18,7 @@ from .. import utils
 from .. import marks
 from .. import observe
 from . import AppManager
-from measure import CDR
+from .measure import CDR
 
 
 def get_originator(contacts, *args, **kwargs):
