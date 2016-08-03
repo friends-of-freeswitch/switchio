@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 #
 # Copyright 2014 Sangoma Technologies Inc.
 #
@@ -14,13 +14,15 @@ with open('README.rst') as f:
 
 setup(
     name="switchy",
-    version='0.1.alpha',
-    description='Switchy is a fast FreeSWITCH control library purpose-built on'
+    version='0.1.0.alpha',
+    description='A fast FreeSWITCH control library purpose-built on '
                 'traffic theory and stress testing.',
     long_description=readme,
     license='Mozilla',
     author='Sangoma Technologies',
     author_email='qa@eng.sangoma.com',
+    maintainer='Tyler Goodlet',
+    maintainer_email='tgoodlet@sangoma.com',
     url='https://github.com/sangoma/switchy',
     platforms=['linux'],
     packages=[
@@ -34,6 +36,7 @@ setup(
         ]
     },
     install_requires=[
+        'python-ESL',  # packaged by Sangoma
         'click',
     ],
     package_data={
@@ -47,14 +50,14 @@ setup(
     },
     classifiers=[
         'Development Status :: 3 - Alpha',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: Mozilla License',
-        'Operating System :: Linux',
+        'License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)',
+        'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 2.7',
-        'Topic :: Software Development',
-        'Topic :: Software Development :: Testing',
-        'Topic :: Software Development :: Quality Assurance',
+        'Intended Audience :: Telecommunications Industry',
+        'Intended Audience :: Developers',
+        'Topic :: Communications :: Telephony',
+        'Topic :: Software Development :: Testing :: Traffic Generation',
         'Topic :: System :: Clustering',
-        'Topic :: Utilities',
+        'Environment :: Console',
     ],
 )
