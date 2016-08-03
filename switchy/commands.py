@@ -7,7 +7,8 @@ Command wrappers and helpers
 
 
 def build_originate_cmd(dest_url, uuid_str=None, profile='external',
-                        # explicit app
+                        gateway=None,  # optional gw name
+                        # explicit app + args
                         app_name='park', app_arg_str='',
                         # dp app
                         dp_exten=None, dp_type='xml', dp_context='default',
@@ -18,10 +19,9 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
                         caller_id_num='1112223333',
                         codec='PCMU',
                         abs_codec='',
-                        xheaders={},
+                        xheaders=None,
                         **kwargs):
-    '''
-    Return a formatted 'originate' command string conforming
+    '''Return a formatted `originate` command string conforming
     to the syntax dictated by mod_commands of the form:
 
     originate <call url> <exten>|&<application_name>(<app_args>) [<dialplan>]
@@ -32,7 +32,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
     dest_url : str
         call destination url with format <username_uri>@<domain>:<port>
     profile : str
-        sofia profile (ua) name to use for making outbound call
+        sofia profile (UA) name to use for making outbound call
     dp_extension: str
         destination dp extension where the originating session (a-leg) will
         processed just after the call is answered
@@ -61,12 +61,13 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
     # params['sip_network_destination'] =
 
     # generate any requested Xheaders
-    xheader_prefix = 'sip_h_X-'
-    for name, val in xheaders.iteritems():
-        if xheader_prefix in name:
-            params[name] = val
-        else:
-            params['{}{}'.format(xheader_prefix, name)] = val
+    if xheaders is not None:
+        xheader_prefix = 'sip_h_X-'
+        for name, val in xheaders.iteritems():
+            if xheader_prefix in name:
+                params[name] = val
+            else:
+                params['{}{}'.format(xheader_prefix, name)] = val
 
     # override with user settings
     params.update(kwargs)
@@ -81,6 +82,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
         app_part = '&{}({})'.format(app_name, app_arg_str)
 
     # render final cmd str
+    profile = profile if gateway is None else 'gateway/{}'.format(gateway)
     call_url = '{}/{}/{}{}'.format(endpoint, profile, dest_url, dest_str)
     if not uuid_str:
         prefix_vars = '{{{{{params}}}}}'.format(params=','.join(pairs))
