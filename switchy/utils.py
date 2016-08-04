@@ -14,6 +14,8 @@ import logging
 import uuid as mod_uuid
 import importlib
 import pkgutil
+import re
+from collections import OrderedDict
 
 
 class ESLError(Exception):
@@ -325,3 +327,42 @@ def waitwhile(predicate, timeout=float('inf'), period=0.1, exc=True):
                 )
             return False
     return True
+
+
+class PatternCaller(object):
+    """A `flask`-like pattern to callback registrar and invoker.
+
+    Allows for registering callback functions via decorator syntax which
+    should be called when `PatterCaller.call_matches` is invoked with a
+    matching value.
+    """
+    def __init__(self):
+        self.regex2funcs = OrderedDict()
+
+    def __call__(self, pattern, **kwargs):
+        """Decorator interface allowing you to register callback functions
+        with a regex pattern and kwargs. When `lookup` is called with a value,
+        any callable registered with a matching regex pattern will be invoked
+        with the provided kwargs.
+        """
+        def inner(func):
+            self.regex2funcs.setdefault(pattern, []).append(
+                functools.partial(func, **kwargs))
+            return func
+
+        return inner
+
+    def call_matches(self, value, **kwargs):
+        """Perform linear lookup and callback invocation for all functions
+        registered with a matching pattern. Each function is invoked with the
+        matched value as its first argument and any arguments provided here.
+        Any kwargs which were provided at registration are also forwarded.
+        """
+        consumed = False
+        for patt, funcs in self.regex2funcs.iteritems():
+            match = re.match(patt, value)
+            if match:
+                consumed = True
+                for func in funcs:
+                        func(match=match, **kwargs)
+        return consumed
