@@ -191,7 +191,7 @@ class Session(object):
         self.broadcast("unset::{}".format(var))
 
     def answer(self):
-        self.broadcast("answer::")
+        self.con.api("uuid_answer {}".format(self.uuid))
 
     def hangup(self, cause='NORMAL_CLEARING'):
         '''Hangup this session with the given cause
