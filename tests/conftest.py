@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import pytest
 import sys
+from distutils import spawn
 
 
 def pytest_addoption(parser):
@@ -115,3 +116,31 @@ def client(fshost):
     yield cl
     cl.disconnect()
     assert not cl.connected()
+
+
+@pytest.fixture
+def scenario(request, fssock, loglevel):
+    '''provision and return a SIPp scenario with the
+    remote proxy set to the current fs server
+    '''
+    sipp = spawn.find_executable('sipp')
+    if not sipp:
+        pytest.skip("SIPp is required to run call/speed tests")
+
+    try:
+        import pysipp
+    except ImportError:
+        pytest.skip("pysipp is required to run call/speed tests")
+
+    pl = pysipp.utils.get_logger()
+    pl.setLevel(loglevel)
+
+    # first hop should be fs server
+    scen = pysipp.scenario(proxyaddr=fssock)
+    scen.log = pl
+
+    # set client destination
+    # NOTE: you must add a park extension to your default dialplan!
+    scen.agents['uac'].uri_username = 'park'
+
+    return scen
