@@ -6,9 +6,6 @@ Observer machinery
 
 Includes components for observing and controlling FreeSWITCH server state
 through event processing and command invocation.
-
-The EventListener component was inspired by Moises Silva's
-'fs_test' project: https://github.com/moises-silva/fs_test
 """
 import time
 import traceback
@@ -56,22 +53,21 @@ class EventListener(object):
                  session_map=None,
                  bg_jobs=None,
                  rx_con=None,
-                 call_id_var='variable_call_uuid',
-                 app_id_vars=None,
+                 call_tracking_header='variable_call_uuid',
+                 app_id_headers=None,
                  autorecon=30,
                  max_limit=float('inf'),
-                 # proxy_mng=None,
                  _tx_lock=None):
         '''
         Parameters
         ----------
         host : string
-            Hostname or ip of the FS engine server to listen to
+            Hostname or IP addr of the FS engine server to listen to
         port : string
-            Port on which the FS server is offering an esl connection
+            Port on which the FS server is offering an ESL connection
         auth : string
-            Authentication password for connecting via esl
-        call_id_var : string
+            Authentication password for connecting via ESL
+        call_tracking_header : string
             Name of the freeswitch variable (including the 'variable_' prefix)
             to use for associating sessions into tracked calls
             (see `_handle_create`).
@@ -106,17 +102,14 @@ class EventListener(object):
         # store up to the last 1k of each event type
         self.events = defaultdict(functools.partial(deque, maxlen=1e3))
         self.sessions_per_app = Counter()
-
-        # constants
         self.autorecon = autorecon
-        self._call_var = None
-        self.call_id_var = call_id_var  # call tracking variable name
-        self.app_id_vars = map(
-            utils.param2header, (Client.id_var, Client.id_xh)
-        )
-        if app_id_vars:
-            self.app_id_vars = list(app_id_vars) + self.app_id_vars
-            self.log.debug("app lookup vars are: {}".format(self.app_id_vars))
+        # header name used for associating sip sessions into a 'call'
+        self.call_tracking_header = call_tracking_header
+        self.app_id_headers = []
+        if app_id_headers:
+            self.app_id_headers = list(app_id_headers) + self.app_id_headers
+            self.log.debug(
+                "app lookup headers are: {}".format(self.app_id_headers))
         self.max_limit = max_limit
         self._id = utils.uuid()
 
@@ -189,19 +182,6 @@ class EventListener(object):
                 yield name, attr
 
     @property
-    def call_id_var(self):
-        """Channel variable name used for associating sip sessions into a 'call'
-        (i.e. not the call-id from telephony).
-        """
-        return self._call_var
-
-    @call_id_var.setter
-    def call_id_var(self, var_name):
-        """Set the channel variable to use for associating sessions into calls
-        """
-        self._call_var = var_name
-
-    @property
     def epoch(self):
         '''Time first event was received from server'''
         return self._epoch
@@ -233,14 +213,13 @@ class EventListener(object):
     def status(self):
         '''Return the status of ESL connections in a dict
         A value of True indicates that the connection is active.
-        Returns map of con names -> connected() bools
+        Returns map of con names -> connected() bools.
         '''
         return {name: con.connected() for name, con in self.iter_cons()}
 
     def is_alive(self):
-        '''
-        Return bool indicating if listener is running
-        (i.e. the background event consumer loop is executing)
+        '''Return bool indicating if listener is running
+        (i.e. the background event loop is executing).
         '''
         return self._thread.is_alive() if self._thread else False
 
@@ -273,7 +252,7 @@ class EventListener(object):
         return all(con.connected() for name, con in self.iter_cons())
 
     def disconnect(self):
-        '''Shutdown this listener's bg thread and disconnect all esl sockets
+        '''Shutdown this listener's bg thread and disconnect all esl sockets.
 
         WARNING
         -------
@@ -282,6 +261,7 @@ class EventListener(object):
         '''
         if current_thread() is not self._thread and self.is_alive():
             self._stop()
+            self._thread.join(timeout=1)
         else:
             # 1) bg thread was never started
             # 2) this is the bg thread which is obviously alive
@@ -304,6 +284,11 @@ class EventListener(object):
                 while self.is_alive():
                     self._rx_con.disconnect()
                     time.sleep(0.1)
+
+    def wait(self, timeout=None):
+        """Wait until the event loop thread terminates or timeout.
+        """
+        return self._thread.join(timeout)
 
     def connect(self):
         '''Connect and initialize all contained esl sockets
@@ -530,7 +515,7 @@ class EventListener(object):
             self.log.debug("handler is '{}'".format(handler))
             try:
                 consumed, ret = utils.uncons(*handler(e))  # invoke handler
-                # attempt to lookup a consuming client app by id
+                # attempt to lookup a consuming client app (callbacks) by id
                 model = ret[0]
                 cid = model.cid if model else self.get_id(e, 'default')
                 self.log.debug("consumer id is '{}'".format(cid))
@@ -577,9 +562,9 @@ class EventListener(object):
             self.log.error("Unknown event '{}'".format(evname))
 
     def get_id(self, e, default=None):
-        """Acquire the client/consumer id for event :var:`e`
+        """Acquire the client/consumer (app) id for event :var:`e`
         """
-        for var in self.app_id_vars:
+        for var in self.app_id_headers:
             ident = e.getHeader(var)
             if ident:
                 self.log.debug(
@@ -791,11 +776,12 @@ class EventListener(object):
         # Use our specified "call identification variable" to try and associate
         # sessions into calls. By default the 'variable_call_uuid' channel
         # variable is used for tracking locally bridged calls
-        call_uuid = e.getHeader(self.call_id_var)  # could be 'None'
+        call_uuid = e.getHeader(self.call_tracking_header)  # could be 'None'
         if not call_uuid:
             self.log.warn(
                 "Unable to associate {} session '{}' with a call using "
-                "variable '{}'".format(direction, sess.uuid, self.call_id_var))
+                "variable '{}'".format(
+                    direction, sess.uuid, self.call_tracking_header))
             call_uuid = uuid
 
         # associate sessions into a call
@@ -867,12 +853,12 @@ class EventListener(object):
         self.sessions_per_app[sess.cid] -= 1
 
         # if possible lookup the relevant call
-        call_uuid = e.getHeader(self.call_id_var)
+        call_uuid = e.getHeader(self.call_tracking_header)
         if not call_uuid:
             self.log.warn(
                 "handling HANGUP for {} session '{}' which can not be "
                 "associated with an active call using {}?"
-                .format(direction, sess.uuid, self.call_id_var))
+                .format(direction, sess.uuid, self.call_tracking_header))
             call_uuid = uuid
 
         # XXX seems like sometimes FS changes the `call_uuid`
@@ -925,17 +911,16 @@ class Client(object):
 
     Provides a high level interface for interaction with an event listener.
     '''
-    id_var = 'switchy_app'
-    id_xh = utils.xheaderify(id_var)
+    app_id_header = utils.xheaderify('switchy_app')
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
-                 call_id_var=None, listener=None, logger=None):
+                 call_tracking_header=None, listener=None, logger=None):
 
         self.host = host
         self.port = port
         self.auth = auth
         # works under the assumption that x-headers are forwarded by the proxy
-        self.call_id_var = call_id_var or utils.xheaderify(
+        self.call_tracking_header = call_tracking_header or utils.xheaderify(
             'switchy_originating_session')
 
         self._id = utils.uuid()
@@ -968,9 +953,10 @@ class Client(object):
         # add our con to the listener's set so that it will be
         # managed on server disconnects
         if inst:
-            self._listener.call_id_var = utils.param2header(self.call_id_var)
+            self._listener.call_tracking_header = utils.param2header(
+                self.call_tracking_header)
             self.log.debug("set call lookup variable to '{}'".format(
-                self._listener.call_id_var))
+                self._listener.call_tracking_header))
             inst._client_con = weakref.proxy(self._con)
 
     listener = property(get_listener, set_listener,
@@ -987,7 +973,8 @@ class Client(object):
 
     loglevel = property(get_loglevel, set_loglevel)
 
-    def load_app(self, ns, on_value=None, prepend=False, **prepost_kwargs):
+    def load_app(self, ns, on_value=None, header=None, prepend=False,
+                 funcargsmap=None, **prepost_kwargs):
         """Load annotated callbacks and from a namespace and add them
         to this client's listener's callback chain.
 
@@ -1013,11 +1000,20 @@ class Client(object):
 
         # if handed a class, instantiate appropriately
         app = ns() if isinstance(ns, type) else ns
+
+        # handle prepost-fixture setup/teardown
         prepost = getattr(app, 'prepost', False)
         if prepost:
+            funcargsmap = funcargsmap or {}
+            # deliver args declared in the function signature
             args, kwargs = utils.get_args(app.prepost)
-            funcargs = tuple(weakref.proxy(getattr(self, argname))
-                             for argname in args if argname != 'self')
+            funcargs = []
+            for argname in args:
+                if argname == 'self':
+                    continue
+                funcargs.append(weakref.proxy(
+                    funcargsmap.get(argname) or getattr(self, argname)))
+
             ret = prepost(*funcargs, **prepost_kwargs)
             if inspect.isgenerator(ret):
                 # run init step
@@ -1061,6 +1057,15 @@ class Client(object):
         if failed:
             raise TypeError("app load failed since '{}' is not a valid"
                             "callback type".format(failed))
+
+        # prepend the provided header to use for app id look ups
+        # TODO: should probably be moved into `add_callback()`?
+        header = header or utils.param2header(self.app_id_header)
+        if header not in listener.app_id_headers:
+            listener.app_id_headers.insert(0, header)
+            self.log.debug("app id var '{}' prepended to {}"
+                           .format(header, listener))
+
         # register locally
         self._apps.setdefault(group_id, {})[name] = app
         app.cid, app.name = group_id, name
@@ -1140,16 +1145,16 @@ class Client(object):
         by iterating all managed call apps and hupall-ing
         with the apps callback id. If :var:`group_id` is provided
         look up the corresponding app an hang up calls for that
-        specific app
+        specific app.
         """
         if not group_id:
             # hangup all calls for all apps
             for group_id in self._apps:
                 self.api('hupall NORMAL_CLEARING {} {}'.format(
-                         self.id_var, group_id))
+                         self.app_id_header, group_id))
         else:
             self.api('hupall NORMAL_CLEARING {} {}'.format(
-                     self.id_var, group_id))
+                     self.app_id_header, group_id))
 
     def _assert_alive(self, listener=None):
         """Assert our listener is active and if so return it
@@ -1207,7 +1212,6 @@ class Client(object):
                   bgapi_kwargs={},
                   rep_fields={},
                   **orig_kwargs):
-        # TODO: add a 'block' arg to determine whether api or bgapi is used
         '''Originate a call using FreeSWITCH 'originate' command.
         A non-blocking bgapi call is used by default.
 
@@ -1226,14 +1230,12 @@ class Client(object):
         # gen originating session uuid for tracking call
         uuid_str = uuid_func()
         if dest_url:  # generate the cmd now
-            origkwds = {self.id_var: app_id or self._id}
+            origkwds = {self.app_id_header: app_id or self._id}
             origkwds.update(orig_kwargs)
             cmd_str = build_originate_cmd(
                 dest_url,
                 uuid_str=uuid_str,
-                xheaders={self.call_id_var: uuid_str,
-                          self.id_xh: app_id or self._id},
-                # extra_params={self.id_var: app_id or self._id},
+                xheaders={self.call_tracking_header: uuid_str},
                 **origkwds
             )
         else:  # accept late data insertion for the uuid_str and app_id
@@ -1257,12 +1259,12 @@ class Client(object):
         '''
         # by default this inserts a couple placeholders which can be replaced
         # at run time by a format(uuid_str='blah', app_id='foo') call
-        xhs = {self.id_xh: '{app_id}'}
+        xhs = {}
         if self.listener:
-            xhs[self.call_id_var] = '{uuid_str}'
+            xhs[self.call_tracking_header] = '{uuid_str}'
         xhs.update(kwargs.pop('xheaders', {}))  # overrides from caller
 
-        origparams = {self.id_var: '{app_id}'}
+        origparams = {self.app_id_header: '{app_id}'}
         if 'uuid_str' in kwargs:
             raise ConfigurationError(
                 "passing 'uuid_str' here is improper usage")
@@ -1333,22 +1335,23 @@ def active_client(host, port='8021', auth='ClueCon',
 
 def get_pool(contacts, **kwargs):
     """Construct and return a slave pool from a sequence of
-    contact information
+    contact information.
     """
+    assert not isinstance(contacts, str)
     from .distribute import SlavePool
     SlavePair = namedtuple("SlavePair", "client listener")
     pairs = deque()
 
     # instantiate all pairs
     for contact in contacts:
-        if isinstance(contact, (basestring)):
+        if isinstance(contact, (str)):
             contact = (contact,)
         # create pairs
         listener = EventListener(*contact, **kwargs)
         client = Client(
             *contact,
             listener=listener,
-            call_id_var=kwargs.get('call_id_var')
+            call_tracking_header=kwargs.get('call_tracking_header')
         )
         pairs.append(SlavePair(client, listener))
 
