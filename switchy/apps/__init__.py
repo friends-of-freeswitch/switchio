@@ -114,13 +114,19 @@ def load(packages=(), imp_excs=('pandas',)):
 
 
 class AppManager(object):
-    """Manage apps over a cluster/slavepool
+    """Manage apps over a cluster/slavepool.
     """
-    def __init__(self, pool, **kwargs):
+    def __init__(self, pool, ppfuncargs=None, **kwargs):
         self.pool = pool
+        self.ppfuncargs = ppfuncargs or {'pool': self.pool}
         self.measurers = Measurers(**kwargs)
 
     def load_multi_app(self, apps_iter, app_id=None, **kwargs):
+        """Load a "composed" app (multiple apps using a single app name/id)
+        by providing an iterable of (app, prepost_kwargs) tuples. Whenever the
+        app is triggered from and event loop all callbacks from all apps will
+        be invoked in the order then were loaded here.
+        """
         for app in apps_iter:
             try:
                 app, ppkwargs = app  # user can optionally pass doubles
@@ -133,12 +139,13 @@ class AppManager(object):
 
         return app_id
 
-    def load_app(self, app, app_id=None, ppkwargs={}, with_measurers=()):
-        """Load and activate an app for use across all slaves in the cluster
+    def load_app(self, app, app_id=None, ppkwargs=None, with_measurers=()):
+        """Load and activate an app for use across all slaves in the cluster.
         """
+        ppkwargs = ppkwargs or {}
         app_id = self.pool.evals(
-            'client.load_app(app, on_value=appid, **prepostkwargs)',
-            app=app, appid=app_id, prepostkwargs=ppkwargs)[0]
+            'client.load_app(app, on_value=appid, funcargsmap=fargs, **ppkws)',
+            app=app, appid=app_id, ppkws=ppkwargs, fargs=self.ppfuncargs)[0]
 
         if self.measurers and with_measurers:
             # measurers are loaded in reverse order such that those which were
