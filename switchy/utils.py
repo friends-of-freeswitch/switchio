@@ -120,7 +120,7 @@ def pstr(self):
     """
     return '{}@{}'.format(
         type(self).__name__,
-        getattr(self, 'server', getattr(self, 'host', 'unknown-host'))
+        getattr(self, 'host', 'unknown-host')
     )
 
 
@@ -291,7 +291,7 @@ def iter_import_submods(packages, recursive=False, imp_excs=()):
 
     for package in packages:
 
-        if isinstance(package, basestring):
+        if isinstance(package, str):
             package = try_import(package)
         pkgpath = getattr(package, '__path__', None)
 
@@ -332,37 +332,52 @@ def waitwhile(predicate, timeout=float('inf'), period=0.1, exc=True):
 class PatternCaller(object):
     """A `flask`-like pattern to callback registrar and invoker.
 
-    Allows for registering callback functions via decorator syntax which
-    should be called when `PatterCaller.call_matches` is invoked with a
-    matching value.
+    Allows for registering callback functions (via decorators) which should be
+    called when `PatterCaller.call_matches()` is invoked with a matching value.
     """
-    def __init__(self):
+    def __init__(self, default_chanvar='Caller-Destination-Number'):
+        self.chanvar = default_chanvar
         self.regex2funcs = OrderedDict()
 
-    def __call__(self, pattern, **kwargs):
+    def update(self, patterncaller):
+        self.regex2funcs.update(patterncaller.regex2funcs)
+
+    def __call__(self, pattern, field=None, **kwargs):
         """Decorator interface allowing you to register callback functions
-        with a regex pattern and kwargs. When `lookup` is called with a value,
-        any callable registered with a matching regex pattern will be invoked
-        with the provided kwargs.
+        with regex patterns and kwargs. When `call_matches` is called with a
+        mapping, any callable registered with a matching regex pattern will be
+        invoked with the provided kwargs.
+
+        If a registered function returns a value which bools to True,
+        we stop all further Session processing and routing.
         """
         def inner(func):
-            self.regex2funcs.setdefault(pattern, []).append(
-                functools.partial(func, **kwargs))
+            self.regex2funcs.setdefault(
+                (pattern, field or self.chanvar), []).append((func, kwargs))
             return func
 
         return inner
 
-    def call_matches(self, value, **kwargs):
+    def call_matches(self, varmap, **kwargs):
         """Perform linear lookup and callback invocation for all functions
         registered with a matching pattern. Each function is invoked with the
         matched value as its first argument and any arguments provided here.
         Any kwargs which were provided at registration are also forwarded.
         """
+        stopnow = False
         consumed = False
-        for patt, funcs in self.regex2funcs.iteritems():
-            match = re.match(patt, value)
-            if match:
-                consumed = True
-                for func in funcs:
-                        func(match=match, **kwargs)
+        for (patt, field), funcitems in self.regex2funcs.items():
+            value = varmap.get(field)
+            if value:
+                match = re.match(patt, value)
+                if match:
+                    consumed = True
+                    for func, defaults in funcitems:
+                        if kwargs:
+                            defaults.update(kwargs)
+                        stopnow = func(match=match, **defaults)
+                        if stopnow:
+                            break
+            if stopnow:
+                break
         return consumed
