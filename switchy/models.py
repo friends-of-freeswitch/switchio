@@ -109,14 +109,6 @@ class Session(object):
         # access to event data
         return utils.dirinfo(self)
 
-    def __getattr__(self, name):
-        if 'variable' in name:
-            try:  # to acquire from channel variables
-                return self.events[name]
-            except KeyError:
-                pass
-        return object.__getattribute__(self, name)
-
     def __getitem__(self, key):
         try:
             return self.events[key]
@@ -165,7 +157,8 @@ class Session(object):
 
     @property
     def uptime(self):
-        """Time elapsed since the `create_ev` to the most recent received event
+        """Time elapsed since the `Session.create_ev` to the most recent
+        received event.
         """
         return self.time - self.times['create']
 
@@ -194,35 +187,23 @@ class Session(object):
         self.con.api("uuid_answer {}".format(self.uuid))
 
     def hangup(self, cause='NORMAL_CLEARING'):
-        '''Hangup this session with the given cause
-
-        Parameters
-        ----------
-        cause : string
-            hangup type keyword
+        '''Hangup this session with the provided `cause` hangup type keyword.
         '''
-        self.con.api(str('uuid_kill %s %s' % (self.uuid, cause)))
+        self.con.api('uuid_kill {} {}'.format(self.uuid, cause))
 
     def sched_hangup(self, timeout, cause='NORMAL_CLEARING'):
-        '''Schedule this session to hangup after timeout seconds
-
-        Parameters
-        ----------
-        timeout : float
-            timeout in seconds
-        cause : string
-            hangup cause code
+        '''Schedule this session to hangup after `timeout` seconds.
         '''
         self.con.api('sched_hangup +{} {} {}'.format(timeout,
                      self.uuid, cause))
 
     def clear_tasks(self):
-        '''Clear all scheduled tasks for this session
+        '''Clear all scheduled tasks for this session.
         '''
         self.con.api('sched_del {}'.format(self.uuid))
 
     def sched_dtmf(self, delay, sequence, tone_duration=None):
-        '''Schedule dtmf sequence to be played on this channel
+        '''Schedule dtmf sequence to be played on this channel.
 
         Parameters
         ----------
@@ -353,19 +334,22 @@ class Session(object):
         #       so that we are actually alerted of cmd errors!
         self.con.api('uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
 
-    def bridge(self, dest_url="${sip_req_uri}",
-               profile="${sofia_profile_name}",
-               proxy=None,
+    def bridge(self, dest_url=None, profile=None, gateway=None, proxy=None,
                params=None):
         """Bridge this session using `uuid_broadcast`.
-        By default the current profile is used to bridge to the requested user.
+        By default the current profile is used to bridge to the SIP request URI.
         """
         pairs = ('='.join(map(str, pair))
                  for pair in params.iteritems()) if params else ''
 
+        if gateway:
+            profile = 'gateway/{}'.format(gateway)
+
         self.broadcast(
             "bridge::{{{varset}}}sofia/{}/{}{dest}".format(
-                profile, dest_url, varset=','.join(pairs),
+                profile if profile else self['variable_sofia_profile_name'],
+                dest_url if dest_url else self['variable_sip_req_uri'],
+                varset=','.join(pairs),
                 dest=';fs_path=sip:{}'.format(proxy) if proxy else ''
             )
         )
