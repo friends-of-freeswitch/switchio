@@ -5,9 +5,9 @@
 Routing apps
 """
 from collections import Counter
+from .. import utils
 from ..marks import event_callback
 from ..apps import app
-from ..utils import get_logger
 
 
 @app
@@ -15,7 +15,7 @@ class Bridger(object):
     '''Bridge sessions within a call an arbitrary number of times.
     '''
     def prepost(self):
-        self.log = get_logger(self.__class__.__name__)
+        self.log = utils.get_logger(self.__class__.__name__)
         self.call2entries = Counter()
         self.count2bridgeargs = {  # leg count to codec spec
             1: 'proxy'  # default is to proxy the call using the request uri
@@ -40,3 +40,50 @@ class Bridger(object):
     def on_bridge(self, sess):
         self.log.debug("Bridged aleg session '{}' to bleg session '{}'"
                        .format(sess.uuid, sess['Bridge-B-Unique-ID']))
+
+
+@app
+class Router(object):
+    '''Route sessions using registered callback functions (decorated as
+    "routes") which are pattern matched based on selected channel variable
+    contents.
+
+    Requires that the handling SIP profile had been configured to use the
+    'switchy' dialplan context or at the very least a context which contains a
+    park action extension.
+    '''
+    # default routes
+    route = utils.PatternCaller()
+
+    def __init__(self, guards, use_defaults=True):
+        self.guards = guards or {}
+        self.route = utils.PatternCaller()
+        if use_defaults:
+            self.route.update(type(self).route)
+
+    def prepost(self, pool):
+        self.host = pool.evals('client.host')
+        self.log = utils.get_logger(utils.pstr(self))
+
+    @event_callback("CHANNEL_PARK")
+    def on_park(self, sess):
+        if all(sess[key] == val for key, val in self.guards.items()):
+            self.route.call_matches(sess, sess=sess, router=self)
+        else:
+            self.log.warn("Session with id {} did not pass guards"
+                          .format(sess.uuid))
+
+    @staticmethod
+    def bridge2dest(sess, match, router, out_profile=None, gateway=None,
+                    proxy=None):
+        # if calling in to a registered user bridge appropriately
+
+        # bridge to destination
+        sess.bridge(
+            # bridge back out the same profile if not specified
+            # (the default action taken by bridge)
+            profile=out_profile,
+            gateway=gateway,
+            dest_url=sess['variable_sip_req_uri'],
+            proxy=proxy,
+        )
