@@ -31,7 +31,7 @@ class ConfigurationError(Exception):
 
 
 class CommandError(ESLError):
-    """Console command error"""
+    """Console Command error"""
 
 
 # fs-like log format
@@ -101,7 +101,7 @@ def param2header(name):
     parameter `name` which should be used when the param is received as a
     header in event data.
 
-    Most often this is just the original parameter name with a 'variable_'
+    Most often this is just the original parameter name with a ``'variable_'``
     prefix. This is pretty much a shitty hack (thanks goes to FS for the
     asymmetry in variable referencing...)
     """
@@ -115,12 +115,12 @@ def param2header(name):
     return name
 
 
-def pstr(self):
-    """Pretty str repr of connection-like instances
+def pstr(self, host='unknown-host'):
+    """Pretty str repr of connection-like instances.
     """
     return '{}@{}'.format(
         type(self).__name__,
-        getattr(self, 'host', 'unknown-host')
+        getattr(self, 'host', host)
     )
 
 
@@ -335,14 +335,13 @@ class PatternCaller(object):
     Allows for registering callback functions (via decorators) which should be
     called when `PatterCaller.call_matches()` is invoked with a matching value.
     """
-    def __init__(self, default_chanvar='Caller-Destination-Number'):
-        self.chanvar = default_chanvar
+    def __init__(self):
         self.regex2funcs = OrderedDict()
 
     def update(self, patterncaller):
         self.regex2funcs.update(patterncaller.regex2funcs)
 
-    def __call__(self, pattern, field=None, **kwargs):
+    def __call__(self, pattern, field='Caller-Destination-Number', **kwargs):
         """Decorator interface allowing you to register callback functions
         with regex patterns and kwargs. When `call_matches` is called with a
         mapping, any callable registered with a matching regex pattern will be
@@ -353,12 +352,12 @@ class PatternCaller(object):
         """
         def inner(func):
             self.regex2funcs.setdefault(
-                (pattern, field or self.chanvar), []).append((func, kwargs))
+                (pattern, field), []).append((func, kwargs))
             return func
 
         return inner
 
-    def call_matches(self, varmap, **kwargs):
+    def call_matches(self, fields, **kwargs):
         """Perform linear lookup and callback invocation for all functions
         registered with a matching pattern. Each function is invoked with the
         matched value as its first argument and any arguments provided here.
@@ -367,7 +366,7 @@ class PatternCaller(object):
         stopnow = False
         consumed = False
         for (patt, field), funcitems in self.regex2funcs.items():
-            value = varmap.get(field)
+            value = fields.get(field)
             if value:
                 match = re.match(patt, value)
                 if match:
