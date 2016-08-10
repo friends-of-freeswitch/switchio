@@ -11,6 +11,22 @@ from ..apps import app
 
 
 @app
+class Proxier(object):
+    """Proxy all inbound calls to the destination specified in the SIP
+    Request-URI.
+
+    .. note::
+        This is meant as a simple example for testing. If you want to build
+        a routing system see the `Router` app below.
+    """
+    @event_callback('CHANNEL_PARK')
+    def on_park(self, sess):
+        if sess.is_inbound():
+            # by default bridges to sess['variable_sip_req_uri']
+            sess.bridge()
+
+
+@app
 class Bridger(object):
     '''Bridge sessions within a call an arbitrary number of times.
     '''
@@ -72,13 +88,13 @@ class Router(object):
         else:
             self.log.warn("Session with id {} did not pass guards"
                           .format(sess.uuid))
+            sess.hangup('CALL_REJECTED')
 
     @staticmethod
     def bridge2dest(sess, match, router, out_profile=None, gateway=None,
                     proxy=None):
-        # if calling in to a registered user bridge appropriately
-
-        # bridge to destination
+        """A handy generic bridging function.
+        """
         sess.bridge(
             # bridge back out the same profile if not specified
             # (the default action taken by bridge)
