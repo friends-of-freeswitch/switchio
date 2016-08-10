@@ -176,13 +176,14 @@ class PlayRec(object):
                     # hangup calls not being recorded immediately
                     self.log.debug("sending hangup for session '{}'"
                                    .format(sess.uuid))
-                    sess.sched_hangup(0.5)  # delay hangup slightly
+                    if not sess.hungup:
+                        sess.sched_hangup(0.5)  # delay hangup slightly
 
     def trigger_playback(self, sess):
         '''Trigger clip playback on the given session by doing the following:
-        1) Start playing a silence stream on the peer session
-        2) This will in turn trigger a speech playback on this session in
-           the "PLAYBACK_START" callback
+        - Start playing a silence stream on the peer session
+        - This will in turn trigger a speech playback on this session in the
+        "PLAYBACK_START" callback
         '''
         peer = sess.call.get_peer(sess)
         peer.playback(self.silence)  # play infinite silence
@@ -223,7 +224,8 @@ class PlayRec(object):
         # if the far end has finished recording then hangup the call
         if sess.call.get_peer(sess).vars.get('recorded', True):
             self.log.debug("sending hangup for session '{}'".format(sess.uuid))
-            sess.sched_hangup(0.5)  # delay hangup slightly
+            if not sess.hungup:
+                sess.sched_hangup(0.5)  # delay hangup slightly
             recs = self.call2recs[sess.call.uuid]
 
             # invoke callback for each recording
@@ -309,4 +311,5 @@ class MutedPlayRec(PlayRec):
                     # hangup calls not being recorded immediately
                     self.log.debug("sending hangup for session '{}'"
                                    .format(sess.uuid))
-                    sess.sched_hangup(0.5)  # delay hangup slightly
+                    if not sess.hungup:
+                        sess.sched_hangup(0.5)  # delay hangup slightly

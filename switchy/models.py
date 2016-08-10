@@ -48,7 +48,6 @@ class Events(object):
         """Return default if not found
         Should be faster then handling the key error?
         """
-        # XXX would a map() be faster here?
         # iterate from most recent event
         for ev in self._events:
             value = ev.getHeader(str(key))
@@ -77,7 +76,7 @@ class Events(object):
 
 
 class Session(object):
-    '''Type to represent FS Session state
+    '''Session API and state tracking.
     '''
     create_ev = 'CHANNEL_CREATE'
 
@@ -88,8 +87,9 @@ class Session(object):
         self.con = con
         # sub-namespace for apps to set/get state
         self.vars = {}
+        self._log = None
 
-        # external attributes
+        # public attributes
         self.duration = 0
         self.bg_job = None
         self.answered = False
@@ -100,6 +100,15 @@ class Session(object):
         self.times = {}.fromkeys(
             ('create', 'answer', 'req_originate', 'originate', 'hangup'))
         self.times['create'] = utils.get_event_time(event)
+
+    @property
+    def log(self):
+        """Local logger instance.
+        """
+        if not self._log:
+            self._log = utils.get_logger(utils.pstr(self.con.host))
+
+        return self._log
 
     def __str__(self):
         return str(self.uuid)
@@ -117,12 +126,7 @@ class Session(object):
                            .format(key, self.uuid))
 
     def get(self, key, default=None):
-        '''Get data pertaining to session state as updated via events
-
-        Parameters
-        ----------
-        name : string
-            name of the variable to return the value for
+        '''Get latest event header field for `key`.
         '''
         return self.events.get(key, default)
 
@@ -165,6 +169,9 @@ class Session(object):
     # call control / 'mod_commands' methods
     # TODO: dynamically add @decorated functions to this class
     # and wrap them using functools.update_wrapper ...?
+    def getvar(self, var):
+        val = self.con.cmd("uuid_getvar {} {}".format(self.uuid, var))
+        return val if val != '_undef_' else None
 
     def setvar(self, var, value):
         """Set variable to value
@@ -179,7 +186,7 @@ class Session(object):
             self.uuid, ';'.join(pairs)))
 
     def unsetvar(self, var):
-        """Unset a channel var
+        """Unset a channel var.
         """
         self.broadcast("unset::{}".format(var))
 
@@ -216,13 +223,15 @@ class Session(object):
             delay, self.uuid, sequence)
         if tone_duration is not None:
             cmd += ' @{}'.format(tone_duration)
+
         self.con.api(cmd)
 
     def send_dtmf(self, sequence, duration='w'):
         '''Send a dtmf sequence with constant tone durations
         '''
+        # XXX looks like a bug with uuid_send_dtmf sending
         self.con.api('uuid_send_dtmf {} {} @{}'.format(
-                     self.uuid, sequence, duration))
+                     self.uuid, sequence, duration), errcheck=False)
 
     def playback(self, args, start_sample=None, endless=False,
                  leg='aleg', params=None):
@@ -324,20 +333,19 @@ class Session(object):
         '''
         self.con.api('uuid_park {}'.format(self.uuid))
 
-    def broadcast(self, path, leg=''):
+    def broadcast(self, path, leg='', hangup_cause=None):
         """Execute an application on a chosen leg(s) with optional hangup
         afterwards.
         Usage:
             uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]
         """
-        # FIXME: this should use the EventListener SOCKET_DATA handler!!
-        #       so that we are actually alerted of cmd errors!
         self.con.api('uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
 
     def bridge(self, dest_url=None, profile=None, gateway=None, proxy=None,
                params=None):
         """Bridge this session using `uuid_broadcast`.
-        By default the current profile is used to bridge to the SIP request URI.
+        By default the current profile is used to bridge to the SIP
+        Request-URI.
         """
         pairs = ('='.join(map(str, pair))
                  for pair in params.iteritems()) if params else ''
@@ -355,9 +363,10 @@ class Session(object):
         )
 
     def breakmedia(self):
-        '''Stop playback of media on this session and move on in the dialplan
+        '''Stop playback of media on this session and move on in the dialplan.
         '''
-        self.con.api('uuid_break {}'.format(self.uuid))
+        # XXX looks like a bug with uuid_break returning '-ERR no reply'
+        self.con.api('uuid_break {}'.format(self.uuid), errcheck=False)
 
     def mute(self, direction='write', level=1):
         """Mute the current session. `level` determines the degree of comfort

@@ -107,7 +107,7 @@ class IVRCallLogic(object):
         # Example of how to execute FreeSWITCH/NSG commands as from the CLI
         try:
             client.cmd('load mod_sndfile')
-        except switchy.utils.CommandError:
+        except switchy.utils.APIError:
             pass
 
     @event_callback('CHANNEL_PARK')

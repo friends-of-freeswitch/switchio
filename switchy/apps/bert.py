@@ -7,7 +7,7 @@ Bert testing
 from collections import deque
 from ..apps import app
 from ..marks import event_callback
-from ..utils import get_logger, CommandError
+from ..utils import get_logger, APIError
 
 
 @app
@@ -42,7 +42,7 @@ class Bert(object):
         # make sure the module is loaded
         try:
             client.api('reload mod_bert')
-        except CommandError:
+        except APIError:
             self.log.debug("mod_bert already loaded")
 
         # collections of failed sessions

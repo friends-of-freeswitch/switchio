@@ -330,13 +330,13 @@ class TestClient:
         assert len(client.listener.consumers[bid]) == cbcount
 
     def test_commands(self, client):
-        from switchy.utils import CommandError
+        from switchy.utils import APIError
         from switchy.connection import ConnectionError
         # unconnected attempt
         with pytest.raises(ConnectionError):
             client.api('doggy')
         client.connect()
         # bad command
-        with pytest.raises(CommandError):
+        with pytest.raises(APIError):
             client.api('doggy')
         assert client.api('status')

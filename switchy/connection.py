@@ -71,13 +71,33 @@ class Connection(object):
     def __exit__(self, exception_type, exception_val, trace):
         self.disconnect()
 
-    def api(self, cmd):
+    @staticmethod
+    def _handle_socket_data(event):
+        body = event.getBody() if event else None
+        if not body:
+            return False, None
+        if '-ERR' in body.splitlines()[-1]:
+            raise utils.APIError(body)
+        return True, body
+
+    def api(self, cmd, errcheck=True):
+        '''Invoke esl api command (with error checking by default).
+        Returns an ESL.ESLEvent instance for event type "SOCKET_DATA".
+        '''
         self.log.debug("api cmd '{}'".format(cmd))
         with self._mutex:
             try:
-                return self._con.api(cmd)
+                event = self._con.api(cmd)
+                if errcheck:
+                    _, body = self._handle_socket_data(event)
+                return event
             except AttributeError:
                 raise ConnectionError("call `connect` first")
+
+    def cmd(self, cmd):
+        '''Return the string-body output from invoking a command.
+        '''
+        return self.api(cmd).getBody().strip()
 
     def bgapi(self, cmd):
         self.log.debug("bgapi cmd '{}'".format(cmd))

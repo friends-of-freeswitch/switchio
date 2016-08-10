@@ -20,7 +20,7 @@ from collections import deque, OrderedDict, defaultdict, Counter, namedtuple
 
 # NOTE: the import order matters here!
 import utils
-from utils import ConfigurationError, ESLError, CommandError, get_event_time
+from utils import ConfigurationError, ESLError, APIError, get_event_time
 from models import Session, Job, Call
 from commands import build_originate_cmd
 import marks
@@ -617,15 +617,7 @@ class EventListener(object):
 
     # primary event handlers
 
-    @staticmethod
-    @handler('SOCKET_DATA')
-    def _handle_socket_data(event):
-        body = event.getBody() if event else None
-        if not body:
-            return False, None
-        if '-ERR' in body.splitlines()[-1]:
-            raise CommandError(body)
-        return True, body
+    _handle_sd = handler('SOCKET_DATA')(Connection._handle_socket_data)
 
     @handler('LOG')
     def _handle_log(self, e):
@@ -1123,14 +1115,13 @@ class Client(object):
 
     def api(self, cmd, exc=True):
         '''Invoke esl api command with error checking
-        Returns an ESL.ESLEvent instance for event type "SOCKET_DATA"
+        Returns an ESL.ESLEvent instance for event type "SOCKET_DATA".
         '''
-        # note api calls do not require an active listener
+        # NOTE api calls do not require an active listener
         # since we can handle the event processing synchronously
-        event = self._con.api(cmd)
         try:
-            consumed, response = EventListener._handle_socket_data(event)
-        except CommandError:
+            event = self._con.api(cmd)
+        except APIError:
             if exc:
                 raise
         return event
@@ -1138,7 +1129,7 @@ class Client(object):
     def cmd(self, cmd):
         '''Return the string-body output from invoking a command
         '''
-        return self.api(cmd).getBody().strip()
+        return self._con.cmd(cmd)
 
     def hupall(self, group_id=None):
         """Hangup all calls associated with this client
@@ -1199,7 +1190,7 @@ class Client(object):
                     raise ConnectionError("local connection down on '{}'!?"
                                           .format(self._con.host))
                 else:
-                    raise CommandError("bgapi cmd failed?!\n{}".format(cmd))
+                    raise APIError("bgapi cmd failed?!\n{}".format(cmd))
         finally:
             # wakeup the listener's event loop
             listener.unblock_jobs()

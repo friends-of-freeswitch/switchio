@@ -30,8 +30,8 @@ class ConfigurationError(Exception):
     """Config error"""
 
 
-class CommandError(ESLError):
-    """Console Command error"""
+class APIError(ESLError):
+    """ESL api error"""
 
 
 # fs-like log format
