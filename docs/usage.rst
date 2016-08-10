@@ -5,8 +5,8 @@
     api
 
 
-Internal Components Tutorial
-============================
+Internals tutorial
+==================
 Getting familiar with Switchy's guts means learning to put the
 appropriate components together to generate a call. This simple guide is
 meant to provide some commentary surrounding low level components and
@@ -65,8 +65,8 @@ instantiation::
         File "switchy/observe.py", line 1084, in api
            consumed, response = EventListener._handle_socket_data(event)
         File "switchy/observe.py", line 651, in _handle_socket_data
-           raise CommandError(body)
-    switchy.utils.CommandError: -ERR not Command not found!
+           raise APIError(body)
+    switchy.utils.APIError: -ERR not Command not found!
 
 Now let's initiate a call originating from the slave process's
 :term:`caller` which is by default the `external`_ sip profile::
@@ -160,8 +160,7 @@ benefit is that apps can be written in pure Python somewhat like the
 module provided with *FreeSWITCH*. Switchy gives the added benefit that
 the Python process does not have to run on the slave machine and in fact
 **multiple** applications can be managed independently of **multiple**
-slave configurations thanks to Switchy's use of the
-:ref:`ESL inbound method <inbound>`.
+slave configurations thanks to Switchy's use of the ESL `inbound`_ method.
 
 
 .. _appload:
@@ -244,3 +243,5 @@ the :doc:`quickstart <quickstart>` guide.
     https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
 .. _external:
     https://freeswitch.org/confluence/display/FREESWITCH/Configuring+FreeSWITCH#ConfiguringFreeSWITCH-External
+.. _inbound:
+    https://freeswitch.org/confluence/display/FREESWITCH/mod_event_socket#mod_event_socket-Inbound

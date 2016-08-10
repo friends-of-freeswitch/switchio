@@ -38,8 +38,9 @@ device under test (set with the `proxy` option).
 
 For more information on the switchy command line see :doc:`here <cmdline>`.
 
+
 Originating a single call programatically from Python
-=====================================================
+-----------------------------------------------------
 Making a call with switchy is quite simple using the built-in
 :py:func:`~switchy.sync.sync_caller` context manager.
 Again, if you've gone through the required :doc:`deployment steps

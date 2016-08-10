@@ -1,5 +1,5 @@
-Switchy Command Line
-====================
+Command line
+============
 Switchy provides a convenient cli to initiate load tests with the help
 of click_. The program is installed as binary `switchy`::
 

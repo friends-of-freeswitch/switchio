@@ -22,7 +22,7 @@ instances which will host both :term:`callers <caller>` and :term:`callees
 Event Socket
 ++++++++++++
 
-By default, Switchy expects that you have `enabled ESL`_ to listen on all ip addrs at port `8021`.
+By default, Switchy expects that you have `enabled ESL`_ to listen on all IP addrs at port `8021`.
 This can usually be done by simply making the following change to the following *FreeSWITCH* 
 configuration file:
 
@@ -112,7 +112,7 @@ Routing Diagram
 When stress testing the recommended routing to employ roughly diagrams to
 something like::
 
-    FreeSWITCH slave(s)                  Device under test
+    FreeSWITCH cluster                   Device under test
 
     --------------   outbound sessions   -----------------
     | Originator | --------------------> | Intermediary  |

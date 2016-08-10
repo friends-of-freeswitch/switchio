@@ -1,48 +1,33 @@
 switchy
 =======
-Fast `FreeSWITCH`_ control purpose-built upon `traffic theory`_ for `stress testing`_.
+Fast `FreeSWITCH`_ control purpose-built upon `traffic theory`_ and `stress testing`_.
 
 Overview
 --------
-Switchy intends to be a fast control library for harnessing the power of
+Switchy intends to be a *fast* control library for harnessing the power of
 the *FreeSWITCH* telephony engine whilst leveraging the expressiveness of
 Python. It relies on the *FreeSWITCH* ESL `inbound`_ method
-for control and was originally created for stress testing using *FreeSWITCH*
-:term:`slave` clusters.
+for control and was originally built for generating traffic using
+*FreeSWITCH* :term:`slave` clusters.
 
+
+Installation and Dependencies
+-----------------------------
+See instructions on the `github`_ page.
 
 Features
 --------
-Among other things, Switchy lets you
 
-- Drive multiple FreeSWITCH processes as a call generator cluster
-- Write call control applications (IVRs, auto-dialers, etc.) in pure
-  Python using a thin ESL api wrapper
-- Record and display performance metrics captured during stress tests
+- drive multiple *FreeSWITCH* processes as a traffic generator
+- write :doc:`services <services>` in pure Python to process flows from a *FreeSWITCH* cluster
+- build a dialplan system using a :ref:`flask-like` API
+- record, display and export CDR and performance metrics captured during stress tests
+- async without requiring :code:`twisted`
 
-
-Installation
-------------
-See instructions on the `github`_ page.
-
-
-Dependencies
-************
-For now, Switchy relies on the `ESL SWIG python package`_ distributed
-with the *FreeSWITCH* sources. Luckily, a stable setuptools packaged
-version has been `cobbled together by Sangoma
-<https://github.com/sangoma/python-ESL>`_.
-
-Optional Python dependencies include:
-
-- `pandas`_ for performance measurement collection
-- `matplotlib`_ for metrics plotting
-
-
-FreeSWITCH Configuration
-************************
-Switchy relies on some baseline *FreeSWITCH* :ref:`deployment <fsconfig>` steps for
-import-and-go usage
+*FreeSWITCH* Configuration
+**************************
+Switchy relies on some baseline server :ref:`deployment <fsconfig>` steps for
+import-and-go usage.
 
 
 .. hyperlinks
@@ -64,18 +49,21 @@ import-and-go usage
     http://matplotlib.org/
 
 
-Contents
---------
+User Guide
+----------
 .. toctree::
     :maxdepth: 1
 
     fsconfig
     quickstart
+    services
     callgen
-    usage
     apps
-    testing
+    cmdline
+    sessionapi
+    usage
     api
+    testing
 
 
 .. Indices and tables

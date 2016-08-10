@@ -212,12 +212,8 @@ class Session(object):
     def sched_dtmf(self, delay, sequence, tone_duration=None):
         '''Schedule dtmf sequence to be played on this channel.
 
-        Parameters
-        ----------
-        delay : float
-            scheduled future time when dtmf tones should play
-        sequence : string
-            sequence of dtmf digits to play
+        :param float delay: scheduled future time when dtmf tones should play
+        :param str sequence: sequence of dtmf digits to play
         '''
         cmd = 'sched_api +{} none uuid_send_dtmf {} {}'.format(
             delay, self.uuid, sequence)
@@ -237,12 +233,9 @@ class Session(object):
                  leg='aleg', params=None):
         '''Playback a file on this session
 
-        Parameters
-        ----------
-        args : string or tuple
-            arguments or path to audio file for playback app
-        leg : string
-            call leg to transmit the audio on
+        :param str args: arguments or path to audio file for playback app
+        :type args: str or tuple
+        :param str leg: call leg to transmit the audio on
         '''
         app = 'endless_playback' if endless else 'playback'
         pairs = ('='.join(map(str, pair))
@@ -282,7 +275,7 @@ class Session(object):
 
     def stop_record(self, path='all', delay=0):
         '''Stop recording audio from this session to a local file on the slave
-        filesystem using the `stop_record_session`_ cmd
+        filesystem using the `stop_record_session`_ cmd.
 
         .. _stop_record_session:
             https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+stop_record_session
@@ -299,7 +292,8 @@ class Session(object):
     def record(self, action, path, rx_only=True):
         '''Record audio from this session to a local file on the slave filesystem
         using the `uuid_record`_ command:
-            uuid_record <uuid> [start|stop|mask|unmask] <path> [<limit>]
+
+            ``uuid_record <uuid> [start|stop|mask|unmask] <path> [<limit>]``
 
         .. _uuid_record:
             https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-uuid_record
@@ -336,8 +330,7 @@ class Session(object):
     def broadcast(self, path, leg='', hangup_cause=None):
         """Execute an application on a chosen leg(s) with optional hangup
         afterwards.
-        Usage:
-            uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]
+        Usage: ``uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]``
         """
         self.con.api('uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
 
@@ -465,13 +458,9 @@ class Job(object):
     '''Type to hold data and deferred execution for a background job.
     The interface closely matches `multiprocessing.pool.AsyncResult`.
 
-    Parameters
-    ----------
-    uuid : string
-        job uuid returned directly by SOCKET_DATA event
-    sess_uuid : string
-        optional session uuid if job is associated with an active
-        FS session
+    :param str uuid: job uuid returned directly by SOCKET_DATA event
+    :param str sess_uuid: optional session uuid if job is associated with an
+        active FS session
     '''
     def __init__(self, event, sess_uuid=None, callback=None, client_id=None,
                  kwargs={}):

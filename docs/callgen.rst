@@ -7,8 +7,8 @@
 
 Call generation and stress testing
 ----------------------------------
-Switchy enables you to drive multiple *FreeSWITCH* processes as a
-call generator cluster.
+Switchy contains a built in auto-dialer which enables you to drive
+multiple *FreeSWITCH* processes as a call generator cluster.
 
 Once you have a set of slave servers :ref:`deployed <fsconfig>`,
 have started :program:`FreeSWITCH` processes on each slave **and**
