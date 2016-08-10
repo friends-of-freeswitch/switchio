@@ -9,6 +9,8 @@
     api/sync
     api/apps
     api/commands
+    api/apps
+    api/utils
 
 
 API Reference
@@ -29,6 +31,12 @@ Observer components
 The core event processing loop and logic and :py:class:`~switchy.observe.Client`
 interface can be found in :doc:`observe.py <api/observe>`.
 There are also some synchronous helpers hidden within.
+
+
+Call Control Apps
+-----------------
+All the :doc:`built in apps <api/apps>` can be found in the
+:py:mod:`switchy.apps` subpackage.
 
 
 .. _modelapi:

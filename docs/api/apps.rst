@@ -10,10 +10,10 @@ Load testing
 
 Measurement Collection
 ======================
-.. automodule:: switchy.apps.measure
+.. automodule:: switchy.apps.measure.cdr
     :members:
 
-.. automodule:: switchy.apps.measure.metrics
+.. automodule:: switchy.apps.measure.sys
     :members:
 
 Media testing
