@@ -6,9 +6,8 @@ Overview
 --------
 Switchy intends to be a *fast* control library for harnessing the power of
 the *FreeSWITCH* telephony engine whilst leveraging the expressiveness of
-Python. It relies on the *FreeSWITCH* ESL `inbound`_ method
-for control and was originally built for generating traffic using
-*FreeSWITCH* :term:`slave` clusters.
+Python. It relies on the *FreeSWITCH* ESL `inbound`_ method for control and
+was originally built for generating traffic using *FreeSWITCH* clusters.
 
 
 Installation and Dependencies

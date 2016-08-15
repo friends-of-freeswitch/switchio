@@ -26,7 +26,7 @@ Currently there are 3 main objects in Switchy for driving
 :py:class:`~switchy.observe.EventListener` - the type that contains the core
 event processing loop and logic
     - Primarily concerned with observing and tracking the state of
-      a single *FreeSWITCH* :term:`slave` process
+      a single *FreeSWITCH* process
     - Normally a one-to-one pairing of listeners to slave processes/servers
       is recommended to ensure deterministic control.
     - Contains a :py:class:`~switchy.connection.Connection` used mostly for receiving
@@ -69,7 +69,7 @@ instantiation::
     switchy.utils.APIError: -ERR not Command not found!
 
 Now let's initiate a call originating from the slave process's
-:term:`caller` which is by default the `external`_ sip profile::
+*caller* which is by default the `external`_ sip profile::
 
     >>> client.originate(dest_url='9196@intermediary_hostname:5060')
     Traceback (most recent call last):
@@ -114,8 +114,8 @@ Let's create and assign an :py:class:`~switchy.observe.EventListener`::
 
 
 Now let's attempt our `originate` once more this time executing the *9197*
-extension once the :term:`caller` is answered, and calling the `echo`
-extension, *9196*, at the :term:`callee` end::
+extension once the *caller* is answered, and calling the `echo` extension,
+*9196*, at the *callee* end::
 
     >>> client.originate('9196@vm-host:5080',
         dp_exten=9197,

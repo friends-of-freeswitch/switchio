@@ -42,7 +42,7 @@ A service is very easy to create given a set of :ref:`deployed <fsconfig>`
 In this example all three of our *FreeSWITCH* servers load a `Proxier`
 :doc:`app <apps>` which simply bridges calls to the destination requested in
 the SIP Request-URI header. The `app_id='default'` kwarg is required to tell
-the internal even loop that this app should be used as the default (i.e. when
+the internal event loop that this app should be used as the default (i.e. when
 no other app has consumed the event/session for processing).
 
 .. _flask-like:

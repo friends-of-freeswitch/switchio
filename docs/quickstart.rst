@@ -70,8 +70,7 @@ The most important lines are the `with` statement and line 10.
 What happens behind the scenes here is the following:
 
     * at the `with`, necessary internal Switchy components are instantiated in memory
-      and connected to the :term:`slave` *FreeSWITCH* process listening on the `fsip`
-      ESL ip address.
+      and connected to a *FreeSWITCH* process listening on the `fsip` ESL ip address.
     * at the `caller()`, an :py:meth:`~switchy.observe.Client.originate` command is
       invoked asynchronously via a :py:meth:`~switchy.observe.Client.bgapi` call.
     * the background :py:class:`~switchy.models.Job` returned by that command is handled
@@ -80,8 +79,8 @@ What happens behind the scenes here is the following:
     * the corresponding origininating :py:class:`~switchy.models.Session` is returned along with
       a reference to a :py:meth:`switchy.observe.EventListener.waitfor` blocker method.
     * the call is kept up for 1 second and then :py:meth:`hungup <switchy.models.Session.hangup>`.
-    * internal Switchy components are disconnected from the :term:`slave` process at the close of
-      the `with` block.
+    * internal Switchy components are disconnected from the *FreeSWITCH* process at the close of the
+      `with` block.
 
 Note that the `sync_caller` api is not normally used for :doc:`stress testing <callgen>`
 as it used to initiate calls *synchronously*. It becomes far more useful when using
@@ -107,7 +106,7 @@ You can run this code from the unit test directory quite simply::
 
 Run with pytest
 ***************
-If you have :ref:`pytest` installed you can run this test like so::
+If you have ``pytest`` installed you can run this test like so::
 
     $ py.test --fshost='fs_slave_hostname' tests/test_sync_caller
 

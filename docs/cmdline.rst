@@ -79,7 +79,7 @@ The applications listed can be used with the `app` option to the `run` sub-comma
       --help                          Show this message and exit.
 
 
-The `SLAVES` argument can be one or more IP's or hostnames for each configured FreeSWITCH :term:`slave`
+The `SLAVES` argument can be one or more IP's or hostnames for each configured FreeSWITCH process
 used to originate traffic. The `proxy` option is required and must be the IP address or hostname
 of the device you are testing. All slaves will direct traffic to the specified proxy.
 
