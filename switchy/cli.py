@@ -35,22 +35,27 @@ def list_apps(module):
                 type=click.Path(exists=True))
 def plot(file_name):
     import matplotlib
-    from switchy.apps.measure import metrics
-    df = metrics.load(file_name)
+    from switchy.apps import measure
+    df = measure.load(file_name)
     click.echo('Plotting {} ...\n'.format(file_name))
     df._plot(block=True)
 
 
 @cli.command()
-@click.argument('slaves', nargs=-1, required=True)
+@click.argument('hosts', nargs=-1, required=True)
 @click.option('--proxy',
               default=None,
               help='Hostname or IP address of the proxy '
-              'device (this is usually the device you are testing)',
-              required=True)
+              'device (this is usually the device you are testing)')
+@click.option('--dest-url',
+              default=None,
+              help='Request-URI string')
 @click.option('--profile',
               default='internal',
-              help='Profile to use for outbound calls in the load slaves')
+              help='Profile to use for originating calls')
+@click.option('--gateway',
+              default=None,
+              help='Gateway to use for originating calls')
 @click.option('--rate',
               default=None, help='Call rate')
 @click.option('--limit',
@@ -71,9 +76,12 @@ def plot(file_name):
               '(see list-apps command to list available apps)')
 @click.option('--metrics-file',
               default=None, help='Store metrics at the given file location')
-def run(slaves, proxy, profile, rate, limit, max_offered,
-        duration, interactive, debug, app, metrics_file):
-    log = switchy.utils.log_to_stderr("INFO")
+@click.option('--loglevel',
+              default='INFO', help='Set the Python logging level')
+def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
+        duration, interactive, debug, app, metrics_file, loglevel):
+    log = switchy.utils.log_to_stderr(loglevel)
+    log.propogate = False
 
     # Check if the specified (or default) app is valid
     switchy.apps.load()
@@ -85,41 +93,47 @@ def run(slaves, proxy, profile, rate, limit, max_offered,
     # TODO: get_originator() receives an apps tuple (defaults to Bert) to
     # select the application we should accept --app multi argument list to
     # set multiple apps
-    o = switchy.get_originator(
-        slaves,
-        apps=(cls,),
+    orig = switchy.get_originator(
+        hosts,
         rate=int(rate) if rate else None,
         limit=int(limit) if limit else None,
         max_offered=int(max_offered) if max_offered else None,
         duration=int(duration) if duration else None,
         auto_duration=True if not duration else False,
     )
+    orig.load_app(cls)
 
     # Prepare the originate string for each slave
     # depending on the profile name and network settings
     # configured for that profile in that particular slave
     p = re.compile('.+?BIND-URL\s+?.+?@(.+?):(\d+).+?\s+',
                    re.IGNORECASE | re.DOTALL)
-    for c in o.pool.clients:
-        status = c.client.api('sofia status profile {}'
-                              .format(profile)).getBody()
+    for client in orig.pool.clients:
+        status = client.client.api(
+            'sofia status profile {}'.format(profile)).getBody()
         m = p.match(status)
         if not m:
             raise click.ClickException('Slave {} does not have a profile '
                                        'named \'{}\' running'
-                                       .format(c.host, profile))
+                                       .format(client.host, profile))
+        # configure originate cmd(s)
         ip = m.group(1)
         port = m.group(2)
+        if dest_url is None:
+            dest_url = 'switchy@{}:{}'.format(ip, port)
         # The originate cmd must route the call back to us using the specified
         # proxy (the device under test)
-        log.info('Slave {} SIP address is at {}:{}'.format(c.host, ip, port))
-        c.set_orig_cmd(dest_url='switchy@{}:{}'.format(ip, port),
-                       profile=profile, app_name='park',
-                       proxy='{}'.format(proxy))
+        if proxy is None:
+            proxy = dest_url
+        log.info('Slave {} SIP address is at {}:{}'.format(
+            client.host, ip, port))
+        client.set_orig_cmd(dest_url=dest_url, profile=profile,
+                            gateway=gateway, app_name='park',
+                            proxy='{}'.format(proxy))
 
-    log.info('Starting load test for server {} at {}cps using {} slaves'
-               .format(proxy, o.rate, len(slaves)))
-    click.echo(o)
+    log.info('Starting load test for server {} at {}cps using {} hosts'
+             .format(proxy, orig.rate, len(hosts)))
+    click.echo(orig)
     if interactive:
         try:
             import IPython
@@ -130,26 +144,28 @@ def run(slaves, proxy, profile, rate, limit, max_offered,
                 import readline
             except ImportError:
                 pass
+
+            # load built-in console
             import code
             vars = globals().copy()
             vars.update(locals())
             shell = code.InteractiveConsole(vars)
             shell.interact()
 
-        o.shutdown()
-        click.echo(o)
+        orig.shutdown()
+        click.echo(orig)
     else:
-        o.start()
-        while o.state != 'STOPPED':
+        orig.start()
+        while orig.state != 'STOPPED':
             try:
                 time.sleep(1)
-                click.echo(o)
+                click.echo(orig)
             except KeyboardInterrupt:
-                o.shutdown()
-                click.echo(o)
+                orig.shutdown()
+                click.echo(orig)
 
     while True:
-        active_calls = o.count_calls()
+        active_calls = orig.count_calls()
         if active_calls <= 0:
             break
         click.echo('Waiting on {} active calls to finish'.format(active_calls))
@@ -157,6 +173,6 @@ def run(slaves, proxy, profile, rate, limit, max_offered,
 
     if metrics_file:
         click.echo('Storing test metrics at {}'.format(metrics_file))
-        o.metrics.dump(metrics_file)
+        orig.measurers.to_store(metrics_file)
 
     click.echo('Load test finished!')
