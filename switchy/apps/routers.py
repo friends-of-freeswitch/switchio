@@ -4,6 +4,9 @@
 """
 Routing apps
 """
+import re
+from functools import partial
+from collections import OrderedDict
 from collections import Counter
 from .. import utils
 from ..marks import event_callback
@@ -58,6 +61,51 @@ class Bridger(object):
                        .format(sess.uuid, sess['Bridge-B-Unique-ID']))
 
 
+class PatternRegistrar(object):
+    """A `flask`-like pattern to callback registrar.
+
+    Allows for registering callback functions (via decorators) which will be
+    delivered when `PatterCaller.iter_matches()` is invoked with a matching
+    value.
+    """
+    def __init__(self):
+        self.regex2funcs = OrderedDict()
+
+    def update(self, other):
+        """Update local registered functions from another registrar.
+        """
+        self.regex2funcs.update(other.regex2funcs)
+
+    def __call__(self, pattern, field='Caller-Destination-Number', **kwargs):
+        """Decorator interface allowing you to register callback functions
+        with regex patterns and kwargs. When `iter_matches` is called with a
+        mapping, any callable registered with a matching regex pattern will be
+        delivered as a partial.
+        """
+        def inner(func):
+            self.regex2funcs.setdefault(
+                (pattern, field), []).append((func, kwargs))
+            return func
+
+        return inner
+
+    def iter_matches(self, fields, **kwargs):
+        """Perform registered order lookup for all functions with a matching
+        pattern. Each function is partially applied with it's matched value as
+        an argument and any kwargs provided here. Any kwargs provided at
+        registration are also forwarded.
+        """
+        for (patt, field), funcitems in self.regex2funcs.items():
+            value = fields.get(field)
+            if value:
+                match = re.match(patt, value)
+                if match:
+                    for func, defaults in funcitems:
+                        if kwargs:
+                            defaults.update(kwargs)
+                        yield partial(func, match=match, **defaults)
+
+
 @app
 class Router(object):
     '''Route sessions using registered callback functions (decorated as
@@ -68,31 +116,48 @@ class Router(object):
     'switchy' dialplan context or at the very least a context which contains a
     park action extension.
     '''
-    # default routes
-    route = utils.PatternCaller()
+    # Signal a routing halt
+    class StopRouting(Exception):
+        """Signal a router to discontinue execution.
+        """
 
-    def __init__(self, guards, use_defaults=True):
+    def __init__(self, guards):
         self.guards = guards or {}
-        self.route = utils.PatternCaller()
-        if use_defaults:
-            self.route.update(type(self).route)
+        self.route = PatternRegistrar()
 
     def prepost(self, pool):
-        self.host = pool.evals('client.host')
-        self.log = utils.get_logger(utils.pstr(self))
+        self.pool = pool
+        self.log = utils.get_logger(utils.pstr(pool.evals('client.host')))
 
     @event_callback("CHANNEL_PARK")
     def on_park(self, sess):
+        handled = False
         if all(sess[key] == val for key, val in self.guards.items()):
-            self.route.call_matches(sess, sess=sess, router=self)
+            for func in self.route.iter_matches(sess, sess=sess, router=self):
+                handled = True  # at least one match
+                try:
+                    func()
+                except self.StopRouting:
+                    self.log.info(
+                        "Routing was halted at {} at match '{}' for session {}"
+                        .format(func, func.keywords['match'].string, sess.uuid)
+                    )
+                    break
+                except Exception:
+                    self.log.exception(
+                        "Failed to exec {} on match '{}' for session {}"
+                        .format(func, func.keywords['match'].string,
+                                sess.uuid)
+                    )
         else:
             self.log.warn("Session with id {} did not pass guards"
                           .format(sess.uuid))
-            sess.hangup('CALL_REJECTED')
+        if not handled:
+            sess.hangup('NO_ROUTE_DESTINATION')
 
     @staticmethod
-    def bridge2dest(sess, match, router, out_profile=None, gateway=None,
-                    proxy=None):
+    def bridge(sess, match, router, out_profile=None, gateway=None,
+               proxy=None):
         """A handy generic bridging function.
         """
         sess.bridge(

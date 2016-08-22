@@ -240,15 +240,17 @@ Nesting logic
 
 Break on true
 ^^^^^^^^^^^^^
-Halting route execution (known as `break on true`_) can be done currently by returning
-``True`` from your routing function:
+Halting all further route execution (known as `break on true`_) can be done
+by raising a special error:
 
 .. code-block:: python
 
     @router.route('^1.*(\d)$')
     def play_wavfile(sess, match, router):
+        sess.playback('foo.wav')
+
         if not sess['Caller-Destination-Number'] == "1100":
-            return True  # stop all further routing
+            raise router.StopRouting  # stop all further routing
 
 
 Record a random sampling of call center agents

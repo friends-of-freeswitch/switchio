@@ -14,8 +14,6 @@ import logging
 import uuid as mod_uuid
 import importlib
 import pkgutil
-import re
-from collections import OrderedDict
 
 
 class ESLError(Exception):
@@ -327,56 +325,3 @@ def waitwhile(predicate, timeout=float('inf'), period=0.1, exc=True):
                 )
             return False
     return True
-
-
-class PatternCaller(object):
-    """A `flask`-like pattern to callback registrar and invoker.
-
-    Allows for registering callback functions (via decorators) which should be
-    called when `PatterCaller.call_matches()` is invoked with a matching value.
-    """
-    def __init__(self):
-        self.regex2funcs = OrderedDict()
-
-    def update(self, patterncaller):
-        self.regex2funcs.update(patterncaller.regex2funcs)
-
-    def __call__(self, pattern, field='Caller-Destination-Number', **kwargs):
-        """Decorator interface allowing you to register callback functions
-        with regex patterns and kwargs. When `call_matches` is called with a
-        mapping, any callable registered with a matching regex pattern will be
-        invoked with the provided kwargs.
-
-        If a registered function returns a value which bools to True,
-        we stop all further Session processing and routing.
-        """
-        def inner(func):
-            self.regex2funcs.setdefault(
-                (pattern, field), []).append((func, kwargs))
-            return func
-
-        return inner
-
-    def call_matches(self, fields, **kwargs):
-        """Perform linear lookup and callback invocation for all functions
-        registered with a matching pattern. Each function is invoked with the
-        matched value as its first argument and any arguments provided here.
-        Any kwargs which were provided at registration are also forwarded.
-        """
-        stopnow = False
-        consumed = False
-        for (patt, field), funcitems in self.regex2funcs.items():
-            value = fields.get(field)
-            if value:
-                match = re.match(patt, value)
-                if match:
-                    consumed = True
-                    for func, defaults in funcitems:
-                        if kwargs:
-                            defaults.update(kwargs)
-                        stopnow = func(match=match, **defaults)
-                        if stopnow:
-                            break
-            if stopnow:
-                break
-        return consumed

@@ -455,7 +455,7 @@ class Call(object):
 
 
 class Job(object):
-    '''Type to hold data and deferred execution for a background job.
+    '''A background job future.
     The interface closely matches `multiprocessing.pool.AsyncResult`.
 
     :param str uuid: job uuid returned directly by SOCKET_DATA event

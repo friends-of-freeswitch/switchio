@@ -81,7 +81,7 @@ class IVRCallLogic(object):
     """
     # Use a singleton across all instances of this class such that pattern
     # matching and callbacks can be shared over a clustered app.
-    route = switchy.utils.PatternCaller('digits')
+    route = switchy.apps.router.PatternRegistrar()
 
     def prepost(self, client, listener):
         """Defines a fixture-like pre/post app load hook for performing
@@ -221,7 +221,8 @@ class IVRCallLogic(object):
 
         # Menu processing - call all matching IVR routes/extensions
         # (See below for registered extension definitions)
-        consumed = self.route.call_matches({'digits': digits}, app=self, sess=sess)
+        for func in self.route.iter_matches({'digits': digits}, app=self, sess=sess)
+            func()
 
         # End of menu processing
         if consumed:
