@@ -166,33 +166,6 @@ def ncompose(*funcs):
     )
 
 
-def copy_attrs(src_ns, dest, methods, props=True):
-    '''Bind methods and properties on src class to dest class
-    '''
-    cache = {}
-    for name in methods:
-        attr = getattr(src_ns, name)
-        if inspect.ismethod(attr):
-            # WARNING: CPython specific hack - `im_func`
-            setattr(dest, name, types.MethodType(attr.im_func, None, dest))
-            # track get/set ifaces
-            if 'get_' or 'set_' in name:
-                op, sep, prop = name.rpartition('_')
-                cache.setdefault(prop, []).append(op)
-
-        elif inspect.isdatadescriptor(attr):
-            attr = functools.partial(attr)
-            setattr(dest.__class__, name, property(attr))
-
-    # if there are get and set methods then optionally attach a property
-    if props:
-        for prop, ops in cache.items():
-            if len(ops) == 2:
-                setattr(dest, prop, property(
-                    getattr(dest, 'get_' + prop),
-                    getattr(dest, 'set_' + prop)))
-
-
 def get_args(func):
     """Return the argument names found in func's signature in a tuple
 
