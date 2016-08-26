@@ -110,7 +110,7 @@ class State(object):
 
 
 class Originator(object):
-    """An automatic session generator
+    """An auto-dialer built for stress testing.
     """
     default_settings = [
         ('rate', 30),  # call offer rate in cps
@@ -144,7 +144,7 @@ class Originator(object):
         self.count_calls = self.pool.fast_count
         self.debug = debug
         self.auto_duration = auto_duration
-        self.server = self.pool.evals('client.host')
+        self.host = self.pool.evals('client.host')
         self.log = utils.get_logger(utils.pstr(self))
         self._thread = None
         self._start = mp.Event()

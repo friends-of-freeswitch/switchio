@@ -30,7 +30,7 @@ class SysStats(object):
     to be shared across multiple slaves (threads).
 
     .. _psutil:
-       https://pythonhosted.org/psutil/
+        https://pythonhosted.org/psutil/
     """
     operators = {
         'sys_stats': sys_stats,

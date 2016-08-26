@@ -5,8 +5,8 @@
     api
 
 
-Internal Components Tutorial
-============================
+Internals tutorial
+==================
 Getting familiar with Switchy's guts means learning to put the
 appropriate components together to generate a call. This simple guide is
 meant to provide some commentary surrounding low level components and
@@ -26,7 +26,7 @@ Currently there are 3 main objects in Switchy for driving
 :py:class:`~switchy.observe.EventListener` - the type that contains the core
 event processing loop and logic
     - Primarily concerned with observing and tracking the state of
-      a single *FreeSWITCH* :term:`slave` process
+      a single *FreeSWITCH* process
     - Normally a one-to-one pairing of listeners to slave processes/servers
       is recommended to ensure deterministic control.
     - Contains a :py:class:`~switchy.connection.Connection` used mostly for receiving
@@ -65,11 +65,11 @@ instantiation::
         File "switchy/observe.py", line 1084, in api
            consumed, response = EventListener._handle_socket_data(event)
         File "switchy/observe.py", line 651, in _handle_socket_data
-           raise CommandError(body)
-    switchy.utils.CommandError: -ERR not Command not found!
+           raise APIError(body)
+    switchy.utils.APIError: -ERR not Command not found!
 
 Now let's initiate a call originating from the slave process's
-:term:`caller` which is by default the `external`_ sip profile::
+*caller* which is by default the `external`_ sip profile::
 
     >>> client.originate(dest_url='9196@intermediary_hostname:5060')
     Traceback (most recent call last):
@@ -114,8 +114,8 @@ Let's create and assign an :py:class:`~switchy.observe.EventListener`::
 
 
 Now let's attempt our `originate` once more this time executing the *9197*
-extension once the :term:`caller` is answered, and calling the `echo`
-extension, *9196*, at the :term:`callee` end::
+extension once the *caller* is answered, and calling the `echo` extension,
+*9196*, at the *callee* end::
 
     >>> client.originate('9196@vm-host:5080',
         dp_exten=9197,
@@ -160,8 +160,7 @@ benefit is that apps can be written in pure Python somewhat like the
 module provided with *FreeSWITCH*. Switchy gives the added benefit that
 the Python process does not have to run on the slave machine and in fact
 **multiple** applications can be managed independently of **multiple**
-slave configurations thanks to Switchy's use of the
-:ref:`ESL inbound method <inbound>`.
+slave configurations thanks to Switchy's use of the ESL `inbound`_ method.
 
 
 .. _appload:
@@ -244,3 +243,5 @@ the :doc:`quickstart <quickstart>` guide.
     https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
 .. _external:
     https://freeswitch.org/confluence/display/FREESWITCH/Configuring+FreeSWITCH#ConfiguringFreeSWITCH-External
+.. _inbound:
+    https://freeswitch.org/confluence/display/FREESWITCH/mod_event_socket#mod_event_socket-Inbound

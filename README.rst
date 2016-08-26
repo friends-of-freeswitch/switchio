@@ -1,11 +1,13 @@
 switchy
 =======
-|pypi| |versions| |pypi_downloads|
+|pypi| |versions| |pypi_downloads| |docs|
 
 FreeSWITCH_ control and stress testing using pure Python_.
 
-| `switchy` intends to become the "flask_ for VoIP" but with a focus on performance.
-| Please readthedocs_ for more information.
+`switchy` intends to become the "flask_ for VoIP" but with a focus on performance and
+scalable service system design.
+
+Please readthedocs_ for more information.
 
 .. _FreeSWITCH: https://freeswitch.org/
 .. _Python: https://www.python.org/
@@ -17,14 +19,6 @@ Installation
 ::
 
     pip install switchy
-
-Features
-========
-
-- drive a FreeSWITCH cluster as a traffic generator
-- record, display and export CDR and performance metrics captured during stress tests
-- write apps in pure Python to process flows from a clustered service system
-- async without requiring :code:`twisted`
 
 Dependencies
 ============
@@ -72,3 +66,6 @@ license, except where explicitly noted.
 
 .. |pypi_downloads| image:: https://img.shields.io/pypi/d/switchy.svg
     :target: https://pypi.python.org/pypi/switchy
+
+.. |docs| image:: https://readthedocs.org/projects/switchy/badge/
+    :target: https://switchy.readthedocs.org/

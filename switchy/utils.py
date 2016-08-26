@@ -28,8 +28,8 @@ class ConfigurationError(Exception):
     """Config error"""
 
 
-class CommandError(ESLError):
-    """Console command error"""
+class APIError(ESLError):
+    """ESL api error"""
 
 
 # fs-like log format
@@ -99,7 +99,7 @@ def param2header(name):
     parameter `name` which should be used when the param is received as a
     header in event data.
 
-    Most often this is just the original parameter name with a 'variable_'
+    Most often this is just the original parameter name with a ``'variable_'``
     prefix. This is pretty much a shitty hack (thanks goes to FS for the
     asymmetry in variable referencing...)
     """
@@ -113,12 +113,12 @@ def param2header(name):
     return name
 
 
-def pstr(self):
-    """Pretty str repr of connection-like instances
+def pstr(self, host='unknown-host'):
+    """Pretty str repr of connection-like instances.
     """
     return '{}@{}'.format(
         type(self).__name__,
-        getattr(self, 'server', getattr(self, 'host', 'unknown-host'))
+        getattr(self, 'host', host)
     )
 
 
@@ -164,33 +164,6 @@ def ncompose(*funcs):
     return functools.reduce(
         lambda f, g: lambda x: f(g(x)), funcs, lambda x: x
     )
-
-
-def copy_attrs(src_ns, dest, methods, props=True):
-    '''Bind methods and properties on src class to dest class
-    '''
-    cache = {}
-    for name in methods:
-        attr = getattr(src_ns, name)
-        if inspect.ismethod(attr):
-            # WARNING: CPython specific hack - `im_func`
-            setattr(dest, name, types.MethodType(attr.im_func, None, dest))
-            # track get/set ifaces
-            if 'get_' or 'set_' in name:
-                op, sep, prop = name.rpartition('_')
-                cache.setdefault(prop, []).append(op)
-
-        elif inspect.isdatadescriptor(attr):
-            attr = functools.partial(attr)
-            setattr(dest.__class__, name, property(attr))
-
-    # if there are get and set methods then optionally attach a property
-    if props:
-        for prop, ops in cache.items():
-            if len(ops) == 2:
-                setattr(dest, prop, property(
-                    getattr(dest, 'get_' + prop),
-                    getattr(dest, 'set_' + prop)))
 
 
 def get_args(func):
@@ -289,7 +262,7 @@ def iter_import_submods(packages, recursive=False, imp_excs=()):
 
     for package in packages:
 
-        if isinstance(package, basestring):
+        if isinstance(package, str):
             package = try_import(package)
         pkgpath = getattr(package, '__path__', None)
 

@@ -29,8 +29,8 @@ def test_toneplay(fsip):
 
 def test_playrec(fsip):
     '''Test the synchronous caller with a simulated conversation using the the
-    `PlayRec` app. Currently this test does no audio checking but merely verifies
-    the callback chain is invoked as expected.
+    `PlayRec` app. Currently this test does no audio checking but merely
+    verifies the callback chain is invoked as expected.
     '''
     with sync_caller(fsip, apps={"PlayRec": PlayRec}) as caller:
         # have the external prof call itself by default
@@ -47,14 +47,14 @@ def test_playrec(fsip):
         assert sess.hungup
 
 
-def test_alt_call_id_var(fsip):
-    '''Test that an alternate `EventListener.call_id_var` (in this case using the
-    'Caller-Destination-Number' channel variable) can be used to associate sessions
-    into calls.
+def test_alt_call_tracking_header(fsip):
+    '''Test that an alternate `EventListener.call_tracking_header` (in this
+    case using the 'Caller-Destination-Number' channel variable) can be used
+    to associate sessions into calls.
     '''
     with sync_caller(fsip) as caller:
         # use the destination number as the call association var
-        caller.client.listener.call_id_var = 'Caller-Destination-Number'
+        caller.client.listener.call_tracking_header = 'Caller-Destination-Number'
         dest = 'doggy'
         # have the external prof call itself by default
         sess, waitfor = caller(
@@ -77,7 +77,7 @@ def test_alt_call_id_var(fsip):
 def test_untracked_call(fsip):
     with sync_caller(fsip) as caller:
         # use an invalid chan var for call tracking
-        caller.client.listener.call_id_var = 'doggypants'
+        caller.client.listener.call_tracking_header = 'doggypants'
         # have the external prof call itself by default
         sess, waitfor = caller(
             "{}@{}:{}".format('jonesy', caller.client.host, 5080),

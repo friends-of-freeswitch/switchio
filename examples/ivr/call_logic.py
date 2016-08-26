@@ -63,55 +63,11 @@
 
 import switchy
 import threading
-import re
-from functools import partial
-from collections import OrderedDict
 from switchy.marks import event_callback
 
 # Enable logging to stderr
 # Debug levels: 'INFO' for production, 'DEBUG' for development
 log = switchy.utils.log_to_stderr('INFO')
-
-
-# IVR DID pattern matching and callback registration similar to
-# `flask.route` (http://flask.pocoo.org/docs/0.10/quickstart/#routing)
-class PatternCaller(object):
-    """A `flask`-like pattern to callback registrar and invoker.
-
-    Allows for registering callback functions via decorator syntax which
-    should be called when `PatterCaller.call_matches` is invoked with a
-    matching value.
-    """
-    def __init__(self):
-        self.regex2funcs = OrderedDict()
-
-    def __call__(self, pattern, **kwargs):
-        """Decorator interface allowing you to register callback functions
-        with a regex pattern and kwargs. When `lookup` is called with a value,
-        any callable registered with a matching regex pattern will be invoked
-        with the provided kwargs.
-        """
-        def inner(func):
-            self.regex2funcs.setdefault(pattern, []).append(
-                partial(func, **kwargs))
-            return func
-
-        return inner
-
-    def call_matches(self, value, **kwargs):
-        """Perform linear lookup and callback invocation for all functions
-        registered with a matching pattern. Each function is invoked with the
-        matched value as its first argument and any arguments provided here.
-        Any kwargs which were provided at registration are also forwarded.
-        """
-        consumed = False
-        for patt, funcs in self.regex2funcs.iteritems():
-            match = re.match(patt, value)
-            if match:
-                consumed = True
-                for func in funcs:
-                        func(match=match, **kwargs)
-        return consumed
 
 
 class IVRCallLogic(object):
@@ -125,7 +81,7 @@ class IVRCallLogic(object):
     """
     # Use a singleton across all instances of this class such that pattern
     # matching and callbacks can be shared over a clustered app.
-    route = PatternCaller()
+    route = switchy.apps.router.PatternRegistrar()
 
     def prepost(self, client, listener):
         """Defines a fixture-like pre/post app load hook for performing
@@ -151,7 +107,7 @@ class IVRCallLogic(object):
         # Example of how to execute FreeSWITCH/NSG commands as from the CLI
         try:
             client.cmd('load mod_sndfile')
-        except switchy.utils.CommandError:
+        except switchy.utils.APIError:
             pass
 
     @event_callback('CHANNEL_PARK')
@@ -265,7 +221,8 @@ class IVRCallLogic(object):
 
         # Menu processing - call all matching IVR routes/extensions
         # (See below for registered extension definitions)
-        consumed = self.route.call_matches(digits, app=self, sess=sess)
+        for func in self.route.iter_matches({'digits': digits}, app=self, sess=sess)
+            func()
 
         # End of menu processing
         if consumed:

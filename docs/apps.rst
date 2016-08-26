@@ -7,26 +7,24 @@
 
 Call Applications
 =================
-Switchy supports writing and composing call control *applications* written in
-pure Python. Apps are somewhat analogous to `extensions`_ in *FreeSWITCH*'s
-xml dialplan interface but aren't necessarily triggered using dialed number
-pattern matching and can additionally be activated using any
-`channel variable`_ or `event type`_ of your choosing.
+*switchy* supports writing and composing call control *applications* written in
+pure Python. An *app* is simply a `namespace`_ which defines **a set of event
+callbacks** [#]_.
 
-Switchy's *apps* are quite powerful by offering very detailed call control
-and flexibility using *FreeSWITCH*'s native event system and api - `ESL`_.
-Apps can be implemented each as a standalone Python `namespace`_ which can
-hold state and be mutated at runtime. This allows for all sorts of dynamic
-call processing logic. Apps can also be shared across a *FreeSWITCH* process
-cluster allowing for centralized call processing overtop a scalable service
-system.
+Apps are somewhat analogous to `extensions`_ in *FreeSWITCH*'s
+`XML dialplan`_ interface and can similarly be activated using any
+`event header`_ *or* `channel variable`_ value of your choosing.
+Callbacks are invoked based on the recieved `event type`_.
 
-Applications are :ref:`loaded <appload>` using :py:class:`~switchy.observe.Client`
-instances which have been associated with a respective
-:py:class:`~switchy.observe.EventListener` the latter of which normally
-have a one-to-one correspondence with deployed *FreeSWITCH* slave
-processes.
 
+*Apps* can be implemented each as a standalone Python `namespace`_ which can
+hold state and be mutated at runtime. This allows for all sorts of dynamic call
+processing logic. *Apps* can also be shared across a *FreeSWITCH* process cluster
+allowing for centralized call processing overtop a scalable service system.
+
+Applications are :ref:`loaded <appload>` either using a :py:class:`~switchy.observe.Client`
+or, in the case of an *switchy* cluster :doc:`Service <services>`, an
+:py:class:`~switchy.apps.AppManager` instance.
 
 API
 ---
@@ -38,8 +36,8 @@ Currently the marks supported would be one of::
     @event_callback("EVENT_NAME")
     @handler("EVENT_NAME")
 
-Where `EVENT_NAME` is any of the strings supported by the ESL event type
-list as detailed `here <https://freeswitch.org/confluence/display/FREESWITCH/Event+List>`_
+Where `EVENT_NAME` is any of the strings supported by the ESL `event type`_
+list.
 
 Additionally, app types can support a :py:func:`prepost` callable which serves
 as a setup/teardown fixture mechanism for the app to do pre/post app loading
@@ -52,7 +50,7 @@ execution. It can be either of a function or generator.
 
 Event Callbacks
 ***************
-`event_callbacks` are methods which typically receive a type from
+``event_callbacks`` are methods which typically receive a type from
 :py:mod:`switchy.models` as their first (and only) argument. This
 type is most often a :py:class:`~switchy.models.Session`.
 
@@ -98,8 +96,8 @@ As you can see a knowledge of the underlying `ESL SWIG python
 package`_ usually is required for `handler` implementations.
 
 
-Example applications
---------------------
+Examples
+--------
 .. _toneplayapp:
 
 TonePlay
@@ -156,13 +154,20 @@ For further examples check out the :py:mod:`~switchy.apps`
 sub-package which also includes the very notorious
 :py:class:`switchy.apps.call_gen.Originator`.
 
+.. [#] Although this may change in the future with the introduction of native
+       `asyncio`_ coroutines in Python 3.5.
+
 .. hyperlinks
 .. _extensions:
     https://freeswitch.org/confluence/display/FREESWITCH/XML+Dialplan#XMLDialplan-Extensions
 .. _channel variable:
     https://freeswitch.org/confluence/display/FREESWITCH/Channel+Variables
+.. _event header:
+    https://freeswitch.org/confluence/display/FREESWITCH/Event+List#EventList-Eventfields
 .. _event type:
     https://freeswitch.org/confluence/display/FREESWITCH/Event+List
+.. _XML dialplan:
+    https://freeswitch.org/confluence/display/FREESWITCH/XML+Dialplan
 .. _namespace:
     https://docs.python.org/3/tutorial/classes.html#python-scopes-and-namespaces
 .. _ESL:
@@ -171,3 +176,5 @@ sub-package which also includes the very notorious
     https://docs.python.org/3/tutorial/classes.html#a-first-look-at-classes
 .. _ESL SWIG python package:
     https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
+.. _asyncio:
+    https://docs.python.org/3/library/asyncio.html

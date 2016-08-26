@@ -48,7 +48,6 @@ class Events(object):
         """Return default if not found
         Should be faster then handling the key error?
         """
-        # XXX would a map() be faster here?
         # iterate from most recent event
         for ev in self._events:
             value = ev.getHeader(str(key))
@@ -77,7 +76,7 @@ class Events(object):
 
 
 class Session(object):
-    '''Type to represent FS Session state
+    '''Session API and state tracking.
     '''
     create_ev = 'CHANNEL_CREATE'
 
@@ -88,8 +87,9 @@ class Session(object):
         self.con = con
         # sub-namespace for apps to set/get state
         self.vars = {}
+        self._log = None
 
-        # external attributes
+        # public attributes
         self.duration = 0
         self.bg_job = None
         self.answered = False
@@ -101,6 +101,15 @@ class Session(object):
             ('create', 'answer', 'req_originate', 'originate', 'hangup'))
         self.times['create'] = utils.get_event_time(event)
 
+    @property
+    def log(self):
+        """Local logger instance.
+        """
+        if not self._log:
+            self._log = utils.get_logger(utils.pstr(self.con.host))
+
+        return self._log
+
     def __str__(self):
         return str(self.uuid)
 
@@ -108,14 +117,6 @@ class Session(object):
         # TODO: use a transform func to provide __getattr__
         # access to event data
         return utils.dirinfo(self)
-
-    def __getattr__(self, name):
-        if 'variable' in name:
-            try:  # to acquire from channel variables
-                return self.events[name]
-            except KeyError:
-                pass
-        return object.__getattribute__(self, name)
 
     def __getitem__(self, key):
         try:
@@ -125,12 +126,7 @@ class Session(object):
                            .format(key, self.uuid))
 
     def get(self, key, default=None):
-        '''Get data pertaining to session state as updated via events
-
-        Parameters
-        ----------
-        name : string
-            name of the variable to return the value for
+        '''Get latest event header field for `key`.
         '''
         return self.events.get(key, default)
 
@@ -165,13 +161,17 @@ class Session(object):
 
     @property
     def uptime(self):
-        """Time elapsed since the `create_ev` to the most recent received event
+        """Time elapsed since the `Session.create_ev` to the most recent
+        received event.
         """
         return self.time - self.times['create']
 
     # call control / 'mod_commands' methods
     # TODO: dynamically add @decorated functions to this class
     # and wrap them using functools.update_wrapper ...?
+    def getvar(self, var):
+        val = self.con.cmd("uuid_getvar {} {}".format(self.uuid, var))
+        return val if val != '_undef_' else None
 
     def setvar(self, var, value):
         """Set variable to value
@@ -186,7 +186,7 @@ class Session(object):
             self.uuid, ';'.join(pairs)))
 
     def unsetvar(self, var):
-        """Unset a channel var
+        """Unset a channel var.
         """
         self.broadcast("unset::{}".format(var))
 
@@ -194,65 +194,48 @@ class Session(object):
         self.con.api("uuid_answer {}".format(self.uuid))
 
     def hangup(self, cause='NORMAL_CLEARING'):
-        '''Hangup this session with the given cause
-
-        Parameters
-        ----------
-        cause : string
-            hangup type keyword
+        '''Hangup this session with the provided `cause` hangup type keyword.
         '''
-        self.con.api(str('uuid_kill %s %s' % (self.uuid, cause)))
+        self.con.api('uuid_kill {} {}'.format(self.uuid, cause))
 
     def sched_hangup(self, timeout, cause='NORMAL_CLEARING'):
-        '''Schedule this session to hangup after timeout seconds
-
-        Parameters
-        ----------
-        timeout : float
-            timeout in seconds
-        cause : string
-            hangup cause code
+        '''Schedule this session to hangup after `timeout` seconds.
         '''
         self.con.api('sched_hangup +{} {} {}'.format(timeout,
                      self.uuid, cause))
 
     def clear_tasks(self):
-        '''Clear all scheduled tasks for this session
+        '''Clear all scheduled tasks for this session.
         '''
         self.con.api('sched_del {}'.format(self.uuid))
 
     def sched_dtmf(self, delay, sequence, tone_duration=None):
-        '''Schedule dtmf sequence to be played on this channel
+        '''Schedule dtmf sequence to be played on this channel.
 
-        Parameters
-        ----------
-        delay : float
-            scheduled future time when dtmf tones should play
-        sequence : string
-            sequence of dtmf digits to play
+        :param float delay: scheduled future time when dtmf tones should play
+        :param str sequence: sequence of dtmf digits to play
         '''
         cmd = 'sched_api +{} none uuid_send_dtmf {} {}'.format(
             delay, self.uuid, sequence)
         if tone_duration is not None:
             cmd += ' @{}'.format(tone_duration)
+
         self.con.api(cmd)
 
     def send_dtmf(self, sequence, duration='w'):
         '''Send a dtmf sequence with constant tone durations
         '''
+        # XXX looks like a bug with uuid_send_dtmf sending
         self.con.api('uuid_send_dtmf {} {} @{}'.format(
-                     self.uuid, sequence, duration))
+                     self.uuid, sequence, duration), errcheck=False)
 
     def playback(self, args, start_sample=None, endless=False,
                  leg='aleg', params=None):
         '''Playback a file on this session
 
-        Parameters
-        ----------
-        args : string or tuple
-            arguments or path to audio file for playback app
-        leg : string
-            call leg to transmit the audio on
+        :param str args: arguments or path to audio file for playback app
+        :type args: str or tuple
+        :param str leg: call leg to transmit the audio on
         '''
         app = 'endless_playback' if endless else 'playback'
         pairs = ('='.join(map(str, pair))
@@ -292,7 +275,7 @@ class Session(object):
 
     def stop_record(self, path='all', delay=0):
         '''Stop recording audio from this session to a local file on the slave
-        filesystem using the `stop_record_session`_ cmd
+        filesystem using the `stop_record_session`_ cmd.
 
         .. _stop_record_session:
             https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+stop_record_session
@@ -309,7 +292,8 @@ class Session(object):
     def record(self, action, path, rx_only=True):
         '''Record audio from this session to a local file on the slave filesystem
         using the `uuid_record`_ command:
-            uuid_record <uuid> [start|stop|mask|unmask] <path> [<limit>]
+
+            ``uuid_record <uuid> [start|stop|mask|unmask] <path> [<limit>]``
 
         .. _uuid_record:
             https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-uuid_record
@@ -343,37 +327,39 @@ class Session(object):
         '''
         self.con.api('uuid_park {}'.format(self.uuid))
 
-    def broadcast(self, path, leg=''):
+    def broadcast(self, path, leg='', hangup_cause=None):
         """Execute an application on a chosen leg(s) with optional hangup
         afterwards.
-        Usage:
-            uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]
+        ``uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]``
         """
-        # FIXME: this should use the EventListener SOCKET_DATA handler!!
-        #       so that we are actually alerted of cmd errors!
         self.con.api('uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
 
-    def bridge(self, dest_url="${sip_req_uri}",
-               profile="${sofia_profile_name}",
-               proxy=None,
+    def bridge(self, dest_url=None, profile=None, gateway=None, proxy=None,
                params=None):
-        """Bridge this session using `uuid_broadcast`.
-        By default the current profile is used to bridge to the requested user.
+        """Bridge this session using `uuid_broadcast` (so async).
+        By default the current profile is used to bridge to the SIP
+        Request-URI.
         """
         pairs = ('='.join(map(str, pair))
                  for pair in params.iteritems()) if params else ''
 
+        if gateway:
+            profile = 'gateway/{}'.format(gateway)
+
         self.broadcast(
             "bridge::{{{varset}}}sofia/{}/{}{dest}".format(
-                profile, dest_url, varset=','.join(pairs),
+                profile if profile else self['variable_sofia_profile_name'],
+                dest_url if dest_url else self['variable_sip_req_uri'],
+                varset=','.join(pairs),
                 dest=';fs_path=sip:{}'.format(proxy) if proxy else ''
             )
         )
 
     def breakmedia(self):
-        '''Stop playback of media on this session and move on in the dialplan
+        '''Stop playback of media on this session and move on in the dialplan.
         '''
-        self.con.api('uuid_break {}'.format(self.uuid))
+        # XXX looks like a bug with uuid_break returning '-ERR no reply'
+        self.con.api('uuid_break {}'.format(self.uuid), errcheck=False)
 
     def mute(self, direction='write', level=1):
         """Mute the current session. `level` determines the degree of comfort
@@ -402,6 +388,15 @@ class Session(object):
             https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+respond
         """
         self.broadcast('respond::{}'.format(response))
+
+    def deflect(self, uri):
+        """Send a refer to the client.
+        The only parameter should be the SIP URI to contact (with or without
+        "sip:")::
+
+             <action application="deflect" data="sip:someone@somewhere.com" />
+         """
+        self.broadcast("deflect::{}".format(uri))
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
@@ -469,16 +464,12 @@ class Call(object):
 
 
 class Job(object):
-    '''Type to hold data and deferred execution for a background job.
+    '''A background job future.
     The interface closely matches `multiprocessing.pool.AsyncResult`.
 
-    Parameters
-    ----------
-    uuid : string
-        job uuid returned directly by SOCKET_DATA event
-    sess_uuid : string
-        optional session uuid if job is associated with an active
-        FS session
+    :param str uuid: job uuid returned directly by SOCKET_DATA event
+    :param str sess_uuid: optional session uuid if job is associated with an
+        active FS session
     '''
     def __init__(self, event, sess_uuid=None, callback=None, client_id=None,
                  kwargs={}):

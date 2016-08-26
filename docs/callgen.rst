@@ -7,13 +7,13 @@
 
 Call generation and stress testing
 ----------------------------------
-Switchy enables you to drive multiple *FreeSWITCH* processes as a
-call generator cluster.
+Switchy contains a built in auto-dialer which enables you to drive
+multiple *FreeSWITCH* processes as a call generator cluster.
 
-Once you have a set of slave servers :ref:`deployed <fsconfig>`,
-have started :program:`FreeSWITCH` processes on each slave **and**
-have configured the *ESL* to listen on the default *8021* port, simply
-load the originator app passing in a sequence of slave server host names::
+Once you have a set of servers :ref:`deployed <fsconfig>`, have started
+*FreeSWITCH* processes on each **and** have configured *ESL* to listen
+on the default *8021* port, simply load the originator *app* passing in
+a sequence of slave server host names::
 
     >>> from switchy import get_originator
     >>> originator = get_originator(['hostnameA', 'hostnameB', 'hostnameC'])
@@ -33,14 +33,13 @@ to originate calls from our *FreeSWITCH* cluster.
 Notice the load settings such as `rate`, `limit` and `duration` shown in the
 output of the originator's :py:func:`__repr__` method. These parameters
 determine the type of traffic which will be originated from the cluster
-to your target :term:`intermediary` and downstream :term:`callee` systems.
+to your target software under test (*SUT*) and downstream *callee* systems.
 
 In order to ensure that calls are made successfully it is recommended that
-the :term:`intermediary` system :ref:`loop calls back <proxydp>` to the
-originating slave server's :term:`caller`. This allows switchy to associate
-*outbound* and *inbound* SIP sessions into calls. As an example if the called
-system is another FreeSWITCH server under test then you can configure a
-:ref:`proxy dialplan <proxydp>`.
+the *SUT* system :ref:`loop calls back <proxydp>` to the originating server's
+*caller*. This allows switchy to associate *outbound* and *inbound* SIP sessions
+into calls. As an example if the called system is another FreeSWITCH server under
+test then you can configure a :ref:`proxy dialplan <proxydp>`.
 
 A single call generator
 ***********************
@@ -70,7 +69,7 @@ application when instructing each slave to `originate` a call.
     the screen to avoid terminating the event processing loop in the
     :py:class:`switchy.observe.EventListener`.
 
-Let's set an originate command which will call our :term:`intermediary`
+Let's set an originate command which will call our *SUT*
 as it's first hop with a destination of *ourselves* using the default
 *external* profile and the *FreeSWITCH* built in *park* application for
 the outbound session's post-connect execution::
@@ -132,10 +131,9 @@ Try starting once more::
     Feb 24 14:12:35 [INFO] switchy.Originator@['vm-host'] call_gen.py:395 : starting loop thread
     Feb 24 14:12:35 [INFO] switchy.Originator@['vm-host'] call_gen.py:376 : State Change: 'INITIAL' -> 'ORIGINATING'
 
-At this point there should be one active call from your :term:`caller`
-(bridged) through the :term:`intermediary` and then received by the
-:term:`callee`. You can check the :py:class:`Originator` status via it's
-:py:meth:`__repr__` again::
+At this point there should be one active call from your *caller* (bridged) through the
+*SUT* and then received by the *callee*. You can check the :py:class:`Originator` status
+via it's :py:meth:`__repr__` again::
 
     >>> originator
     <Originator: '1' active calls, state=[ORIGINATING], rate=30 limit=1 max_sessions=inf duration=10.0333333333>
@@ -146,7 +144,7 @@ At this point there should be one active call from your :term:`caller`
         Feb 24 14:12:35 [ERROR] switchy.EventListener@vm-host observe.py:730 : Job '16f6313e-bc59-11e4-8b27-1b3a3a6a886d' corresponding to session '16f8964a-bc59-11e4-9c96-74d02bc595d7' failed with:
         -ERR NORMAL_TEMPORARY_FAILURE
 
-    it may mean your :term:`callee` isn't configured correctly. Stop the `Originator` and Check the *FreeSWITCH* slave's logs to debug.
+    it may mean your *callee* isn't configured correctly. Stop the `Originator` and Check the *FreeSWITCH* slave's logs to debug.
 
 The `Originator` will keep offering new calls indefinitely with `duration` seconds
 allowing up to `limit`'s (in *erlangs*) worth of concurrent calls until stopped.

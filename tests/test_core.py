@@ -7,37 +7,8 @@ Tests for core components
 from __future__ import division
 import time
 import pytest
-from distutils import spawn
 from pprint import pformat
 from switchy.utils import ConfigurationError
-
-
-@pytest.fixture
-def scenario(request, fssock, loglevel):
-    '''provision and return a SIPp scenario with the
-    remote proxy set to the current fs server
-    '''
-    sipp = spawn.find_executable('sipp')
-    if not sipp:
-        pytest.skip("SIPp is required to run call/speed tests")
-
-    try:
-        import pysipp
-    except ImportError:
-        pytest.skip("pysipp is required to run call/speed tests")
-
-    pl = pysipp.utils.get_logger()
-    pl.setLevel(loglevel)
-
-    # first hop should be fs server
-    scen = pysipp.scenario(proxyaddr=fssock)
-    scen.log = pl
-
-    # set client destination
-    # NOTE: you must add a park extension to your default dialplan!
-    scen.agents['uac'].uri_username = 'park'
-
-    return scen
 
 
 @pytest.yield_fixture
@@ -65,7 +36,7 @@ def proxy_dp(ael, client):
         '''bridge to the dest specified in the req uri
         '''
         if sess['Call-Direction'] == 'inbound':
-            sess.bridge(dest_url="${sip_req_uri}")
+            sess.bridge(dest_url=sess['variable_sip_req_uri'])
 
     ev = "CHANNEL_PARK"  # no answer() is ever done...
     # add a failover callback to provide the dialplan
@@ -82,7 +53,7 @@ def proxy_dp(ael, client):
         client.connect()
         client.listener = ael
         # assigning a listener overrides it's call lookup var so restore it
-        client.listener.call_id_var = 'variable_call_uuid'
+        client.listener.call_tracking_header = 'variable_call_uuid'
         # insert the `CDR` app
         assert 'default' == client.load_app(CDR, on_value="default")
         app = client.apps.default['CDR']
@@ -359,13 +330,13 @@ class TestClient:
         assert len(client.listener.consumers[bid]) == cbcount
 
     def test_commands(self, client):
-        from switchy.utils import CommandError
+        from switchy.utils import APIError
         from switchy.connection import ConnectionError
         # unconnected attempt
         with pytest.raises(ConnectionError):
             client.api('doggy')
         client.connect()
         # bad command
-        with pytest.raises(CommandError):
+        with pytest.raises(APIError):
             client.api('doggy')
         assert client.api('status')

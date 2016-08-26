@@ -37,7 +37,8 @@ def test_rep_fields(get_orig):
     listener = orig.pool.listeners[0]
     # set dest url and call associating xheader to our replaceable field
     ident = "{}@{}:{}".format('doggy', client.host, 5080)
-    client.set_orig_cmd('{field}', xheaders={client.call_id_var: "{field}"})
+    client.set_orig_cmd('{field}',
+                        xheaders={client.call_tracking_header: "{field}"})
     orig.rep_fields_func = lambda: {'field': ident}
     orig.max_offered += 1
     orig.start()
