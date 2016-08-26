@@ -2,8 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import pytest
+import socket
 import sys
+import ast
+import itertools
 from distutils import spawn
+from switchy.utils import ncompose
 
 
 def pytest_addoption(parser):
@@ -33,13 +37,16 @@ def loglevel(request):
 
 @pytest.fixture(scope='session')
 def fshosts(request):
+    '''Return the FS test server hostnames passed via the
+    `--fshost` cmd line arg.
+    '''
     argstring = request.config.option.fshost
     if not argstring:
         pytest.skip("the '--fshost' option is required to determine the "
                     "FreeSWITCH slave server(s) to connect to for testing")
     # construct a list if passed as arg
     if '[' in argstring:
-        fshosts = eval(argstring)
+        fshosts = ast.literal_eval(argstring)
         assert iter(fshosts), '`--fshost` list is not a valid python sequence?'
     else:
         fshosts = [argstring]
@@ -48,28 +55,33 @@ def fshosts(request):
 
 
 @pytest.fixture(scope='session')
-def fshost(fshosts):
-    '''return the first fs slave hostname passed via the
-    `--fshost` cmd line arg
+def fs_ip_addrs(fshosts):
+    '''Convert provided host names to ip addrs via dns.
     '''
+    return list(map(ncompose(socket.gethostbyname, socket.getfqdn), fshosts))
+
+
+@pytest.fixture(scope='session')
+def fs_socks(request, fshosts):
+    '''Return the fshost,fsport values as tuple (str, int).
+    Use port 5080 (fs external profile) by default.
+    '''
+    return list(zip(fshosts, itertools.repeat(request.config.option.fsport)))
+
+
+@pytest.fixture(scope='session')
+def fshost(fshosts):
     return fshosts[0]
 
 
 @pytest.fixture(scope='module')
-def fsip(fshost):
-    '''Convert provided host name to ip addr via dns
-    (Useful for loop back call tests)
-    '''
-    import socket
-    return socket.gethostbyname(socket.getfqdn(fshost))
+def fsip(fs_ip_addrs):
+    return fs_ip_addrs[0]
 
 
 @pytest.fixture(scope='module')
-def fssock(request, fshost):
-    '''return the fshost,fsport values as tuple (str, int)
-    Use port 5080 (fs external profile) by default
-    '''
-    return fshost, request.config.option.fsport
+def fssock(fs_socks):
+    return fs_socks[0]
 
 
 @pytest.fixture
@@ -119,9 +131,9 @@ def client(fshost):
 
 
 @pytest.fixture
-def scenario(request, fssock, loglevel):
-    '''provision and return a SIPp scenario with the
-    remote proxy set to the current fs server
+def scenarios(request, fs_socks, loglevel):
+    '''Provision and return a SIPp scenario with the remote proxy set to the
+    current FS server.
     '''
     sipp = spawn.find_executable('sipp')
     if not sipp:
@@ -135,12 +147,20 @@ def scenario(request, fssock, loglevel):
     pl = pysipp.utils.get_logger()
     pl.setLevel(loglevel)
 
-    # first hop should be fs server
-    scen = pysipp.scenario(proxyaddr=fssock)
-    scen.log = pl
+    scens = []
+    for fssock in fs_socks:
+        # first hop should be fs server
+        scen = pysipp.scenario(proxyaddr=fssock)
+        scen.log = pl
 
-    # set client destination
-    # NOTE: you must add a park extension to your default dialplan!
-    scen.agents['uac'].uri_username = 'park'
+        # set client destination
+        # NOTE: you must add a park extension to your default dialplan!
+        scen.agents['uac'].uri_username = 'park'
+        scens.append(scen)
 
-    return scen
+    return scens
+
+
+@pytest.fixture
+def scenario(scenarios):
+    return scenarios[0]
