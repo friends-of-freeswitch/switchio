@@ -330,13 +330,13 @@ class Session(object):
     def broadcast(self, path, leg='', hangup_cause=None):
         """Execute an application on a chosen leg(s) with optional hangup
         afterwards.
-        Usage: ``uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]``
+        ``uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]``
         """
         self.con.api('uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
 
     def bridge(self, dest_url=None, profile=None, gateway=None, proxy=None,
                params=None):
-        """Bridge this session using `uuid_broadcast`.
+        """Bridge this session using `uuid_broadcast` (so async).
         By default the current profile is used to bridge to the SIP
         Request-URI.
         """
@@ -388,6 +388,15 @@ class Session(object):
             https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+respond
         """
         self.broadcast('respond::{}'.format(response))
+
+    def deflect(self, uri):
+        """Send a refer to the client.
+        The only parameter should be the SIP URI to contact (with or without
+        "sip:")::
+
+             <action application="deflect" data="sip:someone@somewhere.com" />
+         """
+        self.broadcast("deflect::{}".format(uri))
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
