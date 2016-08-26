@@ -288,7 +288,7 @@ class EventListener(object):
     def wait(self, timeout=None):
         """Wait until the event loop thread terminates or timeout.
         """
-        return self._thread.join(timeout)
+        return self._thread.join(timeout) if self._thread else None
 
     def connect(self):
         '''Connect and initialize all contained esl sockets
@@ -981,7 +981,7 @@ class Client(object):
         name = utils.get_name(ns)
         group_id = on_value or name or utils.uuid()
         app_map = self._apps.get(group_id, None)
-        if app_map and name in app_map:
+        if app_map and name in app_map and group_id != 'default':
             # only allow 1 app inst per group
             raise ConfigurationError(
                 "an app instance with name '{}' already exists for app group "
