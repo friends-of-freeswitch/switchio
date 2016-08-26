@@ -29,6 +29,7 @@ def storetype(request, measure):
     name = request.param
     if 'HDF' in name:
         pytest.importorskip("pandas")
+        pytest.importorskip("tables")
     return getattr(measure.storage, name)
 
 
