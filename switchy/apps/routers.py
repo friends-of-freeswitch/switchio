@@ -121,21 +121,31 @@ class Router(object):
         """Signal a router to discontinue execution.
         """
 
-    def __init__(self, guards):
+    def __init__(self, guards, reject_on_guard=True):
         self.guards = guards or {}
+        self.guard = reject_on_guard
         self.route = PatternRegistrar()
 
     def prepost(self, pool):
         self.pool = pool
-        self.log = utils.get_logger(utils.pstr(pool.evals('client.host')))
+        self.log = utils.get_logger(
+            utils.pstr(self, pool.evals('listener.host'))
+        )
 
     @event_callback("CHANNEL_PARK")
     def on_park(self, sess):
         handled = False
-        if all(sess[key] == val for key, val in self.guards.items()):
+        if not all(sess[key] == val for key, val in self.guards.items()):
+            self.log.warn("Session with id {} did not pass guards"
+                          .format(sess.uuid))
+        else:
             for func in self.route.iter_matches(sess, sess=sess, router=self):
                 handled = True  # at least one match
                 try:
+                    self.log.debug(
+                        "Matched '{.string}' to route '{.__name__}'"
+                        .format(func.keywords['match'], func.func))
+
                     func()
                 except self.StopRouting:
                     self.log.info(
@@ -145,19 +155,16 @@ class Router(object):
                     break
                 except Exception:
                     self.log.exception(
-                        "Failed to exec {} on match '{}' for session {}"
-                        .format(func, func.keywords['match'].string,
-                                sess.uuid)
+                        "Failed to exec {} on match '{.string}' for session {}"
+                        .format(func.func, func.keywords['match'], sess.uuid)
                     )
-        else:
-            self.log.warn("Session with id {} did not pass guards"
-                          .format(sess.uuid))
-        if not handled:
+        if not handled and self.guard:
+            self.log.warn("Rejecting session {}".format(sess.uuid))
             sess.hangup('NO_ROUTE_DESTINATION')
 
     @staticmethod
-    def bridge(sess, match, router, out_profile=None, gateway=None,
-               proxy=None):
+    def bridge(sess, match, router, dest_url=None, out_profile=None,
+               gateway=None, proxy=None):
         """A handy generic bridging function.
         """
         sess.bridge(
@@ -165,6 +172,6 @@ class Router(object):
             # (the default action taken by bridge)
             profile=out_profile,
             gateway=gateway,
-            dest_url=sess['variable_sip_req_uri'],
+            dest_url=dest_url,  # default is ${sip_req_uri}
             proxy=proxy,
         )
