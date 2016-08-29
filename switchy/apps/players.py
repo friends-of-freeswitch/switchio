@@ -74,10 +74,15 @@ class PlayRec(object):
         self.tail = 1.0
 
         # slave specific
-        self.soundsdir = client.cmd('global_getvar sound_prefix')
+        soundsdir = client.cmd('global_getvar sounds_dir')
+        self.soundsprefix = client.cmd('global_getvar sound_prefix')
+        # older FS versions don't return the deep path
+        if soundsdir == self.soundsprefix:
+            self.soundsprefix = '/'.join((self.soundsprefix, 'en/us/callie'))
+
         self.recsdir = client.cmd('global_getvar recordings_dir')
         self.audiofile = '{}/{}/{}/{}'.format(
-            self.soundsdir, self.category, self.framerate, self.filename)
+            self.soundsprefix, self.category, self.framerate, self.filename)
         self.call2recs = OrderedDict()
         self.host = client.host
 
