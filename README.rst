@@ -67,5 +67,6 @@ license, except where explicitly noted.
 .. |pypi_downloads| image:: https://img.shields.io/pypi/d/switchy.svg
     :target: https://pypi.python.org/pypi/switchy
 
-.. |docs| image:: https://readthedocs.org/projects/switchy/badge/
-    :target: https://switchy.readthedocs.org/
+.. |docs| image::
+     https://readthedocs.org/projects/switchy/badge/?version=latest
+     :target: http://switchy.readthedocs.io/en/latest/?badge=latest
