@@ -287,7 +287,7 @@ class TestClient:
             # WTF?? 'is' doesn't work on methods?
             assert obj == reg_cb
             # check methods are bound to the same instance
-            assert obj.im_self is reg_cb.im_self
+            assert obj.__self__ is reg_cb.__self__
 
         # add a 2nd app
         # (Bert adds event handlers so a `connect` is necessary)

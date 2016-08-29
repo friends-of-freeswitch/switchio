@@ -6,17 +6,16 @@ switchy: A FreeSWITCH control and stress testing micro framework.
 
 Licensed under the MPL 2.0 license (see `LICENSE` file)
 """
-import apps
 from os import path
-from utils import get_logger, ESLError
-from observe import EventListener, Client, get_listener
-from apps.call_gen import get_originator
-from distribute import SlavePool, MultiEval
-from marks import event_callback, handler
-from connection import Connection, ConnectionError
-from sync import sync_caller
-from serve import Service
-
+from . import apps
+from .utils import get_logger, ESLError
+from .observe import EventListener, Client, get_listener
+from .apps.call_gen import get_originator
+from .distribute import SlavePool, MultiEval
+from .marks import event_callback, handler
+from .connection import Connection, ConnectionError
+from .sync import sync_caller
+from .serve import Service
 
 __package__ = 'switchy'
 __version__ = '0.1.alpha'

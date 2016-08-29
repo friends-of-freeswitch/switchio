@@ -63,7 +63,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
     # generate any requested Xheaders
     if xheaders is not None:
         xheader_prefix = 'sip_h_X-'
-        for name, val in xheaders.iteritems():
+        for name, val in xheaders.items():
             if xheader_prefix in name:
                 params[name] = val
             else:
@@ -73,7 +73,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
     params.update(kwargs)
 
     # render params as strings
-    pairs = ['='.join(map(str, pair)) for pair in params.iteritems()]
+    pairs = ['='.join(map(str, pair)) for pair in params.items()]
 
     # user specified app?
     if dp_exten:  # use dialplan app for outbound channel

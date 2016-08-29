@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-Observer machinery
+Observer machinery.
 
 Includes components for observing and controlling FreeSWITCH server state
 through event processing and command invocation.
@@ -16,18 +16,17 @@ import functools
 import weakref
 from contextlib import contextmanager
 from threading import Thread, current_thread
-from collections import deque, OrderedDict, defaultdict, Counter, namedtuple
+from collections import deque, OrderedDict, Counter, namedtuple
 
 # NOTE: the import order matters here!
-import utils
-from utils import ConfigurationError, ESLError, APIError, get_event_time
-from models import Session, Job, Call
-from commands import build_originate_cmd
-import marks
-from marks import handler
+from . import utils
+from .utils import ConfigurationError, ESLError, APIError, get_event_time
+from .models import Session, Job, Call
+from .commands import build_originate_cmd
+from . import marks
+from .marks import handler
 import multiprocessing as mp
-from multiprocessing.synchronize import Event
-from connection import Connection, ConnectionError
+from .connection import Connection, ConnectionError
 
 
 def con_repr(self):
@@ -97,10 +96,9 @@ class EventListener(object):
         self._handlers = self.default_handlers  # active handler set
         self._unsub = ()
         self.consumers = {}  # callback chains, one for each event type
-        self._waiters = {}  # holds events being waited on
+        self._sess2waiters = {}  # holds events being waited on
         self._blockers = []  # holds cached events for reuse
-        # store up to the last 1k of each event type
-        self.events = defaultdict(functools.partial(deque, maxlen=1e3))
+        self.events = OrderedDict()
         self.sessions_per_app = Counter()
         self.autorecon = autorecon
         # header name used for associating sip sessions into a 'call'
@@ -474,7 +472,9 @@ class EventListener(object):
                     self.log.warn("received unamed event '{}'?".format(e))
                 # append events which are not consumed
                 if not consumed:
-                    self.events[evname].append((e, time.time()))
+                    # store up to the last 1k of each event type
+                    self.events.setdefault(
+                        evname, deque(maxlen=1000)).append((e, time.time()))
         self.log.debug("exiting listener event loop")
         self._rx_con.disconnect()
         self._exit.clear()  # clear event loop for next re-entry
@@ -542,10 +542,10 @@ class EventListener(object):
                             )
 
                     # unblock `session.vars` waiters
-                    if model in self._waiters:
-                        for varname, events in self._waiters[model].items():
-                            if model.vars.get(varname):
-                                map(Event.set, events)
+                    if model in self._sess2waiters:
+                        for var, events in self._sess2waiters[model].items():
+                            if model.vars.get(var):
+                                [event.set() for event in events]
 
             # exception raised by handler/chain on purpose?
             except ESLError:
@@ -584,24 +584,33 @@ class EventListener(object):
         -------
         Do not call this from the event loop thread!
         '''
-        if sess.vars.get(varname):
-            return
         # retrieve cached event/blocker if possible
         event = mp.Event() if not self._blockers else self._blockers.pop()
-        waiters = self._waiters.setdefault(sess, {})  # sess -> {vars: ...}
+        waiters = self._sess2waiters.setdefault(sess, {})  # sess -> {vars: ..}
         events = waiters.setdefault(varname, [])  # var -> [events]
         events.append(event)
+
+        def cleanup(event):
+            """Dealloc events and waiter data structures.
+            """
+            event.clear()  # make it block for next cached use
+            events.remove(event)  # event lifetime expires with this call
+            self._blockers.append(event)  # cache for later use
+            if not events:  # event list is now empty so delete
+                waiters.pop(varname)
+            if not waiters:  # no vars being waited so delete
+                self._sess2waiters.pop(sess)
+
+        # event was set faster then we could wait on it
+        if sess.vars.get(varname):
+            cleanup(event)
+            return True
+
         res = event.wait(timeout=timeout)  # block
         if timeout and not res:
             raise mp.TimeoutError("'{}' was not set within '{}' seconds"
                                   .format(varname, timeout))
-        event.clear()  # make it block for next cached use
-        events.remove(event)  # event lifetime expires with this call
-        self._blockers.append(event)  # cache for later use
-        if not events:  # event list is now empty so delete
-            waiters.pop(varname)
-        if not waiters:  # no vars being waited so delete
-            self._waiters.pop(sess)
+        cleanup(event)
         return res
 
     def lookup_sess(self, e):
@@ -889,7 +898,7 @@ class EventListener(object):
         if not sess.answered or cause != 'NORMAL_CLEARING':
             self.log.debug("'{}' was not successful??".format(sess.uuid))
             self.failed_sessions.setdefault(
-                cause, deque(maxlen=1e3)).append(sess)
+                cause, deque(maxlen=1000)).append(sess)
 
         self.log.debug("hungup Session '{}'".format(uuid))
         # hangups are always consumed
@@ -1075,7 +1084,7 @@ class Client(object):
                 on_value))
             return
 
-        appkeys = [utils.get_name(ns)] if ns else app_map.keys()
+        appkeys = [utils.get_name(ns)] if ns else list(app_map.keys())
 
         for name in appkeys:
             app = app_map.pop(name)
@@ -1297,8 +1306,8 @@ def active_client(host, port='8021', auth='ClueCon',
     # TODO: maybe we should (try to) use the app manager here?
     # load app set
     if apps:
-        if getattr(apps, 'iteritems', None):
-            apps = apps.iteritems()
+        if getattr(apps, 'items', None):
+            apps = apps.items()
 
         for on_value, app in apps:
             try:
@@ -1335,7 +1344,7 @@ def get_pool(contacts, **kwargs):
 
     # instantiate all pairs
     for contact in contacts:
-        if isinstance(contact, (str)):
+        if isinstance(contact, str):
             contact = (contact,)
         # create pairs
         listener = EventListener(*contact, **kwargs)

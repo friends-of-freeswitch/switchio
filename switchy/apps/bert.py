@@ -46,8 +46,8 @@ class Bert(object):
             self.log.debug("mod_bert already loaded")
 
         # collections of failed sessions
-        self.lost_sync = deque(maxlen=1e3)
-        self.timed_out = deque(maxlen=1e3)
+        self.lost_sync = deque(maxlen=1000)
+        self.timed_out = deque(maxlen=1000)
         yield
 
     @property

@@ -84,7 +84,7 @@ def log_to_stderr(level=None):
 def dirinfo(inst):
     """Return common info useful for dir output
     """
-    return sorted(set(dir(type(inst)) + inst.__dict__.keys()))
+    return sorted(set(dir(type(inst)) + list(inst.__dict__.keys())))
 
 
 def xheaderify(header_name):

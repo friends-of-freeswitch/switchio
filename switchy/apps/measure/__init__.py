@@ -6,11 +6,10 @@ import pickle
 from functools import partial
 from collections import OrderedDict, namedtuple
 from switchy import utils
-import storage
-from .storage import pd
+from .storage import *
 
 # re-export(s)
-from cdr import CDR
+from .cdr import CDR
 
 log = utils.get_logger(__name__)
 
@@ -128,9 +127,9 @@ class Measurers(object):
         if not os.path.isdir(dirpath):
             raise ValueError("You must provide a directory")
 
-        iterapps = self._apps.iteritems()
+        iterapps = self._apps.items()
         # infer storage backend from first store
-        name, m = next(iterapps)
+        name, m = next(iter(iterapps))
         storetype = m.storer.storetype
         storepath = os.path.join(dirpath, "switchy_measures")
 
@@ -149,7 +148,7 @@ class Measurers(object):
         storepath = storetype.multiwrite(storepath, framedict.items())
         # dump pickle file containing figspec (and possibly other meta-data)
         pklpath = os.path.join(dirpath, 'switchy_measures.pkl')
-        with open(pklpath, 'w') as pklfile:
+        with open(pklpath, 'wb') as pklfile:
             pickle.dump(
                 {'storepath': storepath, 'figspecs': self._figspecs,
                  'storetype': storetype.ext},
@@ -181,7 +180,7 @@ def load(path, **kwargs):
     """Load a previously pickled data set from the filesystem and return it as
     a merged data frame
     """
-    with open(path, 'r') as pkl:
+    with open(path, 'rb') as pkl:
         obj = pickle.load(pkl)
         log.debug("loaded pickled content:\n{}".format(obj))
         if not isinstance(obj, dict):
@@ -202,7 +201,7 @@ def load(path, **kwargs):
 
         # XXX evetually we should support multiple figures
         figspecs = obj.get('figspecs', {})
-        figspec = figspecs[figspecs.keys()[0]]
+        figspec = figspecs[tuple(figspecs.keys())[0]]
         merged._plot = partial(plot_df, merged, figspec)
         return merged
 

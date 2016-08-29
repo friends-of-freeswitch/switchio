@@ -30,6 +30,7 @@ def storetype(request, measure):
     if 'HDF' in name:
         pytest.importorskip("pandas")
         pytest.importorskip("tables")
+        pytest.importorskip("shmarray")
     return getattr(measure.storage, name)
 
 
@@ -240,9 +241,12 @@ def test_measurers(measure, tmpdir, storetype):
 def test_write_speed(measure, storer):
     """Assert we can write and read quickly to the storer
     """
+    sleeptime = 0.03
     ds = write_bufs(3, ds=storer)
     numentries = 3 * ds._buf_size
-    time.sleep(0.03)  # 30ms to flush 3 bufs...
+    if isinstance(ds.data, list):
+        sleeptime = 0.1
+    time.sleep(sleeptime)  # wait to flush 3 bufs...
     assert len(ds.data) == numentries
     if measure.storage.pd:
         assert len(ds._buffer) == ds._buf_size
@@ -261,6 +265,7 @@ def test_with_orig(get_orig, measure, storer):
     cdr_storer = orig.measurers['CDR'].storer
     assert len(cdr_storer.data) == 0
     orig.limit = orig.max_offered = cdr_storer._buf_size or 1
+    # orig.limit = orig.max_offered = 1
     if pd:
         assert cdr_storer._buffer.bi == 0
     orig.start()
