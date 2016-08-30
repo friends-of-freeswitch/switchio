@@ -6,6 +6,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 from setuptools import setup
+import os
+
+
+reqs = ['python-ESL', 'click']
+
+
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
+if on_rtd:
+    # RTD doesn't package SWIG in their default env
+    reqs.remove('python-ESL')
 
 
 with open('README.rst') as f:
@@ -35,10 +45,7 @@ setup(
             'switchy = switchy.cli:cli',
         ]
     },
-    install_requires=[
-        'python-ESL',  # packaged by Sangoma
-        'click',
-    ],
+    install_requires=reqs,
     package_data={
         'switchy': ['../conf/switchydp.xml']
     },

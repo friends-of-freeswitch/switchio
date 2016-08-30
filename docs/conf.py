@@ -17,7 +17,7 @@ import os
 
 # work around ESL.so and optional numpy dependencies
 import mock
-MOCK_MODS = ['ESL', 'pandas']
+MOCK_MODS = ['ESL', 'pandas', 'numpy']
 for modname in MOCK_MODS:
     sys.modules[modname] = mock.Mock()
 
