@@ -291,6 +291,7 @@ class TestClient:
 
         # add a 2nd app
         # (Bert adds event handlers so a `connect` is necessary)
+        client.connect()
         client.listener.connect()
         bid = client.load_app(Bert)
 

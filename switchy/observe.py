@@ -10,7 +10,6 @@ through event processing and command invocation.
 import time
 import traceback
 import inspect
-# import operator
 import itertools
 import functools
 import weakref
@@ -58,15 +57,10 @@ class EventListener(object):
                  max_limit=float('inf'),
                  _tx_lock=None):
         '''
-        Parameters
-        ----------
-        host : string
-            Hostname or IP addr of the FS engine server to listen to
-        port : string
-            Port on which the FS server is offering an ESL connection
-        auth : string
-            Authentication password for connecting via ESL
-        call_tracking_header : string
+        :param str host: Hostname or IP addr of the FS engine server to listen to
+        :param str port: Port on which the FS server is offering an ESL connection
+        :param str auth: Authentication password for connecting via ESL
+        :param str call_tracking_header:
             Name of the freeswitch variable (including the 'variable_' prefix)
             to use for associating sessions into tracked calls
             (see `_handle_create`).
@@ -78,11 +72,13 @@ class EventListener(object):
             NOTE: in order for this association mechanism to work the
             intermediary device must be configured to forward the Xheaders
             it receives.
-        autorecon : int, bool
+
+        :param autorecon:
             Enable reconnection attempts on loss of a server connection.
             An integer value specifies the of number seconds to spend
             re-trying the connection before bailing. A bool of 'True'
             will poll indefinitely and 'False' will not poll at all.
+        :type autorecon: int or bool
         '''
         self.host = host
         self.port = port
@@ -120,6 +116,8 @@ class EventListener(object):
         # set up contained connections
         self._rx_con = rx_con or Connection(self.host, self.port, self.auth)
         self._tx_con = Connection(self.host, self.port, self.auth)
+        self._cons = OrderedDict([('_rx_con', self._rx_con),
+                                  ('_tx_con', self._tx_con)])
 
         # mockup thread
         self._thread = None
@@ -171,13 +169,9 @@ class EventListener(object):
         return len(self.calls)
 
     def iter_cons(self):
-        '''Return an iterator over all attributes of this instance which are
-        esl connections.
+        '''Return an iterator over all contained ESL connections.
         '''
-        # TODO: maybe use a collection here instead?
-        for name, attr in vars(self).items():
-            if isinstance(attr, Connection):
-                yield name, attr
+        return self._cons.items()
 
     @property
     def epoch(self):
@@ -490,12 +484,8 @@ class EventListener(object):
         1) the handler + callback chain returns True
         2) the handler + callback chain raises a special exception
 
-        Parameters
-        ----------
-        e : ESL.ESLEvent instance
-            event received over esl on self._rx_con
-        evname : str
-            event type/name string
+        :param ESL.ESLEvent e: event received over esl on self._rx_con
+        :param str evname: event type/name string
         '''
         # epoch is the time when first event is received
         if self._epoch:
@@ -528,8 +518,6 @@ class EventListener(object):
                     )
                     # look up the client's callback chain and run
                     # e -> handler -> cb1, cb2, ... cbN
-                    # map(operator.methodcaller('__call__', *ret),
-                    #                           consumers.get(evname, ()))
                     # XXX assign ret on each interation in an attempt to avoid
                     # python's dynamic scope lookup
                     for cb, ret in zip(cbs, itertools.repeat(ret)):
@@ -958,7 +946,6 @@ class Client(object):
                 self.call_tracking_header)
             self.log.debug("set call lookup variable to '{}'".format(
                 self._listener.call_tracking_header))
-            inst._client_con = weakref.proxy(self._con)
 
     listener = property(get_listener, set_listener,
                         'Reference to the underlying EventListener')
