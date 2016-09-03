@@ -6,13 +6,13 @@ with the required baseline config and can be accessed by hostname.
 
 To run all tests invoke `tox` from the source dir and pass the FS hostname::
 
-    tox -e ALL -- --fshost=hostname.fs.com
+    tox -- --fshost=hostname.fs.com
 
 `SIPp`_ and `pysipp`_ are required to be installed locally in order to run call/load tests.
 
 To run multi-slave tests at least two slave hostnames are required::
 
-    tox -e ALL -- --fsslaves='["fs.slave.hostname1","fs.slave.hostname2"]'
+    tox -- --fsslaves=fs.slave.hostname1,fs.slave.hostname2
 
 
 .. hyperlinks

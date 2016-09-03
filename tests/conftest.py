@@ -4,8 +4,8 @@
 import pytest
 import socket
 import sys
-import ast
 import itertools
+import tempfile
 from distutils import spawn
 from switchy.utils import ncompose
 
@@ -45,12 +45,7 @@ def fshosts(request):
         pytest.skip("the '--fshost' option is required to determine the "
                     "FreeSWITCH slave server(s) to connect to for testing")
     # construct a list if passed as arg
-    if '[' in argstring:
-        fshosts = ast.literal_eval(argstring)
-        assert iter(fshosts), '`--fshost` list is not a valid python sequence?'
-    else:
-        fshosts = [argstring]
-
+    fshosts = argstring.split(',')
     return fshosts
 
 
@@ -150,7 +145,7 @@ def scenarios(request, fs_socks, loglevel):
     scens = []
     for fssock in fs_socks:
         # first hop should be fs server
-        scen = pysipp.scenario(proxyaddr=fssock)
+        scen = pysipp.scenario(proxyaddr=fssock, logdir=tempfile.mkdtemp())
         scen.log = pl
 
         # set client destination

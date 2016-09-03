@@ -15,6 +15,7 @@ x load test over multiple nodes is fast
 '''
 import pytest
 import time
+from copy import copy
 import contextlib
 from switchy import Service
 from switchy.apps.routers import Router
@@ -67,13 +68,14 @@ def dial_all(scenarios, did, hosts, expect=True, **extra_settings):
             finalize()
         else:
             if isinstance(expect, list):
+                exp = copy(expect)
                 cmd2procs = finalize(raise_exc=False)
                 for cmd, proc in cmd2procs.items():
                     rc = proc.returncode
-                    assert rc in expect, (
+                    assert rc in exp, (
                         "{} for {} was not in expected return codes {}".format(
-                            rc, cmd, expect))
-                    expect.remove(rc)
+                            rc, cmd, exp))
+                    exp.remove(rc)
 
             else:  # generic failure
                 with pytest.raises(RuntimeError):
@@ -130,6 +132,8 @@ def test_break_on_true(fs_socks, service, router):
     def hangup(sess, router, match):
         sess.hangup()
 
+    # don't reject on guard
+    router.guard = False
     # start router service
     service.apps.load_app(router, app_id='default')
     service.run(block=False)

@@ -2,10 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-System stats collection using `psutil`_
-
-.. _psutil:
-    http://pythonhosted.org/psutil/
+Rudimentary system stats collection using ``psutil``.
 """
 import time
 from switchy import event_callback, utils

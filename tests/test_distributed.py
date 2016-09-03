@@ -12,7 +12,7 @@ def pool(fshosts):
     if not len(fshosts) > 1:
         pytest.skip("the '--fshost' option must be a list of 2 or more "
                     "hostnames in order to run multi-slave tests")
-    from switchy.apps.call_gen import get_pool
+    from switchy.observe import get_pool
     return get_pool(fshosts)
 
 
@@ -23,8 +23,8 @@ def test_setup(pool):
     assert not any(pool.evals('listener.connected()'))
     pool.evals('listener.connect()')
     assert all(pool.evals('listener.connected()'))
-    # listener connects the client's con implicitly
-    assert all(pool.evals('client.connected()'))
+    assert not any(pool.evals('client.connected()'))
+    pool.evals('client.connect()')
     pool.evals('client.load_app(Bert)', Bert=Bert)
     name = utils.get_name(Bert)
     assert all(False for apps in pool.evals('client._apps')
