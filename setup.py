@@ -24,7 +24,7 @@ with open('README.rst') as f:
 
 setup(
     name="switchy",
-    version='0.1.0.alpha',
+    version='0.1.0.alpha1',
     description='A fast FreeSWITCH control library purpose-built on '
                 'traffic theory and stress testing.',
     long_description=readme,

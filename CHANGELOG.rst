@@ -11,8 +11,8 @@ The format is based on `Keep a Changelog`_ and this project adheres to
 .. _Semantic Versioning: http://flask.pocoo.org/docs/0.11/quickstart/#routing
 
 
-Unreleased
-----------
+0.1.0.alpha1 - 2016-09-07
+-------------------------
 Added
 *****
 - Python 3.5 support. Thanks to `@vodik`_ for the initial work.
