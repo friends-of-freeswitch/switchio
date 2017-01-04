@@ -220,7 +220,7 @@ class Session(object):
         if tone_duration is not None:
             cmd += ' @{}'.format(tone_duration)
 
-        self.con.api(cmd)
+        return self.con.api(cmd)
 
     def send_dtmf(self, sequence, duration='w'):
         '''Send a dtmf sequence with constant tone durations
@@ -327,12 +327,24 @@ class Session(object):
         '''
         self.con.api('uuid_park {}'.format(self.uuid))
 
-    def broadcast(self, path, leg='', hangup_cause=None):
-        """Execute an application on a chosen leg(s) with optional hangup
-        afterwards.
-        ``uuid_broadcast <uuid> app[![hangup_cause]]::args [aleg|bleg|both]``
+    def broadcast(self, path, leg='', delay=None, hangup_cause=None):
+        """Execute an application async on a chosen leg(s) with optional hangup
+        afterwards. If provided tell FS to schedule the app ``delay`` seconds
+        in the future. Uses either of the `uuid_broadcast`_ or
+        `sched_broadcast`_ commands.
+
+        .. _uuid_broadcast:
+            https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-uuid_broadcast
+        .. _sched_broadcast:
+            https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-sched_broadcast
         """
-        self.con.api('uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
+        if not delay:
+            return self.con.api(
+                'uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
+        else:
+            return self.con.api(
+                'sched_broadcast +{} {} {}'.format(delay, self.uuid, path, leg)
+            )
 
     def bridge(self, dest_url=None, profile=None, gateway=None, proxy=None,
                params=None):
