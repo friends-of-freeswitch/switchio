@@ -24,8 +24,12 @@ class Bert(object):
     """
     bert_sync_lost_var = 'bert_stats_sync_lost'
 
-    def prepost(self, client, listener, **opts):
+    def prepost(self, client, listener, ring_response=None, pdd=None,
+                prd=None, **opts):
         self.log = get_logger(self.__class__.__name__)
+        self.ring_response = ring_response
+        self.pdd = pdd  # post dial delay
+        self.prd = prd  # post response delay
         self._two_sided = False  # toggle whether to run bert on both ends
         self.opts = {
             'bert_timer_name': 'soft',
@@ -85,19 +89,34 @@ class Bert(object):
         '''
         # assumption is that inbound calls will be parked immediately
         if sess.is_inbound():
-            sess.answer()  # next step will be in answer handler
+            pdd = self.pdd or 0
+            if self.ring_response:
+                sess.broadcast(
+                    "{}::".format(self.ring_response), delay=pdd)
+
+            prd = self.prd or 0
+            # next step will be in answer handler
+            if prd or pdd:
+                sess.broadcast("answer::", delay=prd)
+            else:
+                sess.answer()
             sess.setvars(self.opts)
+            return
+
+        # for outbound calls the park event comes AFTER the answer initiated by
+        # the inbound leg given that the originate command specified the `park`
+        # application as its argument
+        if sess.is_outbound():
+            sess.setvars(self.opts)
+            sess.broadcast('bert_test::')
+
+    @event_callback("CHANNEL_ANSWER")
+    def on_answer(self, sess):
+        if sess.is_inbound():
             if self._two_sided:  # bert run on both sides
                 sess.broadcast('bert_test::')
             else:  # one-sided looping audio back to source
                 sess.broadcast('echo::')
-
-        # for outbound calls the park event comes AFTER the answer
-        # initiated by the inbound leg given that the originate command
-        # specified the `park` application as its argument
-        if sess.is_outbound():
-            sess.setvars(self.opts)
-            sess.broadcast('bert_test::')
 
     desync_stats = (
         "sync_lost_percent",
