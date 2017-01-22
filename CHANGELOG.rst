@@ -7,8 +7,8 @@ The format is based on `Keep a Changelog`_ and this project adheres to
 
 
 .. _@vodik: https://github.com/vodik
-.. _Keep a Changelog: http://flask.pocoo.org/docs/0.11/quickstart/#routing
-.. _Semantic Versioning: http://flask.pocoo.org/docs/0.11/quickstart/#routing
+.. _Keep a Changelog: http://keepachangelog.com/en
+.. _Semantic Versioning: http://semver.org/
 
 
 0.1.0.alpha1 - 2016-09-07
