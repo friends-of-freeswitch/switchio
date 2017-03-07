@@ -57,8 +57,8 @@ class EventListener(object):
                  max_limit=float('inf'),
                  _tx_lock=None):
         '''
-        :param str host: Hostname or IP addr of the FS engine server to listen to
-        :param str port: Port on which the FS server is offering an ESL connection
+        :param str host: Hostname or IP addr of the FS server
+        :param str port: Port on which the FS process is listening for ESL
         :param str auth: Authentication password for connecting via ESL
         :param str call_tracking_header:
             Name of the freeswitch variable (including the 'variable_' prefix)
@@ -1009,7 +1009,7 @@ class Client(object):
                 app._finalize = ret
 
         self.log.info(
-            "Loading call app '{}' with group id '{}' for listener '{}'"
+            "Loading '{}' app with group id '{}' for listener '{}'"
             .format(name, group_id, listener)
         )
         failed = False
@@ -1331,7 +1331,7 @@ def get_pool(contacts, **kwargs):
 
     # instantiate all pairs
     for contact in contacts:
-        if isinstance(contact, str):
+        if isinstance(contact, str) or isinstance(contact, unicode):
             contact = (contact,)
         # create pairs
         listener = EventListener(*contact, **kwargs)
