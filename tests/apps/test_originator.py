@@ -14,6 +14,36 @@ import math
 from switchy.apps import dtmf, players
 
 
+def test_dialer_state(get_orig):
+    """Verify dialer state changes based on its API.
+    """
+    dialer = get_orig('you', offer=float('inf'))
+    dialer.load_app(players.TonePlay)
+    dialer.duration = 0  # don't auto-hangup
+
+    # ensure intial state interface
+    assert dialer.check_state("INITIAL")
+
+    # verify initial internal event states
+    assert not dialer._start.is_set()
+    assert not dialer._burst.is_set()
+    assert not dialer._exit.is_set()
+
+    dialer.start()
+    time.sleep(0.3)
+    assert not dialer._start.is_set()
+    assert not dialer.stopped()
+    assert dialer._burst.is_set()
+    assert dialer.check_state("ORIGINATING")
+
+    dialer.hupall()
+    dialer.waitforstate('STOPPED', timeout=5)
+    assert dialer.check_state("STOPPED")
+    assert dialer.stopped()
+    assert not dialer._start.is_set()
+    assert not dialer._burst.is_set()
+
+
 def test_rep_fields(get_orig):
     """Test replacement fields within originate commands
     """
