@@ -5,10 +5,11 @@
 Measurement collection testing:
 Tests for the pandas machinery
 '''
-import pytest
+import sys
 import time
 import tempfile
 from functools import partial
+import pytest
 import switchy
 from switchy.apps.measure import pd
 
@@ -41,6 +42,9 @@ def storer(request, measure, storetype):
     return partial(measure.storage.DataStorer, storetype=storetype)
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3,), reason="Unicode bugs on py3 with pandas"
+)
 @pytest.mark.skipif(not pd, reason="No pandas installed")
 @pytest.mark.parametrize("length", [1, 128])
 def test_buffered(measure, storer, length):
@@ -153,6 +157,9 @@ def write_bufs(
     return ds
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3,), reason="Unicode bugs on py3 with pandas"
+)
 @pytest.mark.skipif(not pd, reason="No pandas installed")
 def test_measurers(measure, tmpdir, storetype):
     pd = measure.storage.pd
@@ -275,7 +282,8 @@ def test_with_orig(get_orig, measure, storer):
     orig.hupall()
     start = time.time()
     orig.waitwhile(
-        lambda: orig.pool.count_calls() and cdr_storer._iput < orig.max_offered,
+        lambda:
+            orig.pool.count_calls() and cdr_storer._iput < orig.max_offered,
         timeout=10
     )
     print("'{}' secs since all queue writes".format(time.time() - start))
