@@ -9,7 +9,6 @@ import time
 import inspect
 import functools
 import json
-import types
 import logging
 import uuid as mod_uuid
 import importlib
@@ -32,9 +31,11 @@ class APIError(ESLError):
     """ESL api error"""
 
 
-# fs-like log format
-LOG_FORMAT = ("%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(lineno)d "
-              ": %(message)s")
+# fs-like log format with a thread name prefix
+LOG_FORMAT = (
+    "%(asctime)s (%(threadName)s) [%(levelname)s] %(name)s "
+    "%(filename)s:%(lineno)d : %(message)s"
+)
 DATE_FORMAT = '%b %d %H:%M:%S'
 
 
