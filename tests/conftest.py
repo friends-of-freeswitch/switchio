@@ -5,7 +5,6 @@ import pytest
 import socket
 import sys
 import itertools
-import tempfile
 from distutils import spawn
 from switchy.utils import ncompose
 
@@ -145,7 +144,9 @@ def scenarios(request, fs_socks, loglevel):
     scens = []
     for fssock in fs_socks:
         # first hop should be fs server
-        scen = pysipp.scenario(proxyaddr=fssock, logdir=tempfile.mkdtemp())
+        scen = pysipp.scenario(
+            proxyaddr=fssock,
+            defaults={'src': socket.getfqdn()})
         scen.log = pl
 
         # set client destination
