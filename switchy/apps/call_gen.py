@@ -8,7 +8,6 @@ from __future__ import division
 import time
 import sched
 import traceback
-import functools
 import inspect
 from itertools import cycle
 from collections import Counter
@@ -140,7 +139,7 @@ class Originator(object):
             id to use
         '''
         self.pool = slavepool
-        self.iterslaves = limiter(slavepool.nodes)
+        self.iternodes = limiter(slavepool.nodes)
         self.count_calls = self.pool.fast_count
         self.debug = debug
         self.auto_duration = auto_duration
@@ -149,6 +148,7 @@ class Originator(object):
         self._thread = None
         self._start = mp.Event()
         self._exit = mp.Event()
+        self._burst = mp.Event()
         self._state = State()
         # load settings
         self._rate = None
@@ -364,7 +364,7 @@ class Originator(object):
     def total_originated_sessions(self):
         return self._total_originated_sessions
 
-    def _burst(self):
+    def _burst_loop(self):
         '''Originate calls via a bgapi/originate call in a loop
         '''
         originated = 0
@@ -379,14 +379,14 @@ class Originator(object):
 
         # TODO: need a proper traffic scheduling algo here!
         # try to launch 'rate' calls in a loop
-        for _, slave in zip(range(num), self.iterslaves):
+        for _, node in zip(range(num), self.iternodes):
             if not self.check_state("ORIGINATING"):
                 break
             if count_calls() >= self.limit:
                 break
             self.log.debug("count calls = {}".format(count_calls()))
             # originate a call
-            slave.client.originate(
+            node.client.originate(
                 app_id=next(iterappids),
                 uuid_func=self.uuid_gen,
                 rep_fields=self.rep_fields_func()
@@ -416,12 +416,12 @@ class Originator(object):
                         "you must first set an originate command")
                 # if no pending tasks, insert a burst loop
                 if self.sched.empty():
-                    self.sched.enter(0, 1, self._burst, [])
+                    self.sched.enter(0, 1, self._burst_loop, [])
 
                 # task loop
                 self._change_state("ORIGINATING")
                 try:
-                    while not self.check_state('STOPPED'):
+                    while self._burst.is_set():
                         prerun = time.time()
                         # NOTE: if we ever want to schedule other types
                         # of tasks we will need to move the enterabs below
@@ -433,16 +433,17 @@ class Originator(object):
                             self.log.debug('next burst loop re-entry is in {} '
                                            'seconds'.format(self.period))
                             self.sched.enterabs(prerun + self.period, 1,
-                                                self._burst, ())
+                                                self._burst_loop, ())
                 except Exception:
                     self.log.error("exiting burst loop due to exception:\n{}"
                                    .format(traceback.format_exc()))
-                    self._change_state("STOPPED")
 
                 self.log.info("stopping burst loop...")
+                self._change_state("STOPPED")
 
             # exit gracefully
             self.log.info("terminating originate thread...")
+            self._change_state("STOPPED")
         except Exception:
             self.log.exception(
                 "'{}' failed with:".format(mp.current_process().name)
@@ -495,6 +496,7 @@ class Originator(object):
             time.sleep(0.1)
         # trigger burst loop entry
         self._start.set()
+        self._burst.set()
         self._start.clear()
 
     def is_alive(self):
@@ -509,17 +511,17 @@ class Originator(object):
         '''
         if not self.check_state("STOPPED"):
             self.log.info("Stopping sessions origination loop...")
-            self._change_state("STOPPED")
         else:
             self.log.info("Originator in '{}'' state, nothing to stop..."
                           .format(self._state))
+        self._burst.clear()  # signal to stop the burst loop
 
     def hupall(self):
         '''Send the 'hupall' command to hangup all active calls.
         '''
         self.log.warn("Stopping all calls with hupall!")
         # set stopped state - no further bursts will be scheduled
-        self._change_state("STOPPED")
+        self.stop()
         return self.pool.evals('client.hupall()')
 
     def hard_hupall(self):
@@ -535,8 +537,9 @@ class Originator(object):
         '''
         if self.pool.count_sessions():
             self.hupall()
-        self._exit.set()  # trigger exit
-        self._change_state("STOPPED")
+        else:
+            self.stop()
+        self._exit.set()  # trigger burst thread exit
 
     @property
     def originate_cmd(self):
@@ -556,32 +559,25 @@ class Originator(object):
         self.pool.evals('listener.disconnect()')
         self.pool.evals('listener.connect()')
 
-    def waitwhile(
-        self,
-        state_or_predicate=lambda orig:
-            orig.count_calls() or not orig.stopped(),
-        **kwargs
-    ):
-        """If `state_or_predicate' is a func, block until it evaluates to `False`.
-        If it is a `str` block until the internal state matches that value.
+    def waitforstate(self, state, **kwargs):
+        """Block until the internal state matches ``state``.
+        """
+        return self.waitwhile(lambda: not self.check_state(state))
+
+    def waitwhile(self, predicate=None, **kwargs):
+        """Block until ``predicate`` evaluates to ``False``.
+
         The default predicate waits for all calls to end and for activation of
         the "STOPPED" state.
+
         See `switchy.utils.waitwhile` for more details on predicate usage.
         """
-        if isinstance(state_or_predicate, str):
-            getattr(State, state_or_predicate)  # ensure state exists
-            predicate = functools.partial(self.check_state, state_or_predicate)
-        else:
-            predicate = state_or_predicate
-            assert inspect.isfunction(
-                predicate), "{} must be a state str or func".format(predicate)
-            numargs = len(utils.get_args(state_or_predicate)[0][:1])
-            if numargs == 1:
-                predicate = functools.partial(predicate, self)
-            elif numargs > 1:
-                raise TypeError(
-                    "func '{}' must accept at most one argument"
-                    .format(state_or_predicate)
-                )
+        def calls_active():
+            return self.count_calls() or not self.stopped()
+
+        predicate = predicate or calls_active
+        assert inspect.isfunction(predicate), "{} must be a function".format(
+            predicate)
+
         # poll for predicate to eval False
         return utils.waitwhile(predicate=predicate, **kwargs)
