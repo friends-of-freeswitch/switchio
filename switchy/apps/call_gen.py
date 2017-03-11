@@ -354,7 +354,7 @@ class Originator(object):
 
     def _check_max(self):
         if self._total_originated_sessions >= self.max_offered:
-            self._change_state("STOPPED")
+            self._burst.clear()  # signal to stop the burst loop
             self.log.info("'{}' sessions have been originated but"
                           " max allowed is '{}', exiting run loop..."
                           .format(self._total_originated_sessions,
