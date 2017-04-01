@@ -74,12 +74,14 @@ def plot(file_name):
 @click.option('--app', default='Bert',
               help='Switchy application to execute '
               '(see list-apps command to list available apps)')
+@click.option('--password', default='ClueCon',
+              help='Password to use for ESL authentication')
 @click.option('--metrics-file',
               default=None, help='Store metrics at the given file location')
 @click.option('--loglevel',
               default='INFO', help='Set the Python logging level')
 def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
-        duration, interactive, debug, app, metrics_file, loglevel):
+        duration, interactive, debug, app, metrics_file, loglevel, password):
     log = switchy.utils.log_to_stderr(loglevel)
     log.propogate = False
 
@@ -100,6 +102,7 @@ def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
         max_offered=int(max_offered) if max_offered else None,
         duration=int(duration) if duration else None,
         auto_duration=True if not duration else False,
+        auth=password,
     )
     orig.load_app(cls)
 
@@ -137,7 +140,7 @@ def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
     if interactive:
         try:
             import IPython
-            IPython.embed()
+            IPython.start_ipython(argv=[], user_ns=locals())
         except ImportError:
             try:
                 # optional, will allow Up/Down/History in the console
