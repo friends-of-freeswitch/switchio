@@ -160,10 +160,6 @@ class Connection(object):
                 "Failed to connect to server at '{}:{}'\n"
                 "Please check that FreeSWITCH is running and "
                 "accepting esl connections.".format(host, port))
-        # on success change our contact info
-        self.host = host
-        self.port = port
-        self.auth = auth
 
     def connected(self):
         '''Return bool indicating if this connection is active
