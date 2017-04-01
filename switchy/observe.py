@@ -1333,12 +1333,21 @@ def get_pool(contacts, **kwargs):
     for contact in contacts:
         if isinstance(contact, str) or isinstance(contact, unicode):
             contact = (contact,)
+
         # create pairs
         listener = EventListener(*contact, **kwargs)
+
+        # extract client only kwargs
+        _, kwargnames = utils.get_args(Client.__init__)
+        clientonly = {}
+        for name in kwargnames:
+            if name in kwargs:
+                clientonly[name] = kwargs[name]
+
         client = Client(
             *contact,
             listener=listener,
-            call_tracking_header=kwargs.get('call_tracking_header')
+            **clientonly
         )
         pairs.append(SlavePair(client, listener))
 
