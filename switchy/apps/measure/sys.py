@@ -60,8 +60,7 @@ class SysStats(object):
     def psutil(self):
         try:
             return self._psutil
-        except ReferenceError, EOFError:  # rpyc and its weakrefs being flaky
-        # except Exception:
+        except (ReferenceError, EOFError):  # rpyc and its weakrefs being flaky
             if self.rpyc:
                 self.log.warn("resetting rypc connection...")
                 self._conn = conn = self.rpyc.classic_connect()

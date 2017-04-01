@@ -16,7 +16,7 @@ log = utils.get_logger(__name__)
 def plot_df(df, figspec, **kwargs):
     """Plot a pandas data frame according to the provided `figspec`
     """
-    from mpl_helpers import multiplot
+    from .mpl_helpers import multiplot
     return multiplot(df, figspec=figspec, **kwargs)
 
 

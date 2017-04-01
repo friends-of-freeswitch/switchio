@@ -1,6 +1,6 @@
 switchy
 =======
-Fast `FreeSWITCH`_ control purpose-built upon `traffic theory`_ and `stress testing`_.
+Fast `FreeSWITCH`_ control purpose-built on `traffic theory`_ and `stress testing`_.
 
 Overview
 --------
