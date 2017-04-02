@@ -83,7 +83,7 @@ def plot(file_name):
 def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
         duration, interactive, debug, app, metrics_file, loglevel, password):
     log = switchy.utils.log_to_stderr(loglevel)
-    log.propogate = False
+    log.propagate = False
 
     # Check if the specified (or default) app is valid
     switchy.apps.load()
