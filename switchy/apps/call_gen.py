@@ -27,11 +27,10 @@ def get_originator(contacts, *args, **kwargs):
         contacts = (contacts,)
 
     # pop kwargs destined for the listener
-    argname, kwargnames = utils.get_args(observe.EventListener.__init__)
-    lkwargs = {}
-    for name in kwargnames:
-        if name in kwargs:
-            lkwargs[name] = kwargs.pop(name)
+    _, kwargnames = utils.get_args(observe.EventListener.__init__)
+
+    lkwargs = {
+        name: kwargs.pop(name) for name in kwargnames if name in kwargs}
 
     slavepool = observe.get_pool(contacts, **lkwargs)
     return Originator(slavepool, *args, **kwargs)

@@ -1339,10 +1339,8 @@ def get_pool(contacts, **kwargs):
 
         # extract client only kwargs
         _, kwargnames = utils.get_args(Client.__init__)
-        clientonly = {}
-        for name in kwargnames:
-            if name in kwargs:
-                clientonly[name] = kwargs[name]
+        clientonly = {
+            name: kwargs[name] for name in kwargnames if name in kwargs}
 
         client = Client(
             *contact,
