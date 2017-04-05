@@ -11,7 +11,7 @@ Assuming you've gone through the required :doc:`deployment steps
 <fsconfig>` to setup at least one slave, initiating a call becomes
 very simple using the Switchy command line::
 
-    $ switchy run vm-host sip-cannon --profile external --proxy myproxy.com --rate 1 --limit 1 --max-offered 1
+    $ switchy dial vm-host sip-cannon --profile external --proxy myproxy.com --rate 1 --limit 1 --max-offered 1
 
     ...
 
@@ -27,13 +27,12 @@ very simple using the Switchy command line::
     Waiting on 1 active calls to finish
     Waiting on 1 active calls to finish
     Waiting on 1 active calls to finish
-    Load test finished!
+    Dialing session completed!
 
 
-The Switchy `run` sub-command takes several options and a list
-of slaves (or at least one) IP address or hostname. In this
-example switchy connected to the specified slaves, found the specified SIP
-profile and initiated a single call with a duration of 5 seconds to the
+The Switchy `dial` sub-command takes several options and a list of minion IP addresses
+or hostnames. In this example ``switchy`` connected to the specified hosts, found the
+requested SIP profile and initiated a single call with a duration of 5 seconds to the
 device under test (set with the `proxy` option).
 
 For more information on the switchy command line see :doc:`here <cmdline>`.
