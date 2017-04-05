@@ -34,11 +34,29 @@ def list_apps(module):
 @click.argument('file-name', nargs=1, required=True,
                 type=click.Path(exists=True))
 def plot(file_name):
-    import matplotlib
+    import matplotlib  # errors if not installed
     from switchy.apps import measure
     df = measure.load(file_name)
     click.echo('Plotting {} ...\n'.format(file_name))
     df._plot(block=True)
+
+
+def get_apps(appnames):
+    """Retrieve and return a list of app types from a sequence of names.
+    """
+    apps = []
+    if appnames:
+        switchy.apps.load()
+        for appname in appnames:
+            cls = switchy.apps.get(appname)
+            if not cls:
+                raise click.ClickException(
+                    "Unknown app '{}'\nUse list-apps command "
+                    "to list available apps".format(appname)
+                )
+            apps.append(cls)
+
+    return apps
 
 
 @cli.command()
@@ -69,33 +87,24 @@ def plot(file_name):
               default=False,
               help='Whether to jump into an interactive session '
               'after setting up the call originator')
-@click.option('--debug/--no-debug',
-              default=False, help='Whether to enable debugging')
-@click.option('--app', default='Bert',
-              help='Switchy application to execute '
+@click.option('--app', default=['Bert'], multiple=True,
+              help='Switchy application to load (can pass multiple times '
+              'with apps loaded in the order specified).'
               '(see list-apps command to list available apps)')
 @click.option('--password', default='ClueCon',
               help='Password to use for ESL authentication')
 @click.option('--metrics-file',
               default=None, help='Store metrics at the given file location')
-@click.option('--loglevel',
-              default='INFO', help='Set the Python logging level')
-def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
-        duration, interactive, debug, app, metrics_file, loglevel, password):
+@click.option('-l', '--loglevel', default='INFO',
+              help='Set the Python logging level')
+def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
+         duration, interactive, app, metrics_file, loglevel, password):
+    """Spin up an auto-dialer.
+    """
     log = switchy.utils.log_to_stderr(loglevel)
     log.propagate = False
 
-    # Check if the specified (or default) app is valid
-    switchy.apps.load()
-    cls = switchy.apps.get(app)
-    if not cls:
-        raise click.ClickException('Unknown app {}. Use list-apps command '
-                                   'to list available apps'.format(app))
-
-    # TODO: get_originator() receives an apps tuple (defaults to Bert) to
-    # select the application we should accept --app multi argument list to
-    # set multiple apps
-    orig = switchy.get_originator(
+    dialer = switchy.get_originator(
         hosts,
         rate=int(rate) if rate else None,
         limit=int(limit) if limit else None,
@@ -104,14 +113,16 @@ def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
         auto_duration=True if not duration else False,
         auth=password,
     )
-    orig.load_app(cls)
+    apps = get_apps(app)
+    for cls in apps:
+        dialer.load_app(cls)
 
     # Prepare the originate string for each slave
     # depending on the profile name and network settings
     # configured for that profile in that particular slave
     p = re.compile('.+?BIND-URL\s+?.+?@(.+?):(\d+).+?\s+',
                    re.IGNORECASE | re.DOTALL)
-    for client in orig.pool.clients:
+    for client in dialer.pool.clients:
         status = client.client.api(
             'sofia status profile {}'.format(profile)).getBody()
         m = p.match(status)
@@ -135,8 +146,8 @@ def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
                             proxy='{}'.format(proxy))
 
     log.info('Starting load test for server {} at {}cps using {} hosts'
-             .format(proxy, orig.rate, len(hosts)))
-    click.echo(orig)
+             .format(proxy, dialer.rate, len(hosts)))
+    click.echo(dialer)
     if interactive:
         try:
             import IPython
@@ -155,27 +166,62 @@ def run(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
             shell = code.InteractiveConsole(vars)
             shell.interact()
 
-        orig.shutdown()
-        click.echo(orig)
+        dialer.shutdown()
+        click.echo(dialer)
     else:
-        orig.start()
-        while orig.state != 'STOPPED':
+        dialer.start()
+        while dialer.state != 'STOPPED':
             try:
                 time.sleep(1)
-                click.echo(orig)
+                click.echo(dialer)
             except KeyboardInterrupt:
-                orig.shutdown()
-                click.echo(orig)
+                dialer.shutdown()
+                click.echo(dialer)
 
-    while True:
-        active_calls = orig.count_calls()
-        if active_calls <= 0:
-            break
-        click.echo('Waiting on {} active calls to finish'.format(active_calls))
-        time.sleep(1)
+    try:
+        while True:
+            active_calls = dialer.count_calls()
+            if active_calls <= 0:
+                break
+            click.echo(
+                'Waiting on {} active calls to finish'
+                .format(active_calls)
+            )
+            time.sleep(1)
+    except KeyboardInterrupt:
+        dialer.shutdown()
 
     if metrics_file:
         click.echo('Storing test metrics at {}'.format(metrics_file))
-        orig.measurers.to_store(metrics_file)
+        dialer.measurers.to_store(metrics_file)
 
-    click.echo('Load test finished!')
+    click.echo('Dialing session completed!')
+
+
+@cli.command('serve')
+@click.argument('hosts', nargs=-1, required=True)
+@click.option('--app', default=[], multiple=True,
+              help='Switchy application to load (can pass multiple times '
+              'with apps loaded in the order specified).'
+              '(see list-apps command to list available apps)')
+@click.option('--password', default='ClueCon',
+              help='Password to use for ESL authentication')
+@click.option('-l', '--loglevel', default='INFO',
+              help='Set the Python logging level')
+@click.option('--app-header', default='default',
+              help='Event header to use for activating provided apps')
+@click.option('--profile',
+              default='internal',
+              help='Profile to use for originating calls')
+def serve(hosts, profile, app, loglevel, password, app_header):
+    """Start a switchy service and block forever.
+    """
+    log = switchy.utils.log_to_stderr(loglevel.upper())
+    log.propagate = False
+    service = switchy.Service(hosts, auth=password)
+    apps = get_apps(app)
+    if apps:
+        for cls in apps:
+            service.apps.load_app(cls, app_id=app_header)
+
+    service.run()
