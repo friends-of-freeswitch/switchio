@@ -1,4 +1,3 @@
-.. _services:
 .. toctree::
     :maxdepth: 2
     :hidden:
@@ -6,6 +5,8 @@
     api
     apps
 
+
+.. _services:
 
 Building a cluster service
 ==========================
@@ -44,6 +45,20 @@ In this example all three of our *FreeSWITCH* servers load a `Proxier`
 the SIP Request-URI header. The `app_id='default'` kwarg is required to tell
 the internal event loop that this app should be used as the default (i.e. when
 no other app has consumed the event/session for processing).
+
+Launching a service
+-------------------
+You can launch ``switchy`` services using the :ref:`cli client <cli_client>`.
+Simply specify the list of FreeSWITCH hosts to connect to and specify
+the desired :doc:`app(s) <apps>` which should be loaded using (multiples
+of) the ``--app`` option::
+
+    switchy serve freeswitch1.net freeswitch2.net --app Proxier
+
+This runs the example from above.
+
+.. note::
+    You can specify ``--loglevel`` for detailed logging.
 
 .. _flask-like:
 
