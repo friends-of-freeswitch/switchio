@@ -23,8 +23,12 @@ from .measure import CDR
 def get_originator(contacts, *args, **kwargs):
     """Originator factory
     """
-    if isinstance(contacts, str):
-        contacts = (contacts,)
+    try:
+        if isinstance(contacts, basestring):
+            contacts = (contacts,)
+    except NameError:  # py3 compat
+        if isinstance(contacts, str):
+            contacts = (contacts,)
 
     # pop kwargs destined for the listener
     _, kwargnames = utils.get_args(observe.EventListener.__init__)
