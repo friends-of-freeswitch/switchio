@@ -313,7 +313,7 @@ class Originator(object):
         '''Check for all jobs complete
         '''
         # if duration == 0 then never schedule hangup events
-        if not sess.call.vars.get('noautohangup') and self.duration:
+        if sess and not sess.call.vars.get('noautohangup') and self.duration:
             self.log.debug("scheduling auto hangup for '{}'"
                            .format(sess.uuid))
             # schedule hangup
