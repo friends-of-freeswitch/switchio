@@ -121,7 +121,7 @@ class Router(object):
         """Signal a router to discontinue execution.
         """
 
-    def __init__(self, guards, reject_on_guard=True):
+    def __init__(self, guards=None, reject_on_guard=True):
         self.guards = guards or {}
         self.guard = reject_on_guard
         self.route = PatternRegistrar()

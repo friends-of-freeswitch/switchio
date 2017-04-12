@@ -1014,11 +1014,13 @@ class Client(object):
         )
         failed = False
         cb_paths = []
+        handler_paths = []
         # insert handlers and callbacks
         for ev_type, cb_type, obj in marks.get_callbacks(app):
             if cb_type == 'handler':
                 # TODO: similar unloading on failure here as above?
                 listener.add_handler(ev_type, obj)
+                handler_paths.append(ev_type, obj)
 
             elif cb_type == 'callback':
                 # add default handler if none exists
@@ -1043,8 +1045,13 @@ class Client(object):
                                .format(ev_type, obj.__name__, group_id))
 
         if failed:
-            raise TypeError("app load failed since '{}' is not a valid"
+            raise TypeError("App load failed since '{}' is not a valid"
                             "callback type".format(failed))
+        if not cb_paths and not handler_paths:
+            raise TypeError(
+                "Failed to load '{}' no callbacks or handlers could be found"
+                .format(name)
+            )
 
         # prepend the provided header to use for app id look ups
         # TODO: should probably be moved into `add_callback()`?

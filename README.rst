@@ -2,7 +2,7 @@ switchy
 =======
 |pypi| |versions| |pypi_downloads| |docs|
 
-FreeSWITCH_ control and stress testing using pure Python_.
+Async FreeSWITCH_ cluster control using pure Python_.
 
 `switchy` intends to become the "flask_ for VoIP" but with a focus on performance and
 scalable service system design.

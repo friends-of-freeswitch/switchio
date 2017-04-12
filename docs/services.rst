@@ -1,4 +1,3 @@
-.. _services:
 .. toctree::
     :maxdepth: 2
     :hidden:
@@ -6,6 +5,8 @@
     api
     apps
 
+
+.. _services:
 
 Building a cluster service
 ==========================
@@ -45,6 +46,25 @@ the SIP Request-URI header. The `app_id='default'` kwarg is required to tell
 the internal event loop that this app should be used as the default (i.e. when
 no other app has consumed the event/session for processing).
 
+Launching a service
+-------------------
+You can launch ``switchy`` services using the :ref:`cli client <cli_client>`.
+Simply specify the list of FreeSWITCH hosts to connect to and specify
+the desired :doc:`app(s) <apps>` which should be loaded using (multiples
+of) the ``--app`` option::
+
+    switchy serve freeswitch1.net freeswitch2.net --app switchy.apps.routers:Proxier
+
+This runs the example from above.
+You can also load apps from arbitrary Python modules you've written::
+
+    switchy serve freeswitch1.net freeswitch2.net --app ./path/to/dialplan.py:router
+
+.. note::
+    The name specified **after** the ``':'`` is the attribute that
+    will be ``getattr``-ed on the module.
+    You can specify ``--loglevel`` for detailed logging.
+
 .. _flask-like:
 
 `Flask`-like routing
@@ -55,6 +75,7 @@ can define a routing system reminiscent of `flask`_.
 Let's start with an example of `blocking certain codes`_:
 
 .. code-block:: python
+    :caption: dialplan.py
 
     from switchy.apps.routers import Router
 
@@ -95,6 +116,15 @@ and works by taking in a `regex` ``pattern``, an optional ``field`` (default
 is ``'Caller-Destination-Number'``) and ``kwargs``.
 The ``pattern`` must be matched against the ``field`` *event header* in order for
 the *route* to be called with ``kwargs`` (i.e. ``reject_international(**kwargs)``).
+
+
+You can run this app directly using ``switchy serve``::
+
+    switchy serve freeswitch1.net freeswitch2.net --app ./dialplan.py:router
+
+.. note::
+    In the case above this is the ``Router`` *instance* which has
+    `route` function (``reject_international``) already registered.
 
 Let's extend our example to include some routes which `bridge`_ differently
 based on the default ``'Caller-Destination-Number'`` *event header*:

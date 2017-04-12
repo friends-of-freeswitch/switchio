@@ -1,7 +1,9 @@
-Command line
-============
-Switchy provides a convenient cli to initiate load tests with the help
-of click_. The program is installed as binary `switchy`::
+.. _cli_client:
+
+Command line client
+===================
+``switchy`` provides a convenient cli to initiate auto-dialers and call control services with
+the help of click_. The program is installed as binary ``switchy``::
 
     $ switchy
     Usage: switchy [OPTIONS] COMMAND [ARGS]...
@@ -12,9 +14,13 @@ of click_. The program is installed as binary `switchy`::
     Commands:
       list-apps
       plot
-      run
+      dial
+      serve
 
 A few sub-commands are provided.
+
+Listing apps
+------------
 For example you can list the applications available (:doc:`apps` determine call flows)::
 
     $ switchy list-apps
@@ -52,11 +58,13 @@ For example you can list the applications available (:doc:`apps` determine call 
     `Bridger`: Bridge sessions within a call an arbitrary number of times.  
 
 
-The applications listed can be used with the `app` option to the `run` sub-command.
-`run` is the main sub-command used to start a load test. Here is the help::
+Spawning the auto-dialer
+------------------------
+The applications listed can be used with the `app` option to the `dial` sub-command.
+`dial` is the main sub-command used to start a load test. Here is the help::
 
-    $ switchy run --help
-    Usage: switchy run [OPTIONS] SLAVES...
+    $ switchy dial --help
+    Usage: switchy dial [OPTIONS] HOSTS...
 
     Options:
       --proxy TEXT                    Hostname or IP address of the proxy device
@@ -79,9 +87,9 @@ The applications listed can be used with the `app` option to the `run` sub-comma
       --help                          Show this message and exit.
 
 
-The `SLAVES` argument can be one or more IP's or hostnames for each configured FreeSWITCH process
-used to originate traffic. The `proxy` option is required and must be the IP address or hostname
-of the device you are testing. All slaves will direct traffic to the specified proxy.
+The `HOSTS` argument can be one or more IP's or hostnames for each configured FreeSWITCH process
+used to originate traffic. The `proxy` option is required and must be the hostname of the first hop;
+all hosts will direct traffic to this proxy.
 
 The other options are not strictly required but typically you will want to at least specify a given call rate
 using the `rate` option, max number of concurrent calls (erlangs) with `limit` and possibly max number of
@@ -90,19 +98,25 @@ calls offered with `max-offered`.
 For example, to start a test using an slave located at `1.1.1.1` to test device at `2.2.2.2` with a maximum of
 `2000` calls at `30` calls per second and stopping after placing `100,000` calls you can do::
 
-    $ switchy run 1.1.1.1 --profile external --proxy 2.2.2.2 --rate 30 --limit 2000 --max-offered 100000
+    $ switchy dial 1.1.1.1 --profile external --proxy 2.2.2.2 --rate 30 --limit 2000 --max-offered 100000
 
     Slave 1.1.1.1 SIP address is at 1.1.1.1:5080
     Starting load test for server 2.2.2.2 at 30cps using 1 slaves
     ...
 
-Note that the `profile` option is also important and the profile must exist already for all specified slaves.
+Note that the `profile` option is also important and the profile must already exist.
 
-In this case the call duration would be automatically calculated to sustain that call rate and that max calls
-exactly, but you can tweak the call duration in seconds using the `duration` option.
+In this case the call duration would be automatically calculated to sustain that call
+rate and that max calls exactly, but you can tweak the call duration in seconds using
+the `duration` option.
 
 Additionally you can use the `metrics-file` option to store call metrics in a file.
 You can then use the `plot` sub-command to generate graphs of the collected data using
 `matplotlib` if installed.
+
+Launching a cluster routing service
+-----------------------------------
+You can also launch cluster controllers using ``switchy serve``.
+See :ref:`services` for more details.
 
 .. _click: http://click.pocoo.org/5/

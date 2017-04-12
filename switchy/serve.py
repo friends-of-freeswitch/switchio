@@ -13,14 +13,15 @@ class Service(object):
     """Serve centralized, long running, call processing apps on top of a
     FreeSWITCH cluster.
     """
-    def __init__(self, contacts):
-        self.pool = get_pool(
-            contacts, call_tracking_header='variable_call_uuid')
+    def __init__(self, contacts, **kwargs):
+        kwargs.setdefault('call_tracking_header', 'variable_call_uuid')
+        self.pool = get_pool(contacts, **kwargs)
         self.apps = AppManager(self.pool)
         self.host = self.pool.evals('listener.host')
         self.log = utils.get_logger(utils.pstr(self))
         # initialize all reactor event loops
         self.pool.evals('listener.connect()')
+        self.pool.evals('client.connect()')
 
     def run(self, block=True):
         """Run service optionally blocking until stopped.
