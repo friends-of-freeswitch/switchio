@@ -2,6 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import re
+import os
+import sys
+import importlib
 import time
 import click
 import switchy
@@ -45,16 +48,42 @@ def get_apps(appnames):
     """Retrieve and return a list of app types from a sequence of names.
     """
     apps = []
-    if appnames:
-        switchy.apps.load()
-        for appname in appnames:
+    switchy.apps.load()
+    for appname in appnames:
+        path, _, attr = appname.partition(':')
+
+        # module syntax (`mod.submod.AppName` or `mod.submod:AppName`)
+        if not os.path.isfile(path) and '.' in appname:
+            if not attr:
+                path, attr = os.path.splitext(path)
+                attr = attr.lstrip('.')
+            mod = importlib.import_module(path)
+
+        # file path syntax (`/path/to/my.py:AppName`)
+        elif os.path.isfile(path):
+            basename = os.path.basename(path)
+            modpath, ext = os.path.splitext(basename)
+            assert ext == '.py', "{} is not a Python module?".format(
+                appname)
+            sys.path.append(os.path.dirname(os.path.expanduser(path)))
+            mod = __import__(modpath)
+        else:  # load a built-in app by name
             cls = switchy.apps.get(appname)
-            if not cls:
-                raise click.ClickException(
-                    "Unknown app '{}'\nUse list-apps command "
-                    "to list available apps".format(appname)
-                )
-            apps.append(cls)
+            attr = getattr(cls, '__name__', None)
+            mod = None
+
+        if not attr:
+            raise click.ClickException(
+                "`{}` does not specify an app name. Use `{}:AppName`"
+                .format(appname, appname))
+        if mod:
+            cls = getattr(mod, attr)
+        if not cls:
+            raise click.ClickException(
+                "Unknown app '{}'\nUse list-apps command "
+                "to list available apps".format(appname)
+            )
+        apps.append(cls)
 
     return apps
 
