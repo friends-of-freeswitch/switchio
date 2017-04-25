@@ -1020,7 +1020,7 @@ class Client(object):
             if cb_type == 'handler':
                 # TODO: similar unloading on failure here as above?
                 listener.add_handler(ev_type, obj)
-                handler_paths.append(ev_type, obj)
+                handler_paths.append((ev_type, obj))
 
             elif cb_type == 'callback':
                 # add default handler if none exists
