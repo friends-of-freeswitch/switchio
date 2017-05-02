@@ -63,12 +63,11 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
 
     # generate any requested Xheaders
     if xheaders is not None:
-        xheader_prefix = 'sip_h_X-'
         for name, val in xheaders.items():
-            if xheader_prefix in name:
+            if name.startswith('sip_h_'):
                 params[name] = val
             else:
-                params['{}{}'.format(xheader_prefix, name)] = val
+                params['{}{}'.format('sip_h_X-', name)] = val
 
     # override with user settings
     params.update(kwargs)
