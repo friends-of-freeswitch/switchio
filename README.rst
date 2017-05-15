@@ -16,6 +16,13 @@ Please readthedocs_ for more information.
 
 Installation
 ============
+Note that you need to at least have the SWIG_ package installed in your Linux distribution
+before installing switchy via pip (e.g **yum install swig** or **apt-get install swig**).
+
+.. _SWIG: http://www.swig.org/
+
+Once you have swig installed (the swig command should be available) you can use pip to install switchy:
+
 ::
 
     pip install switchy
