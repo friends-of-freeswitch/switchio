@@ -49,9 +49,12 @@ def get_apps(appnames):
     """
     apps = []
     switchy.apps.load()
-    for appname in appnames:
-        path, _, attr = appname.partition(':')
-
+    for appspec in appnames:
+        args = {}
+        appname, _, argspec = appspec.partition('/')
+        path, _, attr= appspec.partition(':')
+        if argspec:
+            args = dict(v.split('=') for v in argspec.split(','))
         # module syntax (`mod.submod.AppName` or `mod.submod:AppName`)
         if not os.path.isfile(path) and '.' in appname:
             if not attr:
@@ -83,7 +86,7 @@ def get_apps(appnames):
                 "Unknown app '{}'\nUse list-apps command "
                 "to list available apps".format(appname)
             )
-        apps.append(cls)
+        apps.append((cls, args))
 
     return apps
 
@@ -117,9 +120,12 @@ def get_apps(appnames):
               help='Whether to jump into an interactive session '
               'after setting up the call originator')
 @click.option('--app', default=['Bert'], multiple=True,
-              help='Switchy application to load (can pass multiple times '
-              'with apps loaded in the order specified).'
-              '(see list-apps command to list available apps)')
+              help='Switchy application to load. You can pass this option '
+              'multiple times and the apps are loaded in the order specified. '
+              'See the \'list-apps\' command to list available apps. For every '
+              'listed app you can optionally specify arguments by adding a slash '
+              'followed by comma-separated k=v pairs for every argument. (e.g '
+              'Bert/bert_timer_name=soft,bert_timeout_ms=5000)')
 @click.option('--password', default='ClueCon',
               help='Password to use for ESL authentication')
 @click.option('--metrics-file',
@@ -143,8 +149,8 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
         auth=password,
     )
     apps = get_apps(app)
-    for cls in apps:
-        dialer.load_app(cls)
+    for cls, args in apps:
+        dialer.load_app(cls, ppkwargs=args)
 
     # Prepare the originate string for each slave
     # depending on the profile name and network settings
@@ -250,7 +256,7 @@ def serve(hosts, profile, app, loglevel, password, app_header):
     service = switchy.Service(hosts, auth=password)
     apps = get_apps(app)
     if apps:
-        for cls in apps:
+        for cls, _ in apps:
             service.apps.load_app(cls, app_id=app_header)
 
     service.run()
