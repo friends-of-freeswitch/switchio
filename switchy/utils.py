@@ -51,7 +51,7 @@ def log_to_stderr(level=None):
     '''
     log = logging.getLogger()  # the root logger
     if level:
-        log.setLevel(level.upper())
+        log.setLevel(level.upper() if not isinstance(level, int) else level)
     if not any(
         handler.stream == sys.stderr for handler in log.handlers
         if getattr(handler, 'stream', None)
