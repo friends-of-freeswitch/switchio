@@ -114,7 +114,7 @@ html_theme = 'alabaster'
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    'github_user': 'sangoma',
+    'github_user': 'friends-of-freeswitch',
     'github_repo': 'switchy',
     'github_button': 'true',
     'github_banner': 'true',

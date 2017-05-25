@@ -25,15 +25,14 @@ with open('README.rst') as f:
 setup(
     name="switchy",
     version='0.1.0.alpha1',
-    description='A fast FreeSWITCH control library purpose-built on '
+    description='Async FreeSWITCH cluster control purpose-built on '
                 'traffic theory and stress testing.',
     long_description=readme,
     license='Mozilla',
     author='Sangoma Technologies',
-    author_email='qa@eng.sangoma.com',
     maintainer='Tyler Goodlet',
-    maintainer_email='tgoodlet@sangoma.com',
-    url='https://github.com/sangoma/switchy',
+    maintainer_email='tgoodlet@gmail.com',
+    url='https://github.com/friends-of-freeswitch/switchy',
     platforms=['linux'],
     packages=[
         'switchy',
