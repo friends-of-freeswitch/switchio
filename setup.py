@@ -53,7 +53,6 @@ setup(
         'hdf5': ['tables==3.2.1.1'],
         'graphing': ['matplotlib', 'pandas>=0.18'],
     },
-    setup_requires=['pytest-runner'],
     tests_require=['pytest'],
     classifiers=[
         'Development Status :: 3 - Alpha',
