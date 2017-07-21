@@ -5,6 +5,7 @@
 Tests for synchronous call helper
 """
 import time
+import pytest
 from switchy import sync_caller
 from switchy.apps.players import TonePlay, PlayRec
 
@@ -27,6 +28,7 @@ def test_toneplay(fsip):
         assert caller.client.listener.count_calls() == 0
 
 
+@pytest.mark.skip(reason='FS 1.6+ bug in record events')
 def test_playrec(fsip):
     '''Test the synchronous caller with a simulated conversation using the the
     `PlayRec` app. Currently this test does no audio checking but merely

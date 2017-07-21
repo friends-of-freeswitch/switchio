@@ -11,6 +11,7 @@
 from __future__ import division
 import time
 import math
+import pytest
 from switchy.apps import dtmf, players
 
 
@@ -96,6 +97,7 @@ def test_dtmf_passthrough(get_orig):
     assert orig.state == "STOPPED"
 
 
+@pytest.mark.skip(reason='record events broken on FS 1.6+')
 def test_convo_sim(get_orig):
     """Test the `PlayRec` app when used for a load test with the `Originator`
     """
@@ -129,6 +131,6 @@ def test_convo_sim(get_orig):
     assert orig.pool.count_calls() == orig.limit
 
     # wait for all calls to end
-    orig.waitwhile()
+    orig.waitwhile(timeout=30)
     # ensure number of calls recorded matches the rec period
     assert float(len(recs)) == math.floor((stop - start) / playrec.rec_period)

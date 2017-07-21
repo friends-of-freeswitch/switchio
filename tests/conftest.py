@@ -19,8 +19,11 @@ def pytest_addoption(parser):
                      default=5080,
                      help="fs-engine contact port")
     parser.addoption("--cps", action="store", dest='cps',
-                     default=200,
+                     default=100,
                      help="num of sipp calls to launch per second")
+    parser.addoption("--usedocker", action="store", dest='fshost',
+                     default=None,
+                     help="fs-engine server host or ip")
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -146,7 +149,12 @@ def scenarios(request, fs_socks, loglevel):
         # first hop should be fs server
         scen = pysipp.scenario(
             proxyaddr=fssock,
-            defaults={'src': socket.getfqdn()})
+            defaults={
+                'local_host': socket.getaddrinfo(
+                    socket.getfqdn(), 0, socket.AF_INET, socket.SOCK_DGRAM
+                )[0][4][0]
+            }
+        )
         scen.log = pl
 
         # set client destination
