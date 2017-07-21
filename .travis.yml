@@ -1,0 +1,37 @@
+sudo: required
+services:
+    - docker
+
+language: python
+python:
+    - '2.7'
+    - '3.5'
+    - '3.6'
+    # - pypy
+    - nightly
+
+addons:
+  apt:
+    packages:
+      - swig
+
+before_install:
+  # build and install SIPp
+  - git clone https://github.com/SIPp/sipp.git
+  - cd sipp
+  - ./build.sh
+  - export PATH="$PWD:$PATH"
+  - cd ..
+
+  # pull and start up freeswitch container bound to 'lo'
+  - docker pull safarov/freeswitch
+  - docker run -d --net=host -v $TRAVIS_BUILD_DIR/conf/ci-minimal/:/etc/freeswitch safarov/freeswitch
+  - docker ps -a
+
+install:
+  # - pip install -U tox
+  - pip install .  -r requirements-test.txt
+
+# NOTE: no support for pandas/pytables yet
+script:
+  - pytest --fshost=127.0.0.1 tests/
