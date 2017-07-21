@@ -9,7 +9,7 @@
     <param name="debug" value="0"/>
 
     <param name="dialplan" value="XML"/>
-    <param name="context" value="public"/>
+    <param name="context" value="switchy"/>
     <param name="codec-prefs" value="$${global_codec_prefs}"/>
 
     <param name="rtp-ip" value="$${local_ip_v4}"/>
