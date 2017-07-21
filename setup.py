@@ -60,6 +60,7 @@ setup(
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
         'Intended Audience :: Telecommunications Industry',
         'Intended Audience :: Developers',
         'Topic :: Communications :: Telephony',
