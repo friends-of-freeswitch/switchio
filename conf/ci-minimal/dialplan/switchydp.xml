@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A context for relinquishing control of all calls to Switchy, the inbound ESL client -->
+<context name="switchy">
+  <!-- Park call and transfer control to esl -->
+  <extension name="switchypark">
+    <condition field="destination_number" expression="^(.*)$">
+      <action application="park"/>
+    </condition>
+  </extension>
+</context>
