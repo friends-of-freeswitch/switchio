@@ -248,7 +248,7 @@ def test_measurers(measure, tmpdir, storetype):
 def test_write_speed(measure, storer):
     """Assert we can write and read quickly to the storer
     """
-    sleeptime = 0.03
+    sleeptime = 0.05
     ds = write_bufs(3, ds=storer)
     numentries = 3 * ds._buf_size
     if isinstance(ds.data, list):

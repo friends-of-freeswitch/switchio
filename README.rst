@@ -1,31 +1,32 @@
 switchy
 =======
-|pypi| |versions| |pypi_downloads| |docs|
+async FreeSWITCH_ cluster control using pure Python_!
 
-Async FreeSWITCH_ cluster control using pure Python_.
+|pypi| |travis| |versions| |pypi_downloads| |docs|
 
-`switchy` intends to become the "flask_ for VoIP" but with a focus on performance and
-scalable service system design.
-
-Please readthedocs_ for more information.
+``switchy`` intends to be the "flask_ for VoIP" but with a focus on performance and
+scalable service system design. Please `read the docs`_ for more information!
 
 .. _FreeSWITCH: https://freeswitch.org/
 .. _Python: https://www.python.org/
 .. _flask: http://flask.pocoo.org/
-.. _readthedocs: https://switchy.readthedocs.org/
+.. _read the docs: https://switchy.readthedocs.org/
 
 Installation
 ============
-Note that you need to at least have the SWIG_ package installed in your Linux distribution
-before installing switchy via pip (e.g **yum install swig** or **apt-get install swig**).
+Note that you need to at least have the SWIG_ package installed in your
+Linux distribution before installing ``switchy`` via ``pip``::
 
-.. _SWIG: http://www.swig.org/
+    yum install swig
+    # or
+    apt-get install swig
 
-Once you have swig installed (the swig command should be available) you can use pip to install switchy:
-
-::
+Once you have SWIG installed (the ``swig`` command should be available)
+you can use ``pip`` to install ``switchy``::
 
     pip install switchy
+
+.. _SWIG: http://www.swig.org/
 
 Dependencies
 ============
@@ -67,13 +68,11 @@ license, except where explicitly noted.
 
 .. |versions| image:: https://img.shields.io/pypi/pyversions/switchy.svg
     :target: https://pypi.python.org/pypi/switchy
-
 .. |pypi| image:: https://img.shields.io/pypi/v/switchy.svg
     :target: https://pypi.python.org/pypi/switchy
-
+.. |travis| image:: https://img.shields.io/travis/friends-of-freeswitch/switchy/master.svg
+    :target: https://travis-ci.org/friends-of-freeswitch/switchy
 .. |pypi_downloads| image:: https://img.shields.io/pypi/d/switchy.svg
     :target: https://pypi.python.org/pypi/switchy
-
-.. |docs| image::
-     https://readthedocs.org/projects/switchy/badge/?version=latest
+.. |docs| image:: https://readthedocs.org/projects/switchy/badge/?version=latest
      :target: http://switchy.readthedocs.io/en/latest/?badge=latest

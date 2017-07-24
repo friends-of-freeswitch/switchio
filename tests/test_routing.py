@@ -141,7 +141,8 @@ def test_break_on_true(fs_socks, service, router):
 
     clients = []
     for socketaddr in fs_socks:
-        client = pysipp.client(destaddr=socketaddr)
+        client = pysipp.scenario().clients['uac']
+        client.destaddr = socketaddr
         client.pause_duration = 2000
         clients.append(client)
 
