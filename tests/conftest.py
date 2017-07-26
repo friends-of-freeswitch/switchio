@@ -1,12 +1,13 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-import pytest
-import socket
+import os
 import sys
+import socket
 import itertools
+import pytest
 from distutils import spawn
-from switchy.utils import ncompose
+from switchy import utils
 
 
 def pytest_addoption(parser):
@@ -21,9 +22,10 @@ def pytest_addoption(parser):
     parser.addoption("--cps", action="store", dest='cps',
                      default=100,
                      help="num of sipp calls to launch per second")
-    parser.addoption("--usedocker", action="store", dest='fshost',
-                     default=None,
+    parser.addoption("--use_docker", action="store_true", dest='usedocker',
                      help="fs-engine server host or ip")
+    parser.addoption("--num_containers", action="store", dest='ncntrs',
+                     default=2, help="fs-engine server host or ip")
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -40,22 +42,40 @@ def loglevel(request):
 @pytest.fixture(scope='session')
 def fshosts(request):
     '''Return the FS test server hostnames passed via the
-    `--fshost` cmd line arg.
+    ``--fshost`` cmd line arg.
     '''
-    argstring = request.config.option.fshost
-    if not argstring:
-        pytest.skip("the '--fshost' option is required to determine the "
-                    "FreeSWITCH slave server(s) to connect to for testing")
-    # construct a list if passed as arg
-    fshosts = argstring.split(',')
-    return fshosts
+    option = request.config.option
+    argstring = option.fshost
+    if argstring:
+        # construct a list if passed as arg
+        fshosts = argstring.split(',')
+        yield fshosts
+
+    elif option.usedocker:
+        docker = request.getfixturevalue('dockerctl')
+        confpath = os.path.abspath(os.path.join(os.path.dirname(
+            utils.get_pkg_dir()), 'conf/ci-minimal/'))
+        addrs = []
+        with docker.run(
+            'safarov/freeswitch',
+            volumes={confpath: {'bind': '/etc/freeswitch/'}},
+            num=option.ncntrs
+        ) as containers:
+            for container in containers:
+                addrs.append(container.attrs['NetworkSettings']['IPAddress'])
+            yield addrs
+    else:
+        pytest.skip("the '--fshost' or '--usedocker` options are required "
+                    "to determine the FreeSWITCH server(s) to connect "
+                    "to for testing")
 
 
 @pytest.fixture(scope='session')
 def fs_ip_addrs(fshosts):
     '''Convert provided host names to ip addrs via dns.
     '''
-    return list(map(ncompose(socket.gethostbyname, socket.getfqdn), fshosts))
+    return list(map(utils.ncompose(
+                socket.gethostbyname, socket.getfqdn), fshosts))
 
 
 @pytest.fixture(scope='session')
