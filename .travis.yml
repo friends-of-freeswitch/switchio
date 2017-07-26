@@ -24,9 +24,9 @@ before_install:
   - cd ..
 
   # pull and start up freeswitch container bound to 'lo'
-  - docker pull safarov/freeswitch
-  - docker run -d --net=host -v $TRAVIS_BUILD_DIR/conf/ci-minimal/:/etc/freeswitch safarov/freeswitch
-  - docker ps -a
+  # - docker pull safarov/freeswitch
+  # - docker run -d --net=host -v $TRAVIS_BUILD_DIR/conf/ci-minimal/:/etc/freeswitch safarov/freeswitch
+  # - docker ps -a
 
 install:
   # - pip install -U tox
@@ -34,4 +34,4 @@ install:
 
 # NOTE: no support for pandas/pytables yet
 script:
-  - pytest --fshost=127.0.0.1 tests/
+  - pytest --use_docker tests/ -sv
