@@ -34,4 +34,4 @@ install:
 
 # NOTE: no support for pandas/pytables yet
 script:
-  - pytest --use_docker tests/ -sv
+  - pytest --use-docker tests/
