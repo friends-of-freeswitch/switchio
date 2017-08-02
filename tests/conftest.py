@@ -23,9 +23,9 @@ def pytest_addoption(parser):
                      default=100,
                      help="num of sipp calls to launch per second")
     parser.addoption("--use-docker", action="store_true", dest='usedocker',
-                     help="fs-engine server host or ip")
-    parser.addoption("--num_containers", action="store", dest='ncntrs',
-                     default=2, help="fs-engine server host or ip")
+                     help="Toggle use of docker containers for testing")
+    parser.addoption("--num-containers", action="store", dest='ncntrs',
+                     default=2, help="Number of docker containers to spawn")
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -33,23 +33,32 @@ def loglevel(request):
     level = max(40 - request.config.option.verbose * 10, 10)
     if sys.stdout.isatty():
         # enable console logging
-        from switchy import utils
         utils.log_to_stderr(level)
 
     return level
 
 
 @pytest.fixture(scope='session')
-def containers(request):
+def confdir():
+    dirname = os.path.dirname
+    dirpath = os.path.abspath(
+        os.path.join(
+            dirname(dirname(os.path.realpath(__file__))),
+            'conf/ci-minimal/'
+        )
+    )
+    return dirpath
+
+
+@pytest.fixture(scope='session')
+def containers(request, confdir):
     """Return a sequence of docker containers.
     """
     if request.config.option.usedocker:
         docker = request.getfixturevalue('dockerctl')
-        confpath = os.path.abspath(os.path.join(os.path.dirname(
-            utils.get_pkg_dir()), 'conf/ci-minimal/'))
         with docker.run(
             'safarov/freeswitch',
-            volumes={confpath: {'bind': '/etc/freeswitch/'}},
+            volumes={confdir: {'bind': '/etc/freeswitch/'}},
             num=request.config.option.ncntrs
         ) as containers:
             yield containers
@@ -66,6 +75,7 @@ def fshosts(request):
     '''
     argstring = request.config.option.fshost
     addrs = []
+
     if argstring:
         # construct a list if passed as arg
         fshosts = argstring.split(',')
@@ -76,6 +86,7 @@ def fshosts(request):
         for container in containers:
             addrs.append(container.attrs['NetworkSettings']['IPAddress'])
         yield addrs
+
     else:
         pytest.skip("the '--fshost' or '--use-docker` options are required "
                     "to determine the FreeSWITCH server(s) to connect "
