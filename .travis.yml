@@ -11,35 +11,40 @@ python:
     - nightly
 
 
-before_install:
-    # build and install latest SWIG
-    - git clone https://github.com/swig/swig.git
-    - cd swig
-    - git checkout rel-3.0.12
-    - ./autogen.sh
-    - ./configure --prefix=$HOME/swig
-    - make
-    - make install
-    - export PATH="$HOME/swig/bin/:$PATH"
-    - cd ..
+jobs:
+  include:
+    - stage: 'build SWIG and SIPp'
+      script:
+        # build and install latest SWIG
+        - git clone https://github.com/swig/swig.git
+        - cd swig
+        - git checkout rel-3.0.12
+        - ./autogen.sh
+        - ./configure --prefix=$HOME/swig
+        - make
+        - make install
+        - export PATH="$HOME/swig/bin/:$PATH"
+        - cd ..
 
-    # build and install SIPp
-    - git clone https://github.com/SIPp/sipp.git
-    - cd sipp
-    - ./build.sh
-    - export PATH="$PWD:$PATH"
-    - cd ..
+    - script:
+        # build and install SIPp
+        - git clone https://github.com/SIPp/sipp.git
+        - cd sipp
+        - ./build.sh
+        - export PATH="$PWD:$PATH"
+        - cd ..
 
-  # pull and start up freeswitch container bound to 'lo'
-  # - docker pull safarov/freeswitch
-  # - docker run -d --net=host -v $TRAVIS_BUILD_DIR/conf/ci-minimal/:/etc/freeswitch safarov/freeswitch
-  # - docker ps -a
+      # - script:
+          # pull and start up freeswitch container bound to 'lo'
+          # - docker pull safarov/freeswitch
+          # - docker run -d --net=host -v $TRAVIS_BUILD_DIR/conf/ci-minimal/:/etc/freeswitch safarov/freeswitch
+          # - docker ps -a
 
-install:
-  # - pip install -U tox
-  - cd $TRAVIS_BUILD_DIR
-  - pip install . -r requirements-test.txt
-
-# NOTE: no support for pandas/pytables yet
-script:
-  - pytest --use-docker tests/
+    - stage: 'system tests'
+      install:
+       # - pip install -U tox
+       - cd $TRAVIS_BUILD_DIR
+       - pip install . -r requirements-test.txt
+      # NOTE: no support for pandas/pytables yet
+      script:
+        - pytest --use-docker tests/
