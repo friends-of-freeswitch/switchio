@@ -1,12 +1,13 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-import pytest
-import socket
+import os
 import sys
+import socket
 import itertools
+import pytest
 from distutils import spawn
-from switchy.utils import ncompose
+from switchy import utils
 
 
 def pytest_addoption(parser):
@@ -21,9 +22,10 @@ def pytest_addoption(parser):
     parser.addoption("--cps", action="store", dest='cps',
                      default=100,
                      help="num of sipp calls to launch per second")
-    parser.addoption("--usedocker", action="store", dest='fshost',
-                     default=None,
-                     help="fs-engine server host or ip")
+    parser.addoption("--use-docker", action="store_true", dest='usedocker',
+                     help="Toggle use of docker containers for testing")
+    parser.addoption("--num-containers", action="store", dest='ncntrs',
+                     default=2, help="Number of docker containers to spawn")
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -31,31 +33,72 @@ def loglevel(request):
     level = max(40 - request.config.option.verbose * 10, 10)
     if sys.stdout.isatty():
         # enable console logging
-        from switchy import utils
         utils.log_to_stderr(level)
 
     return level
 
 
 @pytest.fixture(scope='session')
+def confdir():
+    dirname = os.path.dirname
+    dirpath = os.path.abspath(
+        os.path.join(
+            dirname(dirname(os.path.realpath(__file__))),
+            'conf/ci-minimal/'
+        )
+    )
+    return dirpath
+
+
+@pytest.fixture(scope='session')
+def containers(request, confdir):
+    """Return a sequence of docker containers.
+    """
+    if request.config.option.usedocker:
+        docker = request.getfixturevalue('dockerctl')
+        with docker.run(
+            'safarov/freeswitch',
+            volumes={confdir: {'bind': '/etc/freeswitch/'}},
+            num=request.config.option.ncntrs
+        ) as containers:
+            yield containers
+    else:
+        pytest.skip(
+            "You must specify `--use-docker` to activate containers"
+        )
+
+
+@pytest.fixture(scope='session')
 def fshosts(request):
     '''Return the FS test server hostnames passed via the
-    `--fshost` cmd line arg.
+    ``--fshost`` cmd line arg.
     '''
     argstring = request.config.option.fshost
-    if not argstring:
-        pytest.skip("the '--fshost' option is required to determine the "
-                    "FreeSWITCH slave server(s) to connect to for testing")
-    # construct a list if passed as arg
-    fshosts = argstring.split(',')
-    return fshosts
+    addrs = []
+
+    if argstring:
+        # construct a list if passed as arg
+        fshosts = argstring.split(',')
+        yield fshosts
+
+    elif request.config.option.usedocker:
+        containers = request.getfixturevalue('containers')
+        for container in containers:
+            addrs.append(container.attrs['NetworkSettings']['IPAddress'])
+        yield addrs
+
+    else:
+        pytest.skip("the '--fshost' or '--use-docker` options are required "
+                    "to determine the FreeSWITCH server(s) to connect "
+                    "to for testing")
 
 
 @pytest.fixture(scope='session')
 def fs_ip_addrs(fshosts):
     '''Convert provided host names to ip addrs via dns.
     '''
-    return list(map(ncompose(socket.gethostbyname, socket.getfqdn), fshosts))
+    return list(map(utils.ncompose(
+                socket.gethostbyname, socket.getfqdn), fshosts))
 
 
 @pytest.fixture(scope='session')
@@ -144,16 +187,21 @@ def scenarios(request, fs_socks, loglevel):
     pl = pysipp.utils.get_logger()
     pl.setLevel(loglevel)
 
+    if request.config.option.usedocker:
+        # use the docker 'bridge' network gateway address
+        bind_addr = request.getfixturevalue(
+            'containers')[0].attrs['NetworkSettings']['Gateway']
+    else:
+        # grab IP from DNS lookup
+        bind_addr = socket.getaddrinfo(
+            socket.getfqdn(), 0, socket.AF_INET, socket.SOCK_DGRAM)[0][4][0]
+
     scens = []
     for fssock in fs_socks:
         # first hop should be fs server
         scen = pysipp.scenario(
             proxyaddr=fssock,
-            defaults={
-                'local_host': socket.getaddrinfo(
-                    socket.getfqdn(), 0, socket.AF_INET, socket.SOCK_DGRAM
-                )[0][4][0]
-            }
+            defaults={'local_host': bind_addr}
         )
         scen.log = pl
 

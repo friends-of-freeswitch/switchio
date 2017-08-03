@@ -246,9 +246,9 @@ def test_measurers(measure, tmpdir, storetype):
 
 
 def test_write_speed(measure, storer):
-    """Assert we can write and read quickly to the storer
+    """Assert we can write and read "quickly" to the storer
     """
-    sleeptime = 0.05
+    sleeptime = 0.1
     ds = write_bufs(3, ds=storer)
     numentries = 3 * ds._buf_size
     if isinstance(ds.data, list):
@@ -313,8 +313,17 @@ def test_with_orig(get_orig, measure, storer):
             # post increment means 1 will be the next insertion index
             assert cdr_storer._buffer.bi == 1
 
-        # only one row is in the buffer while the rest is in the store
-        assert len(cdr_storer.store.data) == orig.total_originated_sessions - 1
+        assert len(cdr_storer.store) == cdr_storer._buf_size
+        # one or more rows should be in the buffer while the rest is in the store
+        assert len(cdr_storer.store) <= orig.total_originated_sessions - 1
 
     assert len(cdr_storer.store)  # flushed to disk
-    assert len(cdr_storer.data) == orig.total_originated_sessions
+
+    # allow for out-of-thread flush to disk
+    start = time.time()
+    while time.time() - start < 3:
+        if len(cdr_storer.data) == orig.total_originated_sessions:
+            break  # yey
+        time.sleep(0.5)
+    else:
+        len(cdr_storer.data) == orig.total_originated_sessions
