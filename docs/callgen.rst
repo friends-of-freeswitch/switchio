@@ -67,7 +67,7 @@ application when instructing each slave to `originate` a call.
 .. note::
     The error above was not raised as a Python exception but instead just printed to
     the screen to avoid terminating the event processing loop in the
-    :py:class:`switchy.observe.EventListener`.
+    :py:class:`switchy.api.EventListener`.
 
 Let's set an originate command which will call our *SUT*
 as it's first hop with a destination of *ourselves* using the default
@@ -90,8 +90,8 @@ the outbound session's post-connect execution::
 The underlying `originate`_ command has now been
 set for the **first** client in the `Orignator` app's client pool. You might
 notice that the command is a :py:class:`format` string which has some
-placeholder variables set. It is the job of the :py:class:`switchy.observe.Client`
-to fill in these values at runtime (i.e. when the :py:meth:`switchy.observe.Client.originate` is called).
+placeholder variables set. It is the job of the :py:class:`switchy.api.Client`
+to fill in these values at runtime (i.e. when the :py:meth:`switchy.api.Client.originate` is called).
 For more info on the `originate` cmd wrapper see :py:func:`~switchy.commands.build_originate_cmd`.
 Also see the :doc:`usage`.
 
@@ -141,7 +141,7 @@ via it's :py:meth:`__repr__` again::
 .. warning::
     If you start seeing immediate errors such as::
 
-        Feb 24 14:12:35 [ERROR] switchy.EventListener@vm-host observe.py:730 : Job '16f6313e-bc59-11e4-8b27-1b3a3a6a886d' corresponding to session '16f8964a-bc59-11e4-9c96-74d02bc595d7' failed with:
+        Feb 24 14:12:35 [ERROR] switchy.EventListener@vm-host handlers.py:730 : Job '16f6313e-bc59-11e4-8b27-1b3a3a6a886d' corresponding to session '16f8964a-bc59-11e4-9c96-74d02bc595d7' failed with:
         -ERR NORMAL_TEMPORARY_FAILURE
 
     it may mean your *callee* isn't configured correctly. Stop the `Originator` and Check the *FreeSWITCH* slave's logs to debug.
@@ -175,9 +175,9 @@ abort all calls associated with a given `Client`::
     Feb 24 16:37:16 [INFO] switchy.Originator@['vm-host'] call_gen.py:376 : State Change: 'ORIGINATING' -> 'STOPPED'
     Feb 24 16:37:16 [INFO] switchy.Originator@['vm-host'] call_gen.py:357 : stopping burst loop...
     Feb 24 16:37:16 [INFO] switchy.Originator@['vm-host'] call_gen.py:326 : Waiting for start command...
-    Feb 24 16:37:16 [ERROR] switchy.EventListener@vm-host observe.py:730 : Job '4d8823c4-bc6d-11e4-af92-1b3a3a6a886d' corresponding to session '4d837b3a-bc6d-11e4-9c2e-74d02bc595d7' failed with:
+    Feb 24 16:37:16 [ERROR] switchy.EventListener@vm-host handlers.py:730 : Job '4d8823c4-bc6d-11e4-af92-1b3a3a6a886d' corresponding to session '4d837b3a-bc6d-11e4-9c2e-74d02bc595d7' failed with:
     -ERR NORMAL_CLEARING
-    Feb 24 16:37:16 [ERROR] switchy.EventListener@vm-host observe.py:730 : Job '4d8f509a-bc6d-11e4-afa3-1b3a3a6a886d' corresponding to session '4d8aacb6-bc6d-11e4-9c2e-74d02bc595d7' failed with:
+    Feb 24 16:37:16 [ERROR] switchy.EventListener@vm-host handlers.py:730 : Job '4d8f509a-bc6d-11e4-afa3-1b3a3a6a886d' corresponding to session '4d8aacb6-bc6d-11e4-9c2e-74d02bc595d7' failed with:
     -ERR NORMAL_CLEARING
     Feb 24 16:37:16 [INFO] switchy.Originator@['vm-host'] call_gen.py:231 : all sessions have ended...
 
@@ -192,7 +192,7 @@ configuration steps are required to properly provision the
 this involves use of handy cluster helper components provided with
 Switchy.
 
-The main trick is to configure each :py:class:`switchy.observe.Client` to have
+The main trick is to configure each :py:class:`switchy.api.Client` to have
 the appropriate originate command set such that calls are routed to
 where you expect. A clever and succint way to accomplish this is by
 using the :py:class:`switchy.distribute.SlavePool`. Luckily the

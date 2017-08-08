@@ -21,15 +21,15 @@ API Reference
 
 Connection wrapper
 ------------------
-A thread safe (plus more) wrapper around the ESL swig module's
+A thread safe (plus more) wrapper around the ESL SWIG module's
 `ESLConnection` type is found in
 :doc:`connection.py <api/connection>`.
 
 
 Observer components
 -------------------
-The core event processing loop and logic and :py:class:`~switchy.observe.Client`
-interface can be found in :doc:`observe.py <api/observe>`.
+The core API :py:class:`~switchy.api.Client`
+interface can be found in :doc:`api.py <api/observe>`.
 There are also some synchronous helpers hidden within.
 
 

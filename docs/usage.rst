@@ -23,7 +23,7 @@ Currently there are 3 main objects in Switchy for driving
 :py:class:`~switchy.connection.Connection` - a thread safe wrapper around the
 `ESL SWIG python package`_'s `ESLConnection`
 
-:py:class:`~switchy.observe.EventListener` - the type that contains the core
+:py:class:`~switchy.handlers.EventListener` - the type that contains the core
 event processing loop and logic
     - Primarily concerned with observing and tracking the state of
       a single *FreeSWITCH* process
@@ -32,9 +32,9 @@ event processing loop and logic
     - Contains a :py:class:`~switchy.connection.Connection` used mostly for receiving
       events only transmitting ESL commands when dictated by :doc:`Switchy apps <apps>`
 
-:py:class:`~switchy.observe.Client` - a client for controlling *FreeSWITCH* using the ESL inbound method
+:py:class:`~switchy.api.Client` - a client for controlling *FreeSWITCH* using the ESL inbound method
     - contains a :py:class:`~switchy.connection.Connection` for direct synchronous commands and
-      optionally an :py:class:`~switchy.observe.EventListener` for processing asynchronous calls
+      optionally an :py:class:`~switchy.handlers.EventListener` for processing asynchronous calls
 
 For this guide we will focus mostly on the latter two since they are the
 primary higher level components the rest of the library builds upon.
@@ -60,11 +60,11 @@ instantiation::
     >>> client.cmd('not a real command')
     Traceback (most recent call last):
         File "<stdin>", line 1, in <module>
-        File "switchy/observe.py", line 1093, in cmd
+        File "switchy/api.py", line 1093, in cmd
            return self.api(cmd).getBody().strip()
-        File "switchy/observe.py", line 1084, in api
+        File "switchy/handlers.py", line 1084, in api
            consumed, response = EventListener._handle_socket_data(event)
-        File "switchy/observe.py", line 651, in _handle_socket_data
+        File "switchy/api.py", line 651, in _handle_socket_data
            raise APIError(body)
     switchy.utils.APIError: -ERR not Command not found!
 
@@ -74,11 +74,11 @@ Now let's initiate a call originating from the slave process's
     >>> client.originate(dest_url='9196@intermediary_hostname:5060')
     Traceback (most recent call last):
         File "<stdin>", line 1, in <module>
-        File "switchy/observe.py", line 1177, in originate
+        File "switchy/api.py", line 1177, in originate
             listener = self._assert_alive(listener)
-        File "switchy/observe.py", line 1115, in _assert_alive
+        File "switchy/api.py", line 1115, in _assert_alive
             assert self.listener, "No listener associated with this client"
-        File "switchy/observe.py", line 973, in get_listener
+        File "switchy/api.py", line 973, in get_listener
             "No listener has been assigned for this client")
         AttributeError: No listener has been assigned for this client
 
@@ -94,18 +94,18 @@ which drives the slave process using commands to trigger **new** state(s).
 Again, any time a `Client` makes an **asynchronous** call an `EventListener` is
 needed to handle and report back the result(s).
 
-Let's create and assign an :py:class:`~switchy.observe.EventListener`::
+Let's create and assign an :py:class:`~switchy.handlers.EventListener`::
 
     >>> from switchy import get_listener
     >>> l = get_listener('vm-host')
     >>> l  # initially disconnected to allow for unsubcriptions from the default event set
     <EventListener [disconnected]>
     >>> l.connect()
-    Feb 25 10:33:05 [INFO] switchy.EventListener@vm-host observe.py:346 : Connected listener 'd2d4ee82-bd02-11e4-8b48-74d02bc595d7' to 'vm-host'
+    Feb 25 10:33:05 [INFO] switchy.EventListener@vm-host api.py:346 : Connected listener 'd2d4ee82-bd02-11e4-8b48-74d02bc595d7' to 'vm-host'
     >>> l
     <EventListener [connected]>
     >>> l.start()
-    Feb 25 10:35:30 [INFO] switchy.EventListener@vm-host observe.py:287 : starting event loop thread
+    Feb 25 10:35:30 [INFO] switchy.EventListener@vm-host api.py:287 : starting event loop thread
     >>> client.listener = l
 
 .. note::
@@ -133,7 +133,7 @@ extension once the *caller* is answered, and calling the `echo` extension,
 
 
 The async `originate` call returns to us a :py:class:`switchy.models.Job`
-instance (as would any call to :py:meth:`switchy.observe.Client.bgapi`).
+instance (as would any call to :py:meth:`switchy.api.Client.bgapi`).
 A `Job` provides the same interface as that of the
 :py:class:`multiprocessing.pool.AsyncResult` and can be handled to
 completion synchronously::
@@ -167,7 +167,7 @@ slave configurations thanks to Switchy's use of the ESL `inbound`_ method.
 
 App Loading
 ***********
-Switchy apps are loaded using :py:meth:`switchy.observe.Client.load_app`.
+Switchy apps are loaded using :py:meth:`switchy.api.Client.load_app`.
 Each app is referenced by it's appropriate name (if none is provided) which
 allows for the appropriate callback lookups to be completed by the `EventListener`.
 
@@ -176,7 +176,7 @@ built-in :ref:`TonePlay <toneplayapp>` app::
 
     >>> from switchy.apps.players import TonePlay
     >>> client.load_app(TonePlay)
-    Feb 25 13:27:43 [INFO] switchy.Client@vm-host observe.py:1020 : Loading call app 'TonePlay'
+    Feb 25 13:27:43 [INFO] switchy.Client@vm-host api.py:1020 : Loading call app 'TonePlay'
     'fd27be58-bd1b-11e4-b22d-74d02bc595d7'  # the app uuid since None provided
 
     >>> client.apps.TonePlay
@@ -234,7 +234,7 @@ As a summary, here is an snippet showing all these steps together:
     orig_sess.hangup()
 
 Conveniently enough, the boilerplate here
-is almost exactly what the :py:func:`~switchy.observe.active_client`
+is almost exactly what the :py:func:`~switchy.api.get_client`
 context manager does internally.  An example of usage can be found in
 the :doc:`quickstart <quickstart>` guide.
 
