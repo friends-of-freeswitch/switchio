@@ -16,6 +16,7 @@ import multiprocessing as mp
 from .. import utils
 from .. import marks
 from .. import observe
+from .. import handlers
 from . import AppManager
 from .measure import CDR
 
@@ -31,7 +32,7 @@ def get_originator(contacts, *args, **kwargs):
             contacts = (contacts,)
 
     # pop kwargs destined for the listener
-    _, kwargnames = utils.get_args(observe.EventListener.__init__)
+    _, kwargnames = utils.get_args(handlers.EventListener.__init__)
 
     lkwargs = {
         name: kwargs.pop(name) for name in kwargnames if name in kwargs}

@@ -20,8 +20,8 @@ class JobError(utils.ESLError):
 
 class Events(object):
     """Event collection which for most intents and purposes should quack like
-    a collections.deque. Data lookups are delegated to the internal
-    deque of events in lilo order.
+    a ``collections.deque``. Data lookups are delegated to the internal deque
+    of events in lilo order.
     """
     def __init__(self, event=None):
         self._events = deque()
@@ -81,8 +81,9 @@ class Session(object):
     create_ev = 'CHANNEL_CREATE'
 
     # TODO: eventually uuid should be removed
-    def __init__(self, event, uuid=None, con=None):
+    def __init__(self, event, event_loop=None, uuid=None, con=None):
         self.events = Events(event)
+        self.event_loop = event_loop
         self.uuid = uuid or self.events['Unique-ID']
         self.con = con
         # sub-namespace for apps to set/get state
@@ -419,6 +420,7 @@ class Session(object):
         """Return bool indicating whether this is an outbound session
         """
         return self['Call-Direction'] == 'outbound'
+
 
 
 class Call(object):

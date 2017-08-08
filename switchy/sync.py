@@ -35,9 +35,9 @@ def sync_caller(host, port='8021', password='ClueCon',
             orig_sess = call.first  # first sess is the originator
             if waitfor:
                 var, time = waitfor
-                client.listener.waitfor(orig_sess, var, time)
+                client.listener.event_loop.waitfor(orig_sess, var, time)
 
-            return orig_sess, client.listener.waitfor
+            return orig_sess, client.listener.event_loop.waitfor
 
         # attach apps handle for easy interactive use
         caller.app_lookup_vars = []

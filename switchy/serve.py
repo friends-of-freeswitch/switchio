@@ -30,7 +30,7 @@ class Service(object):
         assert all(self.pool.evals('listener.is_alive()'))
         if block:
             try:
-                self.pool.evals('listener.wait()')
+                self.pool.evals('listener.event_loop.wait()')
             except KeyboardInterrupt:
                 pass
             finally:
@@ -45,4 +45,4 @@ class Service(object):
         """Stop service and disconnect.
         """
         self.pool.evals('listener.disconnect()')
-        self.pool.evals('listener.wait(1)')
+        self.pool.evals('listener.event_loop.wait(1)')
