@@ -6,7 +6,7 @@ Server components for building clustered call processing systems.
 """
 from . import utils
 from .apps import AppManager
-from .observe import get_pool
+from .api import get_pool
 
 
 class Service(object):

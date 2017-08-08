@@ -4,11 +4,10 @@
 """
 High level event processing machinery.
 
-Includes components for observing and controlling FreeSWITCH minion state
-through event processing and command invocation.
-
-Default event handlers for session, call and background job
-management are defined here.
+Includes handlers for tracking FreeSWITCH minion state through event
+processing and session modelling.
+Default event handlers for session, call and background job management
+are defined here.
 """
 import time
 import multiprocessing as mp

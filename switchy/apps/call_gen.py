@@ -15,7 +15,7 @@ from threading import Thread
 import multiprocessing as mp
 from .. import utils
 from .. import marks
-from .. import observe
+from .. import api
 from .. import handlers
 from . import AppManager
 from .measure import CDR
@@ -37,7 +37,7 @@ def get_originator(contacts, *args, **kwargs):
     lkwargs = {
         name: kwargs.pop(name) for name in kwargnames if name in kwargs}
 
-    slavepool = observe.get_pool(contacts, **lkwargs)
+    slavepool = api.get_pool(contacts, **lkwargs)
     return Originator(slavepool, *args, **kwargs)
 
 
@@ -487,7 +487,7 @@ class Originator(object):
             # Do listener(s) startup here so that additional apps
             # can be loaded just prior. Currently there is a restriction
             # since new event subscriptions (as required by most apps)
-            # must be issued *before* starting the observer event loop
+            # must be issued *before* starting the listener event loop
             # since the underlying connection is mutexed.
             self.pool.evals('listener.start()')
 
@@ -552,7 +552,7 @@ class Originator(object):
         return self.pool.evals('client.originate_cmd')
 
     def _clearall(self):
-        """Clear all observer model collections.
+        """Clear all listener model collections.
         (Handy if a bunch of stale calls are present)
         """
         self.pool.evals('listener.sessions.clear()')

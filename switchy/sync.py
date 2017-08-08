@@ -6,7 +6,7 @@ Make calls synchronously
 """
 from contextlib import contextmanager
 from switchy.apps.players import TonePlay
-from switchy.observe import active_client
+from switchy.api import get_client
 
 
 @contextmanager
@@ -18,7 +18,7 @@ def sync_caller(host, port='8021', password='ClueCon',
     it has entered a stable state. The caller returns the active originating
     `Session` and a `waitfor` blocker method as output.
     '''
-    with active_client(host, port=port, auth=password, apps=apps) as client:
+    with get_client(host, port=port, auth=password, apps=apps) as client:
 
         def caller(dest_url, app_name, timeout=30, waitfor=None,
                    **orig_kwargs):
