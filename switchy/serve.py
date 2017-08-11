@@ -6,7 +6,7 @@ Server components for building clustered call processing systems.
 """
 from . import utils
 from .apps import AppManager
-from .observe import get_pool
+from .api import get_pool
 
 
 class Service(object):
@@ -30,7 +30,7 @@ class Service(object):
         assert all(self.pool.evals('listener.is_alive()'))
         if block:
             try:
-                self.pool.evals('listener.wait()')
+                self.pool.evals('listener.event_loop.wait()')
             except KeyboardInterrupt:
                 pass
             finally:
@@ -45,4 +45,4 @@ class Service(object):
         """Stop service and disconnect.
         """
         self.pool.evals('listener.disconnect()')
-        self.pool.evals('listener.wait(1)')
+        self.pool.evals('listener.event_loop.wait(1)')

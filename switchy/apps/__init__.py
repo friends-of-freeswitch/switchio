@@ -151,7 +151,7 @@ class AppManager(object):
 
         if self.measurers and with_measurers:
             # measurers are loaded in reverse order such that those which were
-            # added first take the highest precendence in the observer
+            # added first take the highest precendence in the event loop
             # callback chain. see `Measurers.items()`
             for name, m in self.measurers.items():
                 for client in self.pool.clients:

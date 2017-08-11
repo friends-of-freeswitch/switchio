@@ -299,3 +299,10 @@ def waitwhile(predicate, timeout=float('inf'), period=0.1, exc=True):
                 )
             return False
     return True
+
+
+def con_repr(self):
+    """Repr with a [<connection-status>] slapped in"""
+    rep = object.__repr__(self).strip('<>')
+    return "<{} [{}]>".format(
+        rep, "connected" if self.connected() else "disconnected")

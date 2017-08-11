@@ -1,4 +1,4 @@
-Observer components
--------------------
-.. automodule:: switchy.observe
+API components
+--------------
+.. automodule:: switchy.api
     :members:

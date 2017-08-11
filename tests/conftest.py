@@ -150,9 +150,10 @@ def con(fshost):
 def el(fshost):
     'deliver a connected event listener'
     from switchy import get_listener
-    el = get_listener(fshost)
+    listener = get_listener(fshost)
+    el = listener.event_loop
     assert not el.connected()
-    yield el
+    yield listener
     el.disconnect()
     # verify state
     assert not el.connected()

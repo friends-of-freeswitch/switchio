@@ -179,3 +179,6 @@ class Connection(object):
             prefix = 'CUSTOM ' if "::" in name else ''
             self._con.events(fmt, "{}{}".format(prefix, name))
             self._sub += (name,)
+
+    def new_connection(self):
+        return type(self)(self.host, self.port, self.auth)

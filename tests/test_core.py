@@ -40,9 +40,9 @@ def proxy_dp(ael, client):
 
     ev = "CHANNEL_PARK"  # no answer() is ever done...
     # add a failover callback to provide the dialplan
-    ael.add_callback(ev, 'default', bridge2dest)
+    ael.event_loop.add_callback(ev, 'default', bridge2dest)
     # ensure callback was registered
-    assert bridge2dest in ael.consumers['default'][ev]
+    assert bridge2dest in ael.event_loop.consumers['default'][ev]
 
     # attempt to add measurement collection
     try:
@@ -125,8 +125,7 @@ class TestListener:
         '''
         pytest.raises(ConfigurationError, el.start)
         el.connect()
-        for name, con in el.iter_cons():
-            assert con.connected()
+        assert el.connected()
 
         # verify event loop thread
         el.start()
@@ -144,9 +143,11 @@ class TestListener:
         assert not el.connected()
 
     def test_unsub(self, el):
-        '''test listener unsubscribe for event type
+        '''test event loop unsubscribe for event type
         '''
+        el = el.event_loop
         ev = "CALL_UPDATE"
+        default_handlers = dict(el._handlers)
         # updates are too slow so remove them for our test set
         assert el.unsubscribe(ev)
         assert ev not in el._handlers
@@ -155,7 +156,7 @@ class TestListener:
 
         # manually reset unsubscriptions
         el._unsub = ()
-        el._handlers = el.default_handlers
+        el._handlers = default_handlers
 
         # test once connected
         el.connect()
@@ -203,8 +204,8 @@ class TestListener:
         def set_var(sess):
             var[0] = 'yay'
 
-        ael.add_callback('CHANNEL_CREATE', 'default', throw_err)
-        ael.add_callback('CHANNEL_CREATE', 'default', set_var)
+        ael.event_loop.add_callback('CHANNEL_CREATE', 'default', throw_err)
+        ael.event_loop.add_callback('CHANNEL_CREATE', 'default', set_var)
 
         checkcalls(duration=3, sleep=1.3)
         # ensure callback chain wasn't halted
@@ -255,9 +256,9 @@ class TestClient:
         from switchy.marks import get_callbacks, event_callback
         from switchy import utils
         with pytest.raises(AttributeError):
-            # need an observer assigned first
+            # need an listener assigned first
             client.load_app(TonePlay)
-        client.listener = el  # assign observer manually
+        client.listener = el  # assign listener manually
         assert client.listener is el
 
         # loading
@@ -280,7 +281,7 @@ class TestClient:
         assert app is not client._apps['TonePlay2'][name]
 
         # check that callbacks are registered with listener
-        cbmap = client.listener.consumers[app.cid]
+        cbmap = client.listener.event_loop.consumers[app.cid]
         for evname, cbtype, obj in get_callbacks(app):
             assert evname in cbmap
             reg_cb = cbmap[evname][0]
@@ -299,11 +300,12 @@ class TestClient:
         client.unload_app(app.cid)
         assert app.cid not in client._apps
         with pytest.raises(KeyError):
-            client.listener.consumers[app.cid]
+            client.listener.event_loop.consumers[app.cid]
 
         # Bert should still be there
         assert bid in client._apps
-        cbs = client.listener.consumers[client.apps.Bert['Bert'].cid]
+        cbs = client.listener.event_loop.consumers[
+            client.apps.Bert['Bert'].cid]
         assert cbs
         cbcount = len(cbs)
 
@@ -328,7 +330,7 @@ class TestClient:
         assert name not in client._apps
         assert name not in client.apps.Bert
         # Bert cbs should still be active
-        assert len(client.listener.consumers[bid]) == cbcount
+        assert len(client.listener.event_loop.consumers[bid]) == cbcount
 
     def test_commands(self, client):
         from switchy.utils import APIError
