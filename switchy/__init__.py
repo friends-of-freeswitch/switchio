@@ -15,7 +15,7 @@ from .handlers import get_listener
 from .apps.call_gen import get_originator
 from .distribute import SlavePool, MultiEval
 from .marks import event_callback, handler
-from .connection import Connection, ConnectionError
+from .connection import get_connection, ConnectionError
 from .sync import sync_caller
 from .serve import Service
 

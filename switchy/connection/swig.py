@@ -2,18 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-ESL connection wrapper
+SWIG ESL connection wrappers
 """
 import time
-from ESL import ESLconnection
 import functools
 import multiprocessing as mp
-from . import utils
-from .utils import ESLError
-
-
-class ConnectionError(ESLError):
-    pass
+from ESL import ESLconnection  # requires python-ESL and swig
+from . import ConnectionError
+from .. import utils
 
 
 def check_con(con):
@@ -27,7 +23,7 @@ def check_con(con):
     return bool(con.connected()) and bool(event)
 
 
-class Connection(object):
+class SWIGConnection(object):
     '''Connection wrapper which can provide mutex attr access making the
     underlying ESL.ESLconnection thread safe.
 
@@ -77,6 +73,12 @@ class Connection(object):
             raise utils.APIError(body)
         return True, body
 
+    def _preproc_event(self, e):
+        """Pre-process an event for API compatibility.
+        """
+        e.get = e.getHeader  # mapping compat
+        return e
+
     def api(self, cmd, errcheck=True):
         '''Invoke esl api command (with error checking by default).
         Returns an ESL.ESLEvent instance for event type "SOCKET_DATA".
@@ -84,7 +86,7 @@ class Connection(object):
         self.log.debug("api cmd '{}'".format(cmd))
         with self._mutex:
             try:
-                event = self._con.api(cmd)
+                event = self._preproc_event(self._con.api(cmd))
                 if errcheck:
                     _, body = self._handle_socket_data(event)
                 return event
@@ -100,7 +102,7 @@ class Connection(object):
         self.log.debug("bgapi cmd '{}'".format(cmd))
         with self._mutex:
             try:
-                return self._con.bgapi(cmd)
+                return self._preproc_event(self._con.bgapi(cmd))
             except AttributeError:
                 raise ConnectionError("call `connect` first")
 
@@ -182,3 +184,12 @@ class Connection(object):
 
     def new_connection(self):
         return type(self)(self.host, self.port, self.auth)
+
+    def recv_event(self):
+        return self._preproc_event(self._con.recvEvent())
+
+    def fileno(self):
+        """Returns the file descriptor (number).
+        Provide API compat with file-like objects.
+        """
+        return self._con.socketDescriptor()
