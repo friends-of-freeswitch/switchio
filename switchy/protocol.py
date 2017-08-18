@@ -7,28 +7,31 @@
 Inbound ESL asyncio protocol
 """
 import asyncio
-from collections import defaultdict, deque
+from collections import defaultdict, deque, namedtuple
 from six.moves.urllib.parse import unquote
 from . import utils
+
+# debugging - watch out pformat() is slow...
+# from pprint import pformat
 
 
 class InboundProtocol(asyncio.Protocol):
     """Inbound ESL client which delivers parsed events to an
     ``asyncio.Queue``.
     """
-    def __init__(self, password, loop, connection):
+    def __init__(self, password, loop, host):
         self.password = password
         self.loop = loop
         self.event_queue = asyncio.Queue(loop=loop)
-        self.con = connection
-        self.host = connection.host
+        self.host = host
         self.log = utils.get_logger(utils.pstr(self))
         self.transport = None
-        self._curr_event = {}
+        self._previous = None, None
+        self._segmented = namedtuple('segmentdata', ['event', 'size'])({}, 0)
 
         # state flags
         self._connected = False
-        self.disconnected = None
+        self._disconnected = None
         self._auth_resp = None
 
         # futures to be set and waited on for the following content types
@@ -42,6 +45,12 @@ class InboundProtocol(asyncio.Protocol):
     def connected(self):
         return self._connected
 
+    def disconnected(self):
+        """Return a future that can be used to wait for the connection
+        to tear down.
+        """
+        return self._disconnected if self._disconnected else False
+
     def connection_made(self, transport):
         """Login with ESL password on connection.
         """
@@ -49,14 +58,14 @@ class InboundProtocol(asyncio.Protocol):
         self.transport = transport
         self.max_size = transport.max_size
         self._connected = True
-        self.disconnected = self.loop.create_future()
+        self._disconnected = self.loop.create_future()
         self.authenticate()
 
     def connection_lost(self, exc):
         self._connected = False
         self._auth_resp = None
-        self.log.debug('The server closed @ {}'.format(self.host))
-        self.disconnected.set_result(True)
+        self.log.debug('The connection closed @ {}'.format(self.host))
+        self._disconnected.set_result(True)
 
     def reg_fut(self, ctype, fut=None):
         """Register and return a future wrapping an event packet to be
@@ -91,83 +100,108 @@ class InboundProtocol(asyncio.Protocol):
 
         return self._auth_resp
 
-    def process_event(self, event):
+    def process_events(self, events, parsed=None):
         """Process an event by activating futures or pushing to the queue.
         """
-        # debugging - watch out pformat() is slow...
-        # self.log.log(utils.TRACE, "Event packet:\n{}".format(pformat(event)))
-        ctype = event.get('Content-Type', None)
-        futures = self._futures_map.get(ctype, None)
-        if futures is None:
-            # standard inbound state update
-            self.event_queue.put_nowait(event)
-        else:
-            try:
-                fut = futures.popleft()
-                fut.set_result(event)
-            except IndexError:
-                self.log.warn("No waiting future could be found "
-                              "for event?\n{!r}".format(event))
+        for event in events:
+            # self.log.log(
+            #     utils.TRACE, "Event packet:\n{}".format(pformat(event)))
+            ctype = event.get('Content-Type', None)
+            futures = self._futures_map.get(ctype, None)
+            if futures is None:
+                # standard inbound state update
+                self.event_queue.put_nowait(event)
+            else:
+                try:
+                    fut = futures.popleft()
+                    fut.set_result(event)
+                except IndexError:
+                    self.log.warn("No waiting future could be found "
+                                  "for event?\n{!r}".format(event))
+
+    @staticmethod
+    def parse_frame(frame):
+        parsed = unquote(frame)
+        chunk = {}
+        last_key = 'Body'
+        # for line in parsed.splitlines():
+        for line in parsed.strip().splitlines():
+            if not line:
+                last_key = 'Body'
+                continue
+            key, sep, value = line.partition(': ')
+            if sep and key and key[0] is not '+':  # 'key: value' header
+                last_key = key
+                chunk[key] = value
+            else:
+                # no sep - 2 cases: multi-line value or body content
+                chunk[last_key] = chunk.setdefault(
+                    last_key, '') + line + '\n'
+        return chunk
+
+    def read_contents(self, data, iframe, clen):
+        chunk = {}
+        segmented = False
+        # while clen:  # recursive clens?
+        clen = int(clen)
+        contents = data[iframe:iframe+clen]
+        if contents:
+            chunk.update(self.parse_frame(contents))
+        diff = clen - len(contents)
+        # if len(contents) != clen:
+        if diff > 0:
+            segmented = True
+            # break
+        iframe = iframe + clen
+        # clen = chunk.get('Content-Length')
+        return chunk, segmented, diff, iframe
 
     def data_received(self, data):
         """Main socket data processing routine. This is the core event packet
         parser and should be optimized for speed.
         """
-        parsed = unquote(data.decode())
+        data = data.decode()
+        parsed = unquote(data)
         self.log.log(utils.TRACE, 'Socket data received:\n{}'.format(parsed))
-        lines = parsed.splitlines()
         events = deque(maxlen=1000)
-        last_key = None
-        value = ''
-        event = self._curr_event
-        chunk = {}  # lines between each '\n\n'
-        keyed_chunk = False
 
-        for line in lines:
-            if line is '':  # end of chunk (delineated by '\n\n')
-                event.update(chunk)
-                chunk = {}
-                keyed_chunk = False
-                continue
+        # get any segmented event in progress
+        event, content_size = self._segmented
+        self._segmented = {}, 0
+        segmented = False
 
-            key, sep, value = line.partition(': ')
+        iframe = 0
+        # finish processing segments
+        if content_size:
+            chunk, segmented, diff, iframe = self.read_contents(
+                data, 0, content_size)
+            event.update(chunk)
+            if segmented:
+                self._segmented = event, diff
+                return []
 
-            if sep and key[0] is not '+':  # 'key: value' found
+        s = data.find('\n\n')
+        while s != -1:
+            frame = data[iframe:s+1]
+            chunk = self.parse_frame(frame)
+            event.update(chunk)
 
-                # new event packet
-                if key == 'Content-Length' or key == 'Content-Type':
-                    # process the previous event packet
-                    if event:
-                        self.process_event(event)
-                        events.append(event)
-                        event = {}
-                else:
-                    last_key = key
-                    keyed_chunk = True
+            iframe = s+2
+            clen = chunk.get('Content-Length')
+            if clen:
+                chunk, segmented, diff, iframe = self.read_contents(
+                    data, iframe, clen)
+                if chunk:
+                    event.update(chunk)
+                if segmented:
+                    self._segmented = event, diff
+                    break
 
-                chunk[key] = value
-            else:
-                # no sep - 2 cases: multi-line value or body content
-                key = last_key if keyed_chunk else 'Body'
-                chunk[key] = chunk.setdefault(key, '') + line + '\n'
+            events.append(event)
+            event = {}
+            s = data.find('\n\n', iframe)
 
-        if event:  # process any final packet in progress
-            if chunk:  # trailing chunk?
-                event.update(chunk)
-
-            # The packet can be segmented over calls back
-            # in which case we save the event and wait for
-            # the next iteration.
-            self._curr_event = event
-            clen = event.get('Content-Length')
-            if not clen or (clen and len(data) < self.max_size):
-                # If the length of the transport data packet
-                # is less then the max size it's likely this packet
-                # is not segmented and can be processed now
-                self.process_event(event)
-                events.append(event)
-                self._curr_event = {}
-
+        self.process_events(events)
         return events  # for testing
 
     def send(self, data):
@@ -190,10 +224,20 @@ class InboundProtocol(asyncio.Protocol):
     @staticmethod
     def _handle_cmd_resp(future):
         event = future.result()
-        body = event.get('Body', '')
-        lines = body.splitlines()
+        resp = event.get('Body', event.get('Reply-Text', ''))
+        if not resp:
+            raise RuntimeError("Missing a response?")
+        lines = resp.splitlines()
         if lines and '-ERR' in lines[-1]:
-            raise utils.APIError(body)
+            raise utils.APIError(resp)
+        return event
+
+    def bgapi(self, cmd, errcheck=True):
+        future = self.sendrecv('bgapi {}'.format(cmd))
+        if errcheck:
+            future.add_done_callback(self._handle_cmd_resp)
+
+        return future
 
     def api(self, cmd, errcheck=True):
         future = self.sendrecv('api {}'.format(cmd), 'api/response')
