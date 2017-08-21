@@ -8,36 +8,43 @@ Asyncio ESL connection abstactions
 """
 import asyncio
 import time
+from functools import partial
+from threading import get_ident
 from . import ConnectionError
 from .. import utils
 from ..protocol import InboundProtocol
 
 
-def run_in_loop(futs, loop, timeout=0.5, block=True):
-    """Given a future ``fut`` returned from a non-blocking call to the
-    ``InoundProtocol`` API, handle call to completion and return the
-    result.
+def run_in_loop(futs, loop, timeout=0.5, block=True, call=False):
+    """"Given a sequence of futures ``futs``, handle each in order to
+    completion and return the final result.
     """
     async def runall(futs):
+        ffuts = []
         for fut in futs:
+            if call:
+                fut = fut()
+            ffuts.append(fut)
+            asyncio.ensure_future(fut, loop=loop)
             await asyncio.wait_for(fut, timeout=timeout if block else None)
-        return futs[-1].result()
+        return ffuts[-1].result()
 
-    if loop.is_running():
-        future = asyncio.run_coroutine_threadsafe(runall(futs), loop)
-        if not block:
-            return future
-        return future.result(timeout)
+    coro = runall(futs)
+
+    if not loop.is_running() and block:
+        return loop.run_until_complete(coro)
     else:
-        coro = asyncio.wait_for(runall(futs), timeout=timeout)
-        if block:
-            loop.run_until_complete(coro)
-            return futs[-1].result()
-        return coro
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+
+    if not block:
+        return future
+
+    return future.result(timeout)
 
 
 class AsyncIOConnection(object):
     """An ESL connection implemented using an asyncio TCP protocol.
+    Consider this API threadsafe.
     """
     def __init__(self, host, port='8021', password='ClueCon', loop=None):
         """
@@ -83,7 +90,9 @@ class AsyncIOConnection(object):
                 )
         else:
             raise ConnectionRefusedError(
-                'Failed to connect to {}:{}'.format(host, port))
+                "Failed to connect to server at '{}:{}'\n"
+                "Please check that FreeSWITCH is running and "
+                "accepting ESL connections.".format(host, port))
 
         await asyncio.wait_for(prot.authenticate(), 10)
 
@@ -116,14 +125,14 @@ class AsyncIOConnection(object):
     def connected(self):
         return self.protocol.connected() if self.protocol else False
 
-    async def adisconnect(self):
+    async def adisconnect(self, timeout=3):
         if self.connected():
-            await asyncio.wait_for(self.protocol.disconnect(), 3)
+            await asyncio.wait_for(self.protocol.disconnect(), timeout)
 
     def disconnect(self, block=True, loop=None):
         if self.connected():
             fut = self.protocol.disconnect()
-            if not block:
+            if not block and (get_ident() == self.loop._tid):
                 return fut
 
             loop = loop or self.loop
@@ -144,11 +153,12 @@ class AsyncIOConnection(object):
         if not self.connected():
             raise ConnectionError("Call ``connect()`` first")
         self.log.debug("api cmd '{}'".format(cmd))
-        fut = self.protocol.api(cmd, errcheck=errcheck)
-        if not block:
-            return fut
+        if not block and (get_ident() == self.loop._tid):
+            return self.protocol.api(cmd, errcheck=errcheck)
 
-        return run_in_loop([fut], self.loop)
+        return run_in_loop([partial(self.protocol.api, cmd,
+                                    errcheck=errcheck)],
+                           self.loop, block=block, call=True)
 
     def cmd(self, cmd):
         '''Return the string-body output from invoking a command.

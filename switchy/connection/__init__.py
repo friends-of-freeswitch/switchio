@@ -16,8 +16,10 @@ def get_connection(host, port=8021, password='ClueCon', loop=None):
     """
     if utils.py35:
         import asyncio
+        from threading import get_ident
         from .aioesl import AsyncIOConnection
         loop = loop or asyncio.get_event_loop()
+        loop._tid = get_ident()
         return AsyncIOConnection(host, port=port, password=password, loop=loop)
     else:
         from .swig import SWIGConnection
