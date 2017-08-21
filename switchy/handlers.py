@@ -9,12 +9,13 @@ processing and session modelling.
 Default event handlers for session, call and background job management
 are defined here.
 """
+import operator
 import time
 import multiprocessing as mp
 from collections import deque, OrderedDict, Counter
 from .models import Session, Job, Call
 from .marks import handler, get_callbacks
-from .connection import Connection, ConnectionError
+from .connection import ConnectionError
 from .async import get_event_loop
 from . import utils
 
@@ -56,7 +57,10 @@ class EventListener(object):
         :type autorecon: int or bool
         """
         self.event_loop = event_loop
-        self._tx_con = self.event_loop._rx_con.new_connection()
+        if getattr(event_loop, '_run_loop', None):
+            self._tx_con = self.event_loop._rx_con
+        else:  # SWIG requires 2 due to lack of thread safety
+            self._tx_con = self.event_loop._rx_con.new_connection()
         self.sessions = OrderedDict()
         self.log = utils.get_logger(utils.pstr(self))
         # store last 1k of each type of failed session
@@ -143,24 +147,28 @@ class EventListener(object):
         self.failed_jobs = Counter()
         self.total_answered_sessions = 0
 
+    def get_body(self, event):
+        if getattr(event, 'getBody', None):
+            return event.getBody()
+        else:
+            return operator.itemgetter('Body')(event)
+
     @handler('CHANNEL_PARK')
     @handler('CALL_UPDATE')
     def lookup_sess(self, e):
         """The most basic handler template which looks up the locally tracked
         session corresponding to event `e` and updates it with event data
         """
-        uuid = e.getHeader('Unique-ID')
+        uuid = e.get('Unique-ID')
         sess = self.sessions.get(uuid, False)
         if sess:
             sess.update(e)
             return True, sess
         return False, None
 
-    handler('SOCKET_DATA')(Connection._handle_socket_data)
-
     @handler('LOG')
     def _handle_log(self, e):
-        self.log.info(e.getBody())
+        self.log.info(self.get_body(e))
         return True, None
 
     @handler('SERVER_DISCONNECTED')
@@ -168,9 +176,13 @@ class EventListener(object):
         """optionally poll waiting for connection to resume until timeout
         or shutdown
         """
-        self.disconnect()
         self.log.warning("handling DISCONNECT from server '{}'"
                          .format(self.host))
+        if getattr(self.event_loop, '_run_loop', None):
+            self.log.warning("No auto-reconnect support yet on py35+")
+            return True, None
+
+        self.disconnect()
         count = self.autorecon
         if count:
             while count:
@@ -207,8 +219,8 @@ class EventListener(object):
         sess = None
         ok = '+OK '
         err = '-ERR'
-        job_uuid = e.getHeader('Job-UUID')
-        body = e.getBody()
+        job_uuid = e.get('Job-UUID')
+        body = self.get_body(e)
         # always report errors even for jobs which we aren't tracking
         if err in body:
             resp = body.strip(err).strip()
@@ -289,7 +301,7 @@ class EventListener(object):
         '''Handle channel create events by building local
         `Session` and `Call` objects for state tracking.
         '''
-        uuid = e.getHeader('Unique-ID')
+        uuid = e.get('Unique-ID')
         # Record the newly activated session
         # TODO: pass con as weakref?
         con = self._tx_con
@@ -310,7 +322,7 @@ class EventListener(object):
         # Use our specified "call identification variable" to try and associate
         # sessions into calls. By default the 'variable_call_uuid' channel
         # variable is used for tracking locally bridged calls
-        call_uuid = e.getHeader(self.call_tracking_header)  # could be 'None'
+        call_uuid = e.get(self.call_tracking_header)  # could be 'None'
         if not call_uuid:
             self.log.warn(
                 "Unable to associate {} session '{}' with a call using "
@@ -344,11 +356,11 @@ class EventListener(object):
         -------
         sess : session instance corresponding to uuid
         '''
-        uuid = e.getHeader('Unique-ID')
+        uuid = e.get('Unique-ID')
         sess = self.sessions.get(uuid, None)
         if sess:
             self.log.debug('answered session {} with call direction {}'
-                           .format(uuid,  e.getHeader('Call-Direction')))
+                           .format(uuid,  e.get('Call-Direction')))
             sess.answered = True
             self.total_answered_sessions += 1
             sess.update(e)
@@ -366,19 +378,19 @@ class EventListener(object):
         sess : session instance corresponding to uuid
         job  : corresponding bj for a session if exists, ow None
         '''
-        uuid = e.getHeader('Unique-ID')
+        uuid = e.get('Unique-ID')
         sess = self.sessions.pop(uuid, None)
         direction = sess['Call-Direction'] if sess else 'unknown'
         if not sess:
             return False, None
         sess.update(e)
         sess.hungup = True
-        cause = e.getHeader('Hangup-Cause')
+        cause = e.get('Hangup-Cause')
         self.hangup_causes[cause] += 1  # count session causes
         self.sessions_per_app[sess.cid] -= 1
 
         # if possible lookup the relevant call
-        call_uuid = e.getHeader(self.call_tracking_header)
+        call_uuid = e.get(self.call_tracking_header)
         if not call_uuid:
             self.log.warn(
                 "handling HANGUP for {} session '{}' which can not be "
@@ -435,9 +447,12 @@ class EventListener(object):
     def is_alive(self):
         return self.event_loop.is_alive()
 
+    def is_running(self):
+        return self.event_loop.is_running()
+
     def connect(self):
+        self.event_loop.connect()
         self._tx_con.connect()
-        return self.event_loop.connect()
 
     def connected(self):
         return self.event_loop.connected()
