@@ -50,7 +50,7 @@ class Events(object):
         """
         # iterate from most recent event
         for ev in self._events:
-            value = ev.getHeader(str(key))
+            value = ev.get(str(key))
             if value:
                 return value
         return default
@@ -485,10 +485,11 @@ class Job(object):
     :param str sess_uuid: optional session uuid if job is associated with an
         active FS session
     '''
-    def __init__(self, event, sess_uuid=None, callback=None, client_id=None,
+    def __init__(self, event_or_fut, sess_uuid=None, callback=None, client_id=None,
                  kwargs={}):
-        self.events = Events(event)
-        self.uuid = self.events['Job-UUID']  # event.getHeader('Job-UUID')
+        self.fut = event_or_fut if getattr(event_or_fut, 'result', None) else None
+        self.events = Events(event_or_fut) if not self.fut else None
+        # self.uuid = self.events['Job-UUID']
         self.sess_uuid = sess_uuid
         self.launch_time = time.time()
         self.cid = client_id  # placeholder for client ident
@@ -499,6 +500,14 @@ class Job(object):
         self._result = None
         self._failed = False
         self._ev = None  # signal/sync job completion
+
+    @property
+    def uuid(self):
+        if self.fut:
+            event = self.fut.result()
+            self.events = Events(event)
+            self.fut = None
+        return self.events['Job-UUID']
 
     @property
     def result(self):
