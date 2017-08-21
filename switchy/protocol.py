@@ -36,10 +36,7 @@ class InboundProtocol(asyncio.Protocol):
 
         # futures to be set and waited on for the following content types
         self._futures_map = defaultdict(deque)
-        for ctype in [
-            'command/reply', 'auth/request', 'api/response',
-            'text/disconnect-notice'
-        ]:
+        for ctype in ['command/reply', 'auth/request', 'api/response']:
             self._futures_map.get(ctype)
 
     def connected(self):
@@ -56,7 +53,6 @@ class InboundProtocol(asyncio.Protocol):
         """
         self.log.debug("Connection made to {}".format(self.host))
         self.transport = transport
-        self.max_size = transport.max_size
         self._connected = True
         self._disconnected = self.loop.create_future()
         self.authenticate()
@@ -100,16 +96,22 @@ class InboundProtocol(asyncio.Protocol):
 
         return self._auth_resp
 
-    def process_events(self, events, parsed=None):
+    def process_events(self, events, parsed):
         """Process an event by activating futures or pushing to the queue.
         """
+        fut_map = self._futures_map
         for event in events:
             # self.log.log(
             #     utils.TRACE, "Event packet:\n{}".format(pformat(event)))
             ctype = event.get('Content-Type', None)
-            futures = self._futures_map.get(ctype, None)
-            if futures is None:
-                # standard inbound state update
+            futures = fut_map.get(ctype, None)
+
+            if ctype == 'text/disconnect-notice':
+                event['Event-Name'] = 'SERVER_DISCONNECTED'
+                self.event_queue.put_nowait(event)
+                return
+
+            if futures is None:  # ship it for consumption
                 self.event_queue.put_nowait(event)
             else:
                 try:
@@ -124,7 +126,6 @@ class InboundProtocol(asyncio.Protocol):
         parsed = unquote(frame)
         chunk = {}
         last_key = 'Body'
-        # for line in parsed.splitlines():
         for line in parsed.strip().splitlines():
             if not line:
                 last_key = 'Body'
@@ -201,7 +202,7 @@ class InboundProtocol(asyncio.Protocol):
             event = {}
             s = data.find('\n\n', iframe)
 
-        self.process_events(events)
+        self.process_events(events, parsed)
         return events  # for testing
 
     def send(self, data):
@@ -221,15 +222,14 @@ class InboundProtocol(asyncio.Protocol):
         self.send(data)
         return fut
 
-    @staticmethod
-    def _handle_cmd_resp(future):
+    def _handle_cmd_resp(self, future):
         event = future.result()
         resp = event.get('Body', event.get('Reply-Text', ''))
         if not resp:
             raise RuntimeError("Missing a response?")
         lines = resp.splitlines()
         if lines and '-ERR' in lines[-1]:
-            raise utils.APIError(resp)
+            self.log.error("Event {} reported\n{}".format(event, resp))
         return event
 
     def bgapi(self, cmd, errcheck=True):
@@ -258,5 +258,4 @@ class InboundProtocol(asyncio.Protocol):
 
         exit_resp = self.sendrecv('exit')
         exit_resp.add_done_callback(shutdown)
-        discon = self.reg_fut('text/disconnect-notice')
-        return discon
+        return self._disconnected
