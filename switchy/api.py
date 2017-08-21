@@ -17,7 +17,7 @@ from . import handlers
 from .utils import ConfigurationError, APIError
 from .commands import build_originate_cmd
 from . import marks
-from .connection import Connection, ConnectionError
+from .connection import get_connection, ConnectionError
 
 
 class Client(object):
@@ -50,7 +50,7 @@ class Client(object):
 
         # WARNING: order of these next steps matters!
         # create a local connection for sending commands
-        self._con = Connection(self.host, self.port, self.auth)
+        self._con = get_connection(self.host, self.port, self.auth)
         # if the listener is provided it is expected that the
         # user will run the set up methods (i.e. connect, start, etc..)
         self.listener = listener
@@ -66,9 +66,11 @@ class Client(object):
 
     def set_listener(self, inst):
         self._listener = inst
-        # add our con to the listener's set so that it will be
-        # managed on server disconnects
         if inst:
+            # with asyncio use this listener's transmitting connection for all comms
+            if getattr(inst.event_loop, '_run_loop', None):
+                self._con = inst._tx_con
+            # Set the listener's call tracking header
             self._listener.call_tracking_header = utils.param2header(
                 self.call_tracking_header)
             self.log.debug("set call lookup variable to '{}'".format(
@@ -308,8 +310,9 @@ class Client(object):
         listener = self._assert_alive(listener)
         # block the event loop while we insert our job
         listener.block_jobs()
+        con = listener._tx_con
         try:
-            ev = self._con.bgapi(cmd)
+            ev = con.bgapi(cmd)
             if ev:
                 bj = listener.register_job(
                     ev, callback=callback,
@@ -317,9 +320,9 @@ class Client(object):
                     **jobkwargs
                 )
             else:
-                if not self._con.connected():
+                if not con.connected():
                     raise ConnectionError("local connection down on '{}'!?"
-                                          .format(self._con.host))
+                                          .format(con.host))
                 else:
                     raise APIError("bgapi cmd failed?!\n{}".format(cmd))
         finally:
