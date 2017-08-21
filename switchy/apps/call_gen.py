@@ -483,7 +483,7 @@ class Originator(object):
         if not self.app_weights.weights:
             raise utils.ConfigurationError("No apps have been loaded")
 
-        if not any(self.pool.evals('listener.is_alive()')):
+        if not any(self.pool.evals('listener.is_running()')):
             # Do listener(s) startup here so that additional apps
             # can be loaded just prior. Currently there is a restriction
             # since new event subscriptions (as required by most apps)
