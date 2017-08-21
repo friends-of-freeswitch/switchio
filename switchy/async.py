@@ -13,18 +13,19 @@ import multiprocessing as mp
 from collections import deque, OrderedDict
 from . import utils
 from .utils import get_event_time
-from .connection import Connection
+from .connection import get_connection
 
 
 class EventLoop(object):
     '''Event loop which processes FreeSWITCH ESL events using a background
-    event loop (single thread) and one ``Connection``.
+    event loop (single thread) and one ``SWIGConnection``.
     '''
     HOST = '127.0.0.1'
     PORT = '8021'
     AUTH = 'ClueCon'
 
-    def __init__(self, host=HOST, port=PORT, auth=AUTH, app_id_headers=None,):
+    def __init__(self, host=HOST, port=PORT, auth=AUTH, app_id_headers=None,
+                 loop=None):
         '''
         :param str host: Hostname or IP addr of the FS server
         :param str port: Port on which the FS process is listening for ESL
@@ -52,11 +53,14 @@ class EventLoop(object):
         self._exit = mp.Event()  # indicate when event loop should terminate
         self._epoch = self._fs_time = 0.0
 
-        # set up contained connections
-        self._rx_con = Connection(self.host, self.port, self.auth)
-
         # mockup thread
         self._thread = None
+        self._running = False
+        self.loop = loop
+
+        # set up contained connections
+        self._rx_con = get_connection(self.host, self.port, self.auth,
+                                      loop=loop)
 
     def __dir__(self):
         return utils.dirinfo(self)
@@ -80,21 +84,11 @@ class EventLoop(object):
         '''
         return self._thread.is_alive() if self._thread else False
 
-    def start(self):
-        '''Start this event loop's in a thread and start processing
-        all received events.
-        '''
-        if not self._rx_con.connected():
-            raise utils.ConfigurationError("you must call 'connect' first")
-
-        if self._thread is None or not self._thread.is_alive():
-            self.log.debug("starting event loop thread...")
-            self._thread = Thread(
-                target=self._listen_forever, args=(),
-                name='switchy_event_loop[{}]'.format(self.host),
-            )
-            self._thread.daemon = True  # die with parent
-            self._thread.start()
+    def is_running(self):
+        """Return ``bool`` indicating if event loop is waiting on events for
+        processing.
+        """
+        return self._running
 
     def connected(self):
         '''Return a bool representing the aggregate cons status'''
@@ -226,9 +220,9 @@ class EventLoop(object):
             name of mod_event event type(s) you wish to unsubscribe from
             (FS server will not be told to send you events of this type)
         '''
-        if self.is_alive():
+        if self.connected():
             raise utils.ConfigurationError(
-                "you must stop/disconnect this event loop before unsubscribing"
+                "you must disconnect this event loop before unsubscribing"
                 " from events"
             )
         failed = []
@@ -256,17 +250,34 @@ class EventLoop(object):
 
         return popped
 
+    def start(self):
+        '''Start this event loop's in a thread and start processing
+        all received events.
+        '''
+        if not self._rx_con.connected():
+            raise utils.ConfigurationError("you must call 'connect' first")
+
+        if self._thread is None or not self._thread.is_alive():
+            self.log.debug("starting event loop thread...")
+            self._thread = Thread(
+                target=self._listen_forever, args=(),
+                name='switchy_event_loop[{}]'.format(self.host),
+            )
+            self._thread.daemon = True  # die with parent
+            self._thread.start()
+
     def _listen_forever(self):
         '''Process events until stopped
         '''
+        self._running = True
         while not self._exit.is_set():
             # block waiting for next event
-            e = self._rx_con.recvEvent()
+            e = self._rx_con.recv_event()
             # self.log.warning(get_event_time(e) - self._fs_time)
             if not e:
                 self.log.error("Received empty event!?")
             else:
-                evname = e.getHeader('Event-Name')
+                evname = e.get('Event-Name')
                 if evname:
                     consumed = self._process_event(e, evname)
                 else:
@@ -279,9 +290,8 @@ class EventLoop(object):
         self.log.debug("exiting event loop")
         self._rx_con.disconnect()
         self._exit.clear()  # clear event loop for next re-entry
+        self._running = False
 
-    # (uncomment for profiling)
-    # @profile.do_cprofile
     def _process_event(self, e, evname):
         '''Process an ESL event by delegating to the appropriate handler
         and any succeeding callback chain. This is the core handler lookup
@@ -302,10 +312,10 @@ class EventLoop(object):
 
         consumed = False  # is this event consumed by a handler/callback
         if 'CUSTOM' in evname:
-            evname = e.getHeader('Event-Subclass')
+            evname = e.get('Event-Subclass')
         self.log.debug("receive event '{}'".format(evname))
 
-        uid = e.getHeader('Unique-ID')
+        uid = e.get('Unique-ID')
 
         handler = self._handlers.get(evname, False)
         if handler:
@@ -360,7 +370,7 @@ class EventLoop(object):
         """Acquire the client/consumer (app) id for event :var:`e`
         """
         for var in self.app_id_headers:
-            ident = e.getHeader(var)
+            ident = e.get(var)
             if ident:
                 self.log.debug(
                     "app id lookup using '{}' successfully returned '{}'"
@@ -411,6 +421,11 @@ class EventLoop(object):
 
 def get_event_loop(host, port=EventLoop.PORT, auth=EventLoop.AUTH,
                    **kwargs):
-    '''Event loop factory to instantiate a local `EventLoop` instance.
+    '''Event loop factory. When using python 3.5 + an ``asyncio`` based loop
+    is used.
     '''
-    return EventLoop(host, port, auth, **kwargs)
+    if utils.py35:
+        from .reactor import AsyncIOEventLoop
+        return AsyncIOEventLoop(host, port, auth, **kwargs)
+    else:
+        return EventLoop(host, port, auth, **kwargs)
