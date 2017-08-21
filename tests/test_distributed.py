@@ -23,7 +23,6 @@ def test_setup(pool):
     assert not any(pool.evals('listener.connected()'))
     pool.evals('listener.connect()')
     assert all(pool.evals('listener.connected()'))
-    assert not any(pool.evals('client.connected()'))
     pool.evals('client.connect()')
     pool.evals('client.load_app(Bert)', Bert=Bert)
     name = utils.get_name(Bert)

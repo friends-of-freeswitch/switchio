@@ -5,13 +5,14 @@
 Tests for core components
 '''
 from __future__ import division
+import sys
 import time
 import pytest
 from pprint import pformat
 from switchy.utils import ConfigurationError
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def ael(el):
     """An event listener (el) with active event loop
     Unsubscribe the listener from verbose updates.
@@ -20,7 +21,6 @@ def ael(el):
     # avoid latency caused by update events
     el.unsubscribe("CALL_UPDATE")
     el.connect()
-    assert not el.is_alive()
     el.start()
     assert el.connected()
     yield el
@@ -153,41 +153,44 @@ class TestListener:
         assert ev not in el._handlers
         # unsubscribing for now non-extant handler
         assert not el.unsubscribe(ev)
+        assert ev in el._unsub
+        assert ev not in el._rx_con._sub
 
         # manually reset unsubscriptions
         el._unsub = ()
         el._handlers = default_handlers
 
-        # test once connected
+        # not allowed after connect
         el.connect()
-        assert el.unsubscribe(ev)
-        assert ev not in el._handlers
-        assert ev in el._unsub
-        assert ev not in el._rx_con._sub
-        assert el.connected()
-
-        # not allowed after start
-        el.start()
         with pytest.raises(ConfigurationError):
             assert el.unsubscribe(ev)
 
-    def test_reconnect(self, el, con):
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 5),
+        reason="No auto-reconnect support without coroutines"
+    )
+    def test_reconnect(self, el):
         el.connect()
+        con = el._tx_con
         assert con.connected()
-        el.con = con
         assert el.connected()
+        el.start()
         # trigger server disconnect event
         con.api('reload mod_event_socket')
+        while con.connected():
+            time.sleep(0.01)
+
+        while not con.connected():
+            time.sleep(0.01)
+        # con.protocol.sendrecv('exit')
         # ensure connections were brought back up
         assert con.connected()
         assert el.connected()
         e = con.api('status')
         assert e
         assert con.connected()
-        # remove connection from listener set
-        delattr(el, 'con')
 
-    def test_call(self, checkcalls):
+    def test_call(self, ael, checkcalls):
         """Test a simple call (a pair of sessions) through FreeSWITCH
         """
         checkcalls(duration=3, sleep=1.3)
@@ -337,9 +340,9 @@ class TestClient:
         from switchy.connection import ConnectionError
         # unconnected attempt
         with pytest.raises(ConnectionError):
-            client.api('doggy')
+            client.cmd('doggy')
         client.connect()
         # bad command
         with pytest.raises(APIError):
-            client.api('doggy')
-        assert client.api('status')
+            client.cmd('doggy')
+        assert client.cmd('status')

@@ -265,7 +265,7 @@ def test_with_orig(get_orig, measure, storer):
     """
     from switchy.apps import players
     pd = measure.pd
-    orig = get_orig('doggy', rate=60)
+    orig = get_orig('doggy', rate=100)
     orig.load_app(players.TonePlay)
 
     # configure max calls originated to length of of storer buffer
@@ -275,6 +275,7 @@ def test_with_orig(get_orig, measure, storer):
     # orig.limit = orig.max_offered = 1
     if pd:
         assert cdr_storer._buffer.bi == 0
+
     orig.start()
 
     # wait for all calls to come up then hupall
