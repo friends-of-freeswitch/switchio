@@ -84,7 +84,7 @@ def monitor(el):
 
 
 @pytest.fixture
-def checkcalls(proxy_dp, scenario, ael):
+def checkcalls(proxy_dp, scenario, ael, travis):
     """Return a function that can be used to make calls and check that call
     counting is fast and correct.
     """
@@ -100,6 +100,8 @@ def checkcalls(proxy_dp, scenario, ael):
             "SIPp cmds: {}".format(pformat(scenario.cmditems()))
         )
 
+        if travis:
+            sleep += 0.1
         try:
             scenario(block=False)
 

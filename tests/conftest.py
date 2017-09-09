@@ -28,6 +28,11 @@ def pytest_addoption(parser):
                      default=2, help="Number of docker containers to spawn")
 
 
+@pytest.fixture(scope='session')
+def travis():
+    return os.environ.get('TRAVIS', False)
+
+
 @pytest.fixture(scope='session', autouse=True)
 def loglevel(request):
     level = max(40 - request.config.option.verbose * 10, 5)
