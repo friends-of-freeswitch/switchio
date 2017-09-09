@@ -171,3 +171,30 @@ variable_pre_transfer_caller_id_number: 1112223333
 variable_call_uuid: 8de782e0-83c9-11e7-af1b-001500e3e25c
 variable_current_application: park
 
+Content-Length: 1048
+Content-Type: text/event-plain
+
+Event---Name: BACKGROUND_JOB
+Core-UUID: 679056bb-0d5f-4045-8819-e0a886f6c2c5
+FreeSWITCH-Hostname: goodboy-xps
+FreeSWITCH-Switchname: goodboy-xps
+FreeSWITCH-IPv4: 192.168.0.105
+FreeSWITCH-IPv6: %3A%3A1
+Event-Date-Local: 2017-08-18%2003%3A58%3A55
+Event-Date-GMT: Fri,%2018%20Aug%202017%2003%3A58%3A55%20GMT
+Event-Date-Timestamp: 1503028735079552
+Event-Calling-File: mod_event_socket.c
+Event-Calling-Function: api_exec
+Event-Calling-Line-Number: 1557
+Event-Sequence: 1633
+Job-UUID: 86b51ad6-ebb9-4bca-8a41-f28986dde3e4
+Job-Command: originate
+Job-Command-Arg: %7Boriginate_timeout%3D60,origination_caller_id_name%3DMr_Switchy,origination_caller_id_number%3D1112223333,originator_codec%3DPCMU,absolute_codec_string%3D,origination_uuid%3D8de782e0-83c9-11e7-af1b-001500e3e25c,ignore_display_updates%3Dtrue,ignore_early_media%3Dtrue,sip_h_X-switchy_originating_session%3D8de782e0-83c9-11e7-af1b-001500e3e25c,sip_h_X-switchy_app%3DTonePlay%7Dsofia/external/doggy%40192.168.0.105%3A5080%20%26park()
+Content-Length: 41
+
++OK 8de782e0-83c9-11e7-af1b-001500e3e25c
+
+Content-Type: command/reply
+Reply-Text: +OK --Job-UUID: 1246016f-ea2f-4cba-a018-16443bcadc6f
+Job-UUID: 1246016f-ea2f-4cba-a018-16443bcadc6f
+

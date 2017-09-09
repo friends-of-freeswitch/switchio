@@ -95,7 +95,8 @@ def test_parse_segmented_event_stream(con, get_event_stream):
     """Verify segmented packets are processed correctly.
     """
     prot = InboundProtocol(None, None, None)
-    first, second = get_event_stream('eventstream2.txt').split(b'--')
+    first, second, third, fourth = get_event_stream(
+        'eventstream2.txt').split(b'--')
     events = prot.data_received(first)
     assert len(events) == 1
     assert events[0]['Job-UUID']
@@ -105,3 +106,18 @@ def test_parse_segmented_event_stream(con, get_event_stream):
     events = prot.data_received(second)
     assert events[0]['Body'] == '+OK 8de782e0-83c9-11e7-af1b-001500e3e25c\n'
     assert events[1]['Event-Name'] == 'CHANNEL_PARK'
+
+    assert prot._segmented[2] == 'Event'
+    # import pdb; pdb.set_trace()
+    events3 = prot.data_received(third)
+    assert len(events3) == 1
+    assert events3[0]['Event-Name'] == 'BACKGROUND_JOB'
+
+    assert prot._segmented[2]
+    assert not prot._segmented[0]
+    assert prot._segmented[1] == 0
+    events4 = prot.data_received(fourth)
+    assert not any(prot._segmented)
+    assert len(events4) == 1
+    patt = '+OK Job-UUID'
+    assert events4[0]['Reply-Text'][:len(patt)] == patt

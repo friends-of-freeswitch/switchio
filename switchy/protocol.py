@@ -27,7 +27,10 @@ class InboundProtocol(asyncio.Protocol):
         self.log = utils.get_logger(utils.pstr(self))
         self.transport = None
         self._previous = None, None
-        self._segmented = namedtuple('segmentdata', ['event', 'size'])({}, 0)
+        self._segmented = namedtuple(
+            'segmentdata',
+            ['event', 'size', 'data']
+        )({}, 0, '')
 
         # state flags
         self._connected = False
@@ -141,21 +144,14 @@ class InboundProtocol(asyncio.Protocol):
         return chunk
 
     def read_contents(self, data, iframe, clen):
-        chunk = {}
         segmented = False
-        # while clen:  # recursive clens?
         clen = int(clen)
         contents = data[iframe:iframe+clen]
-        if contents:
-            chunk.update(self.parse_frame(contents))
         diff = clen - len(contents)
-        # if len(contents) != clen:
         if diff > 0:
             segmented = True
-            # break
         iframe = iframe + clen
-        # clen = chunk.get('Content-Length')
-        return chunk, segmented, diff, iframe
+        return contents, segmented, diff, iframe
 
     def data_received(self, data):
         """Main socket data processing routine. This is the core event packet
@@ -167,21 +163,26 @@ class InboundProtocol(asyncio.Protocol):
         events = deque(maxlen=1000)
 
         # get any segmented event in progress
-        event, content_size = self._segmented
-        self._segmented = {}, 0
+        event, content_size, last_contents = self._segmented
+        self._segmented = {}, 0, ''
         segmented = False
-
         iframe = 0
-        # finish processing segments
-        if content_size:
-            chunk, segmented, diff, iframe = self.read_contents(
-                data, 0, content_size)
-            event.update(chunk)
-            if segmented:
-                self._segmented = event, diff
-                return []
 
-        s = data.find('\n\n')
+        if content_size:  # finish processing segments
+            contents, segmented, diff, iframe = self.read_contents(
+                data, 0, content_size)
+            if segmented:
+                self._segmented = event, diff, last_contents + contents
+                return []
+            else:  # all content bytes were retrieved
+                contents = last_contents + contents
+                event.update(self.parse_frame(contents))
+                events.append(event)
+                event = {}
+        elif last_contents:  # finish segmented non-contents frame
+            data = last_contents + data
+
+        s = data.find('\n\n', iframe)
         while s != -1:
             frame = data[iframe:s+1]
             chunk = self.parse_frame(frame)
@@ -190,17 +191,22 @@ class InboundProtocol(asyncio.Protocol):
             iframe = s+2
             clen = chunk.get('Content-Length')
             if clen:
-                chunk, segmented, diff, iframe = self.read_contents(
+                contents, segmented, diff, iframe = self.read_contents(
                     data, iframe, clen)
-                if chunk:
-                    event.update(chunk)
                 if segmented:
-                    self._segmented = event, diff
+                    self._segmented = event, diff, contents
                     break
+
+                if contents:
+                    event.update(self.parse_frame(contents))
 
             events.append(event)
             event = {}
             s = data.find('\n\n', iframe)
+        else:
+            remaining = data[iframe:]
+            if remaining:  # segmented non-contents frame
+                self._segmented = event, 0, remaining
 
         self.process_events(events, parsed)
         return events  # for testing
