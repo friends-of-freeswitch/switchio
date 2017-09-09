@@ -109,7 +109,7 @@ def checkcalls(proxy_dp, scenario, ael, travis):
             time.sleep(sleep)
             msg = "Wasn't quite fast enough to track {} cps".format(rate)
             assert ael.count_calls() == limit, msg
-            time.sleep(duration + 1.05)
+            time.sleep(duration + sleep)
             assert ael.count_calls() == 0
 
             if hasattr(ael, 'call_times'):  # check call_times tracking
