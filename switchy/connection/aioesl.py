@@ -169,8 +169,11 @@ class AsyncIOConnection(object):
 
     def bgapi(self, cmd, block=False):
         self.log.debug("bgapi cmd '{}'".format(cmd))
-        fut = self.protocol.bgapi(cmd)
-        return run_in_loop([fut], self.loop, timeout=0.005, block=block)
+        if not block and (get_ident() == self.loop._tid):
+            return self.protocol.bgapi(cmd)
+
+        return run_in_loop([partial(self.protocol.bgapi, cmd)],
+                           self.loop, timeout=0.005, block=block, call=True)
 
     def subscribe(self, event_types, fmt='plain'):
         """Subscribe connection to receive events for all names
