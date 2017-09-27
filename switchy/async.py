@@ -40,7 +40,6 @@ class EventLoop(object):
         self.consumers = {}  # callback chains, one for each event type
         self._sess2waiters = {}  # holds events being waited on
         self._blockers = []  # holds cached events for reuse
-        self.events = OrderedDict()
         # header name used for associating sip sessions into a 'call'
         self.app_id_headers = []
         if app_id_headers:
@@ -280,13 +279,11 @@ class EventLoop(object):
                 evname = e.get('Event-Name')
                 if evname:
                     consumed = self._process_event(e, evname)
+                    if not consumed:
+                        self.log.warn("unconsumed  event '{}'?".format(e))
                 else:
                     self.log.warn("received unamed event '{}'?".format(e))
-                # append events which are not consumed
-                if not consumed:
-                    # store up to the last 1k of each event type
-                    self.events.setdefault(
-                        evname, deque(maxlen=1000)).append((e, time.time()))
+
         self.log.debug("exiting event loop")
         self._rx_con.disconnect()
         self._exit.clear()  # clear event loop for next re-entry

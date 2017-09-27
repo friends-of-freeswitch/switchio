@@ -21,7 +21,8 @@ def new_event_loop():
     try:
         import uvloop
         return uvloop.new_event_loop()
-    except ImportError:
+    except ImportError as err:
+        utils.log_to_stderr().warn(str(err))
         return asyncio.new_event_loop()
 
 
@@ -100,13 +101,10 @@ class AsyncIOEventLoop(EventLoop):
                 evname = e.get('Event-Name')
                 if evname:
                     consumed = self._process_event(e, evname)
+                    if not consumed:
+                        self.log.warn("unconsumed  event '{}'?".format(e))
                 else:
-                    self.log.warn("received unamed event '{}'?".format(e))
-                # append events which are not consumed
-                if not consumed:
-                    # store up to the last 1k of each event type
-                    self.events.setdefault(
-                        evname, deque(maxlen=1000)).append((e, time.time()))
+                    self.log.warn("received unnamed event '{}'?".format(e))
 
         self.log.debug("Exiting listen loop")
         self._running = False
