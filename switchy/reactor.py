@@ -8,7 +8,6 @@ Asyncio based reactor core
 """
 import asyncio
 from functools import partial
-from collections import deque
 import time
 from threading import Thread, current_thread, get_ident
 from .async import EventLoop
@@ -120,8 +119,16 @@ class AsyncIOEventLoop(EventLoop):
         )
         # wait on disconnect success
         future.result(1)
-        while self._rx_con.connected():
-            time.sleep(0.1)
+        self.loop.stop()
+        for _ in range(10):
+            if self._rx_con.connected():
+                time.sleep(0.1)
+            else:
+                break
+        else:
+            if self._rx_con.connected():
+                raise TimeoutError("Failed to disconnect connection{}"
+                                   .format(self._rx_con))
 
         def trigger_exit():
             # manually signal listen-loop exit (usually stuck in polling
