@@ -27,11 +27,8 @@ class InboundProtocol(asyncio.Protocol):
         self.log = utils.get_logger(utils.pstr(self))
         self.transport = None
         self._previous = None, None
-        self._segmented = namedtuple(
-            'segmentdata',
-            ['event', 'size', 'data']
-        )({}, 0, '')
-
+        # segment data in the form (event, size, data)
+        self._segmented = ({}, 0, '')
         # state flags
         self._connected = False
         self._disconnected = None
@@ -143,7 +140,8 @@ class InboundProtocol(asyncio.Protocol):
                     last_key, '') + line + '\n'
         return chunk
 
-    def read_contents(self, data, iframe, clen):
+    @staticmethod
+    def read_contents(data, iframe, clen):
         segmented = False
         clen = int(clen)
         contents = data[iframe:iframe+clen]
@@ -239,6 +237,7 @@ class InboundProtocol(asyncio.Protocol):
         return event
 
     def bgapi(self, cmd, errcheck=True):
+        # TODO: drop ``errcheck`` here - it's legacy and should be the default
         future = self.sendrecv('bgapi {}'.format(cmd))
         if errcheck:
             future.add_done_callback(self._handle_cmd_resp)
@@ -246,6 +245,7 @@ class InboundProtocol(asyncio.Protocol):
         return future
 
     def api(self, cmd, errcheck=True):
+        # TODO: drop ``errcheck`` here - it's legacy and should be the default
         future = self.sendrecv('api {}'.format(cmd), 'api/response')
         if errcheck:
             future.add_done_callback(self._handle_cmd_resp)
