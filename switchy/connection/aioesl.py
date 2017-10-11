@@ -15,35 +15,46 @@ from .. import utils
 from ..protocol import InboundProtocol
 
 
-def run_in_loop(futs, loop, timeout=0.5, block=True, call=False):
-    """"Given a sequence of futures ``futs``, handle each in order to
-    completion and return the final result.
+async def coroutinize(awaitable, *args, **kwargs):
+    return await awaitable(*args, **kwargs)
+
+
+async def await_in_order(awaitables, loop, timeout=None):
+    awaitables = map(partial(asyncio.ensure_future, loop=loop), awaitables)
+    for awaitable in awaitables:
+        try:
+            res = await asyncio.wait_for(awaitable, timeout=timeout)
+        except (asyncio.CancelledError, asyncio.TimeoutError) as err:
+            for awaitable in awaitables:
+                awaitable.cancel()
+            raise
+
+    return res
+
+
+def run_in_order_threadsafe(awaitables, loop, timeout=0.5, block=True):
+    """"Given a sequence of awaitables, schedule each threadsafe and handle
+    each, in order, to completion returning the final result from the last
+    awaitable.
     """
-    async def runall(futs):
-        ffuts = []
-        for fut in futs:
-            if call:
-                fut = fut()
-            ffuts.append(fut)
-            asyncio.ensure_future(fut, loop=loop)
-            await asyncio.wait_for(fut, timeout=timeout if block else None)
-        return ffuts[-1].result()
+    future = asyncio.run_coroutine_threadsafe(
+        await_in_order(awaitables, loop, timeout),
+        loop
+    )
 
-    coro = runall(futs)
+    if block:
+        if not loop.is_running():
+            return loop.run_until_complete(
+                asyncio.wrap_future(future, loop=loop))
+        else:
+            return future.result(timeout)
 
-    if not loop.is_running() and block:
-        return loop.run_until_complete(coro)
-    else:
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-
-    if not block:
-        return future
-
-    return future.result(timeout)
+    return future
 
 
 class AsyncIOConnection(object):
-    """An ESL connection implemented using an asyncio TCP protocol.
+    """An ESL connection implemented using an ``asyncio`` TCP protocol.
+
     Consider this API threadsafe.
     """
     def __init__(self, host, port='8021', password='ClueCon', loop=None):
@@ -72,33 +83,10 @@ class AsyncIOConnection(object):
     def __exit__(self, exception_type, exception_val, trace):
         self.disconnect()
 
-    async def aconnect(self, host, port, password, loop):
-        """Async connect to the target FS ESL. ``connect()`` calls this method
-        internally.
-        """
-        prot = self.protocol
-
-        for _ in range(5):
-            try:
-                await loop.create_connection(lambda: prot, host, port)
-                break
-            except ConnectionRefusedError:
-                time.sleep(0.05)  # I wouldn't tweak this if I were you.
-                self.log.warning(
-                    "Connection to {}:{} failed, retrying..."
-                    .format(host, port)
-                )
-        else:
-            raise ConnectionRefusedError(
-                "Failed to connect to server at '{}:{}'\n"
-                "Please check that FreeSWITCH is running and "
-                "accepting ESL connections.".format(host, port))
-
-        await asyncio.wait_for(prot.authenticate(), 10)
-
     def connect(self, host=None, port=None, password=None, loop=None,
                 block=True):
         """Connect the underlying protocol.
+
         If ``block`` is set to false returns a coroutine.
         """
         host = host or self.host
@@ -108,9 +96,32 @@ class AsyncIOConnection(object):
         loop = self.loop
 
         if not self.connected():
-            self.protocol = InboundProtocol(password, loop, self.host)
-            prot = self.protocol
-            coro = self.aconnect(host, port, password, self.loop)
+            prot = self.protocol = InboundProtocol(password, loop, self.host)
+
+            async def try_connect(host, port, password, loop):
+                """Try to create a connection and authenticate to the
+                target FS ESL.
+                """
+                for _ in range(5):
+                    try:
+                        await loop.create_connection(lambda: prot, host, port)
+                        break
+                    except ConnectionRefusedError:
+                        time.sleep(0.05)  # I wouldn't tweak this if I were you
+                        self.log.warning(
+                            "Connection to {}:{} failed, retrying..."
+                            .format(host, port)
+                        )
+                else:
+                    raise ConnectionRefusedError(
+                        "Failed to connect to server at '{}:{}'\n"
+                        "Please check that FreeSWITCH is running and "
+                        "accepting ESL connections.".format(host, port))
+
+                # TODO: consider using the asyncio_timeout lib here
+                await asyncio.wait_for(self.protocol.authenticate(), 10)
+
+            coro = try_connect(host, port, password, self.loop)
 
             if block:  # wait for authorization sequence to complete
                 loop.run_until_complete(coro)
@@ -125,19 +136,17 @@ class AsyncIOConnection(object):
     def connected(self):
         return self.protocol.connected() if self.protocol else False
 
-    async def adisconnect(self, timeout=3):
-        if self.connected():
-            await asyncio.wait_for(self.protocol.disconnect(), timeout)
-
     def disconnect(self, block=True, loop=None):
+        loop = loop or self.loop
         if self.connected():
-            fut = self.protocol.disconnect()
-            if not block and (get_ident() == self.loop._tid):
-                return fut
+            if not block and (get_ident() == loop._tid):
+                return self.protocol.disconnect()
 
-            loop = loop or self.loop
-            run_in_loop([fut, self.protocol.disconnected()],
-                        loop, timeout=2)
+            return run_in_order_threadsafe(
+                [coroutinize(self.protocol.disconnect),
+                 coroutinize(self.protocol.disconnected)],
+                loop, timeout=2, block=block
+            )
 
     async def recv_event(self):
         """Retreive the latest queued event.
@@ -154,11 +163,16 @@ class AsyncIOConnection(object):
             raise ConnectionError("Call ``connect()`` first")
         self.log.debug("api cmd '{}'".format(cmd))
         if not block and (get_ident() == self.loop._tid):
+            # note this is an `asyncio.Future`
             return self.protocol.api(cmd, errcheck=errcheck)
 
-        return run_in_loop([partial(self.protocol.api, cmd,
-                                    errcheck=errcheck)],
-                           self.loop, block=block, call=True)
+        future = run_in_order_threadsafe(
+            [coroutinize(self.protocol.api, cmd, errcheck=errcheck)], self.loop)
+
+        if not block:
+            return future  # note this is a `concurrent.futures.Future`
+
+        return future.result(0.005)
 
     def cmd(self, cmd):
         '''Return the string-body output from invoking a command.
@@ -170,10 +184,16 @@ class AsyncIOConnection(object):
     def bgapi(self, cmd, block=False):
         self.log.debug("bgapi cmd '{}'".format(cmd))
         if not block and (get_ident() == self.loop._tid):
-            return self.protocol.bgapi(cmd)
+            return self.protocol.bgapi(cmd)  # note this is an `asyncio.Future`
 
-        return run_in_loop([partial(self.protocol.bgapi, cmd)],
-                           self.loop, timeout=0.005, block=block, call=True)
+        # future = asyncio.run_coroutine_threadsafe(
+        future = run_in_order_threadsafe(
+            [coroutinize(self.protocol.bgapi, cmd)], self.loop)
+
+        if not block:
+            return future  # note this is a `concurrent.futures.Future`
+
+        return future.result(0.005)
 
     def subscribe(self, event_types, fmt='plain'):
         """Subscribe connection to receive events for all names

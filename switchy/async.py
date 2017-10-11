@@ -55,7 +55,7 @@ class EventLoop(object):
         # mockup thread
         self._thread = None
         self._running = False
-        self.loop = loop
+        self.loop = loop  # only used in py3/asyncio
 
         # set up contained connections
         self._rx_con = get_connection(self.host, self.port, self.auth,
