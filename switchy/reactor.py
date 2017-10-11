@@ -114,12 +114,8 @@ class AsyncIOEventLoop(EventLoop):
         if current_thread() is self._thread:
             self.log.warn("Stop called from event loop thread?")
 
-        future = asyncio.run_coroutine_threadsafe(
-            self._rx_con.adisconnect(), self.loop
-        )
         # wait on disconnect success
-        future.result(1)
-        self.loop.stop()
+        self._rx_con.disconnect()
         for _ in range(10):
             if self._rx_con.connected():
                 time.sleep(0.1)
@@ -127,7 +123,7 @@ class AsyncIOEventLoop(EventLoop):
                 break
         else:
             if self._rx_con.connected():
-                raise TimeoutError("Failed to disconnect connection{}"
+                raise TimeoutError("Failed to disconnect connection {}"
                                    .format(self._rx_con))
 
         def trigger_exit():
