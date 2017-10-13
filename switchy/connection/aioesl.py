@@ -33,9 +33,12 @@ async def await_in_order(awaitables, loop, timeout=None):
 
 
 def run_in_order_threadsafe(awaitables, loop, timeout=0.5, block=True):
-    """"Given a sequence of awaitables, schedule each threadsafe and handle
-    each, in order, to completion returning the final result from the last
-    awaitable.
+    """"Given a sequence of awaitables, schedule each threadsafe in order
+    optionally blocking until completion.
+
+    Returns a `concurrent.futures.Future` which can be used to wait on the
+    result returned from the last awaitable. If `block` is `True` the final
+    result will be waited on before returning control to the caller.
     """
     future = asyncio.run_coroutine_threadsafe(
         await_in_order(awaitables, loop, timeout),
@@ -47,9 +50,8 @@ def run_in_order_threadsafe(awaitables, loop, timeout=0.5, block=True):
             result = loop.run_until_complete(
                 asyncio.wrap_future(future, loop=loop))
             assert result is future.result()
-            return future
         else:
-            return future.result(timeout)
+            future.result(timeout)
 
     return future
 
@@ -148,7 +150,7 @@ class AsyncIOConnection(object):
                 [coroutinize(self.protocol.disconnect),
                  coroutinize(self.protocol.disconnected)],
                 loop, timeout=2, block=block
-            )
+            ).result()
 
     async def recv_event(self):
         """Retreive the latest queued event.
@@ -169,7 +171,7 @@ class AsyncIOConnection(object):
             return self.protocol.api(cmd, errcheck=errcheck)
 
         # NOTE: this is a `concurrent.futures.Future`
-        future_or_result = run_in_order_threadsafe(
+        future = run_in_order_threadsafe(
             [coroutinize(self.protocol.api, cmd, errcheck=errcheck)],
             self.loop,
             timeout=timeout,
@@ -177,9 +179,9 @@ class AsyncIOConnection(object):
         )
 
         if not block:
-            return future_or_result
+            return future
 
-        return future_or_result.result(0.005)
+        return future.result(0.005)
 
     def cmd(self, cmd):
         '''Return the string-body output from invoking a command.
