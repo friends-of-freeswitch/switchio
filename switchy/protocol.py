@@ -7,7 +7,7 @@
 Inbound ESL asyncio protocol
 """
 import asyncio
-from collections import defaultdict, deque, namedtuple
+from collections import defaultdict, deque
 from six.moves.urllib.parse import unquote
 from . import utils
 
@@ -19,7 +19,7 @@ class InboundProtocol(asyncio.Protocol):
     """Inbound ESL client which delivers parsed events to an
     ``asyncio.Queue``.
     """
-    def __init__(self, password, loop, host):
+    def __init__(self, host, password, loop):
         self.password = password
         self.loop = loop
         self.event_queue = asyncio.Queue(loop=loop)
@@ -29,8 +29,6 @@ class InboundProtocol(asyncio.Protocol):
         self._previous = None, None
         # segment data in the form (event, size, data)
         self._segmented = ({}, 0, '')
-        # state flags
-        self._connected = False
         self._disconnected = None
         self._auth_resp = None
 
@@ -40,7 +38,7 @@ class InboundProtocol(asyncio.Protocol):
             self._futures_map.get(ctype)
 
     def connected(self):
-        return self._connected
+        return bool(self.transport) and not self.transport.is_closing()
 
     def disconnected(self):
         """Return a future that can be used to wait for the connection
@@ -53,12 +51,10 @@ class InboundProtocol(asyncio.Protocol):
         """
         self.log.debug("Connection made to {}".format(self.host))
         self.transport = transport
-        self._connected = True
         self._disconnected = self.loop.create_future()
         self.authenticate()
 
     def connection_lost(self, exc):
-        self._connected = False
         self._auth_resp = None
         self.log.debug('The connection closed @ {}'.format(self.host))
         self._disconnected.set_result(True)

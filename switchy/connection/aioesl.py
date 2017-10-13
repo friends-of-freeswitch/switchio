@@ -98,7 +98,7 @@ class AsyncIOConnection(object):
         loop = self.loop
 
         if not self.connected():
-            prot = self.protocol = InboundProtocol(password, loop, self.host)
+            prot = self.protocol = InboundProtocol(self.host, password, loop)
 
             async def try_connect(host, port, password, loop):
                 """Try to create a connection and authenticate to the
