@@ -10,6 +10,10 @@ import multiprocessing as mp
 from . import utils
 
 
+if utils.py35:
+    from concurrent import futures
+
+
 class TimeoutError(Exception):
         pass
 
@@ -422,7 +426,6 @@ class Session(object):
         return self['Call-Direction'] == 'outbound'
 
 
-
 class Call(object):
     '''A collection of sessions which a compose a call
     '''
@@ -485,14 +488,17 @@ class Job(object):
     :param str sess_uuid: optional session uuid if job is associated with an
         active FS session
     '''
-    def __init__(self, event_or_fut, sess_uuid=None, callback=None, client_id=None,
-                 kwargs={}):
-        self.fut = event_or_fut if getattr(event_or_fut, 'result', None) else None
+    def __init__(self, event_or_fut, sess_uuid=None, callback=None,
+                 client_id=None, con=None, kwargs={}):
+        self.fut = event_or_fut if getattr(
+            event_or_fut, 'result', None) else None
         self.events = Events(event_or_fut) if not self.fut else None
         # self.uuid = self.events['Job-UUID']
         self.sess_uuid = sess_uuid
         self.launch_time = time.time()
         self.cid = client_id  # placeholder for client ident
+        self.con = con
+        self._log = None
 
         # when the job returns use this callback
         self._cb = callback
@@ -502,9 +508,24 @@ class Job(object):
         self._ev = None  # signal/sync job completion
 
     @property
+    def log(self):
+        """Local logger instance.
+        """
+        if not self._log:
+            self._log = utils.get_logger(utils.pstr(self.con.host))
+
+        return self._log
+
+    @property
     def uuid(self):
-        if self.fut:
-            event = self.fut.result()
+        if self.fut:  # py35+ only
+            try:
+                event = self.fut.result()
+            except futures.TimeoutError:
+                self.log.warn(
+                    "Response timeout for job {}"
+                    .format(self.sess_uuid)
+                )
             self.events = Events(event)
             self.fut = None
         return self.events['Job-UUID']

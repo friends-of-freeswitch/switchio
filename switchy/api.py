@@ -67,7 +67,7 @@ class Client(object):
     def set_listener(self, inst):
         self._listener = inst
         if inst:
-            # with asyncio use this listener's transmitting connection for all comms
+            # with asyncio use listener's transmitting connection for comms
             if getattr(inst.event_loop, '_run_loop', None):
                 self._con = inst._tx_con
             # Set the listener's call tracking header
@@ -246,7 +246,7 @@ class Client(object):
         """
         return self._con.connected()
 
-    def api(self, cmd, exc=True):
+    def api(self, cmd, exc=True, timeout=None):
         '''Invoke esl api command with error checking
         Returns an ESL.ESLEvent instance for event type "SOCKET_DATA".
         '''
@@ -264,7 +264,7 @@ class Client(object):
         '''
         return self._con.cmd(cmd)
 
-    def hupall(self, group_id=None):
+    def hupall(self, group_id=None, timeout=5):
         """Hangup all calls associated with this client
         by iterating all managed call apps and hupall-ing
         with the apps callback id. If :var:`group_id` is provided
@@ -274,11 +274,16 @@ class Client(object):
         if not group_id:
             # hangup all calls for all apps
             for group_id in self._apps:
-                self.api('hupall NORMAL_CLEARING {} {}'.format(
-                         self.app_id_header, group_id))
+                self.api(
+                    'hupall NORMAL_CLEARING {} {}'.format(
+                         self.app_id_header, group_id),
+                    timeout=timeout)
         else:
-            self.api('hupall NORMAL_CLEARING {} {}'.format(
-                     self.app_id_header, group_id))
+            self.api(
+                'hupall NORMAL_CLEARING {} {}'.format(
+                    self.app_id_header, group_id),
+                timeout=timeout,
+            )
 
     def _assert_alive(self, listener=None):
         """Assert our listener's event loop is active and if so return it
@@ -317,6 +322,7 @@ class Client(object):
                 bj = listener.register_job(
                     ev, callback=callback,
                     client_id=client_id or self._id,
+                    con=self._con,
                     **jobkwargs
                 )
             else:
