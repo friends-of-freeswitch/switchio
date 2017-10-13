@@ -79,7 +79,7 @@ class SWIGConnection(object):
         e.get = e.getHeader  # mapping compat
         return e
 
-    def api(self, cmd, errcheck=True):
+    def api(self, cmd, errcheck=True, timeout=None):
         '''Invoke esl api command (with error checking by default).
         Returns an ESL.ESLEvent instance for event type "SOCKET_DATA".
         '''
