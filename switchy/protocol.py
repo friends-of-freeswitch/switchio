@@ -118,8 +118,15 @@ class InboundProtocol(asyncio.Protocol):
                     fut = futures.popleft()
                     fut.set_result(event)
                 except IndexError:
-                    self.log.warn("No waiting future could be found "
+                    self.log.warn("no scheduled future could be found "
                                   "for event?\n{!r}".format(event))
+                except asyncio.InvalidStateError:
+                    if not fut.cancelled():
+                        self.log.warn(
+                            "future was already cancelled for event {}"
+                            .format(event))
+                    else:
+                        raise
 
     @staticmethod
     def parse_frame(frame):
@@ -227,7 +234,13 @@ class InboundProtocol(asyncio.Protocol):
         return fut
 
     def _handle_cmd_resp(self, future):
-        event = future.result()
+        try:
+            event = future.result()
+        except asyncio.CancelledError:
+            self.log.warn("future cancelled for cmd `{}`"
+                          .format(future.cmd))
+            return {}
+
         resp = event.get('Body', event.get('Reply-Text', ''))
         if not resp:
             raise RuntimeError("Missing a response?")
@@ -239,6 +252,7 @@ class InboundProtocol(asyncio.Protocol):
     def bgapi(self, cmd, errcheck=True):
         # TODO: drop ``errcheck`` here - it's legacy and should be the default
         future = self.sendrecv('bgapi {}'.format(cmd))
+        future.cmd = 'bgapi ' + cmd
         if errcheck:
             future.add_done_callback(self._handle_cmd_resp)
 
@@ -247,6 +261,7 @@ class InboundProtocol(asyncio.Protocol):
     def api(self, cmd, errcheck=True):
         # TODO: drop ``errcheck`` here - it's legacy and should be the default
         future = self.sendrecv('api {}'.format(cmd), 'api/response')
+        future.cmd = 'api ' + cmd
         if errcheck:
             future.add_done_callback(self._handle_cmd_resp)
 
