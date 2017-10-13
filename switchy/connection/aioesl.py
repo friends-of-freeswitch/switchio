@@ -44,8 +44,10 @@ def run_in_order_threadsafe(awaitables, loop, timeout=0.5, block=True):
 
     if block:
         if not loop.is_running():
-            return loop.run_until_complete(
+            result = loop.run_until_complete(
                 asyncio.wrap_future(future, loop=loop))
+            assert result is future.result()
+            return future
         else:
             return future.result(timeout)
 
@@ -156,8 +158,8 @@ class AsyncIOConnection(object):
         queue.task_done()
         return event
 
-    def api(self, cmd, errcheck=True, block=False):
-        '''Invoke esl api command (with error checking by default).
+    def api(self, cmd, errcheck=True, block=False, timeout=0.5):
+        '''Invoke api command (with error checking by default).
         '''
         if not self.connected():
             raise ConnectionError("Call ``connect()`` first")
@@ -166,13 +168,18 @@ class AsyncIOConnection(object):
             # note this is an `asyncio.Future`
             return self.protocol.api(cmd, errcheck=errcheck)
 
-        future = run_in_order_threadsafe(
-            [coroutinize(self.protocol.api, cmd, errcheck=errcheck)], self.loop)
+        # NOTE: this is a `concurrent.futures.Future`
+        future_or_result = run_in_order_threadsafe(
+            [coroutinize(self.protocol.api, cmd, errcheck=errcheck)],
+            self.loop,
+            timeout=timeout,
+            block=block,
+        )
 
         if not block:
-            return future  # note this is a `concurrent.futures.Future`
+            return future_or_result
 
-        return future.result(0.005)
+        return future_or_result.result(0.005)
 
     def cmd(self, cmd):
         '''Return the string-body output from invoking a command.
@@ -186,9 +193,11 @@ class AsyncIOConnection(object):
         if not block and (get_ident() == self.loop._tid):
             return self.protocol.bgapi(cmd)  # note this is an `asyncio.Future`
 
-        # future = asyncio.run_coroutine_threadsafe(
         future = run_in_order_threadsafe(
-            [coroutinize(self.protocol.bgapi, cmd)], self.loop)
+            [coroutinize(self.protocol.bgapi, cmd)],
+            self.loop,
+            block=block
+        )
 
         if not block:
             return future  # note this is a `concurrent.futures.Future`
