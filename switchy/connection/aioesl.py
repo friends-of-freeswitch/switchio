@@ -15,15 +15,11 @@ from .. import utils
 from ..protocol import InboundProtocol
 
 
-async def coroutinize(awaitable, *args, **kwargs):
-    return await awaitable(*args, **kwargs)
-
-
 async def await_in_order(awaitables, loop, timeout=None):
     awaitables = map(partial(asyncio.ensure_future, loop=loop), awaitables)
     for awaitable in awaitables:
         try:
-            res = await asyncio.wait_for(awaitable, timeout=timeout)
+            res = await asyncio.wait_for(awaitable, timeout=timeout, loop=loop)
         except (asyncio.CancelledError, asyncio.TimeoutError) as err:
             for awaitable in awaitables:
                 awaitable.cancel()
@@ -147,8 +143,8 @@ class AsyncIOConnection(object):
                 return self.protocol.disconnect()
 
             return run_in_order_threadsafe(
-                [coroutinize(self.protocol.disconnect),
-                 coroutinize(self.protocol.disconnected)],
+                [self.protocol.disconnect(),
+                 self.protocol.disconnected()],
                 loop, timeout=2, block=block
             ).result()
 
@@ -172,7 +168,7 @@ class AsyncIOConnection(object):
 
         # NOTE: this is a `concurrent.futures.Future`
         future = run_in_order_threadsafe(
-            [coroutinize(self.protocol.api, cmd, errcheck=errcheck)],
+            [self.protocol.api(cmd, errcheck=errcheck)],
             self.loop,
             timeout=timeout,
             block=block,
@@ -196,7 +192,7 @@ class AsyncIOConnection(object):
             return self.protocol.bgapi(cmd)  # note this is an `asyncio.Future`
 
         future = run_in_order_threadsafe(
-            [coroutinize(self.protocol.bgapi, cmd)],
+            [self.protocol.bgapi(cmd)],
             self.loop,
             block=block
         )

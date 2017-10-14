@@ -32,7 +32,9 @@ class AsyncIOEventLoop(EventLoop):
     def _run_loop(self):
         self.loop = loop = new_event_loop()
         loop._tid = get_ident()
-        loop.set_debug(True)
+        # FIXME: causes error with a thread safety check in Future.call_soon()
+        # called from Future.add_done_callback() - stdlib needs a patch?
+        # loop.set_debug(True)
         asyncio.set_event_loop(loop)
         self.loop.run_forever()
 
