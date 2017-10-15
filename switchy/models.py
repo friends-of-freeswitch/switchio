@@ -7,6 +7,7 @@ Models representing FreeSWITCH entities
 import time
 from collections import deque
 import multiprocessing as mp
+from pprint import pprint
 from . import utils
 
 
@@ -76,7 +77,10 @@ class Events(object):
         """Print serialized event data in chronological order to stdout
         """
         for ev in reversed(list(self._events)[index:]):
-            print(ev.serialize())
+            if getattr(ev, 'serialize', None):
+                print(ev.serialize())
+            else:
+                pprint(ev)
 
 
 class Session(object):
