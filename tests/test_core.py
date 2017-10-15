@@ -88,7 +88,7 @@ def checkcalls(proxy_dp, scenario, ael, travis):
     """Return a function that can be used to make calls and check that call
     counting is fast and correct.
     """
-    def inner(rate=1, limit=1, duration=3, call_count=None, sleep=1.1):
+    def inner(rate=1, limit=1, duration=3, call_count=None, sleep=1.05):
         # configure cmds
         scenario.rate = rate
         scenario.limit = limit
@@ -101,14 +101,19 @@ def checkcalls(proxy_dp, scenario, ael, travis):
         )
 
         if travis:
-            sleep += 0.1
+            sleep += 0.2
         try:
             scenario(block=False)
 
             # wait for events to arrive and be processed
-            time.sleep(sleep)
+            start = time.time()
             msg = "Wasn't quite fast enough to track {} cps".format(rate)
-            assert ael.count_calls() == limit, msg
+            while ael.count_calls() != limit:
+                time.sleep(0.001)
+            else:
+                assert ael.count_calls() == limit, msg
+                assert (time.time() - start) < sleep, msg
+
             time.sleep(duration + sleep)
             assert ael.count_calls() == 0
 
