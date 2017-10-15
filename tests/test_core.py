@@ -5,13 +5,14 @@
 Tests for core components
 '''
 from __future__ import division
+import sys
 import time
 import pytest
 from pprint import pformat
 from switchy.utils import ConfigurationError
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def ael(el):
     """An event listener (el) with active event loop
     Unsubscribe the listener from verbose updates.
@@ -20,7 +21,6 @@ def ael(el):
     # avoid latency caused by update events
     el.unsubscribe("CALL_UPDATE")
     el.connect()
-    assert not el.is_alive()
     el.start()
     assert el.connected()
     yield el
@@ -40,9 +40,9 @@ def proxy_dp(ael, client):
 
     ev = "CHANNEL_PARK"  # no answer() is ever done...
     # add a failover callback to provide the dialplan
-    ael.add_callback(ev, 'default', bridge2dest)
+    ael.event_loop.add_callback(ev, 'default', bridge2dest)
     # ensure callback was registered
-    assert bridge2dest in ael.consumers['default'][ev]
+    assert bridge2dest in ael.event_loop.consumers['default'][ev]
 
     # attempt to add measurement collection
     try:
@@ -84,11 +84,11 @@ def monitor(el):
 
 
 @pytest.fixture
-def checkcalls(proxy_dp, scenario, ael):
+def checkcalls(proxy_dp, scenario, ael, travis):
     """Return a function that can be used to make calls and check that call
     counting is fast and correct.
     """
-    def inner(rate=1, limit=1, duration=3, call_count=None, sleep=1.1):
+    def inner(rate=1, limit=1, duration=3, call_count=None, sleep=1.05):
         # configure cmds
         scenario.rate = rate
         scenario.limit = limit
@@ -100,14 +100,21 @@ def checkcalls(proxy_dp, scenario, ael):
             "SIPp cmds: {}".format(pformat(scenario.cmditems()))
         )
 
+        if travis:
+            sleep += 0.2
         try:
             scenario(block=False)
 
             # wait for events to arrive and be processed
-            time.sleep(sleep)
+            start = time.time()
             msg = "Wasn't quite fast enough to track {} cps".format(rate)
-            assert ael.count_calls() == limit, msg
-            time.sleep(duration + 1.05)
+            while ael.count_calls() != limit:
+                time.sleep(0.001)
+            else:
+                assert ael.count_calls() == limit, msg
+                assert (time.time() - start) < sleep, msg
+
+            time.sleep(duration + sleep)
             assert ael.count_calls() == 0
 
             if hasattr(ael, 'call_times'):  # check call_times tracking
@@ -125,8 +132,7 @@ class TestListener:
         '''
         pytest.raises(ConfigurationError, el.start)
         el.connect()
-        for name, con in el.iter_cons():
-            assert con.connected()
+        assert el.connected()
 
         # verify event loop thread
         el.start()
@@ -144,49 +150,54 @@ class TestListener:
         assert not el.connected()
 
     def test_unsub(self, el):
-        '''test listener unsubscribe for event type
+        '''test event loop unsubscribe for event type
         '''
+        el = el.event_loop
         ev = "CALL_UPDATE"
+        default_handlers = dict(el._handlers)
         # updates are too slow so remove them for our test set
         assert el.unsubscribe(ev)
         assert ev not in el._handlers
         # unsubscribing for now non-extant handler
         assert not el.unsubscribe(ev)
+        assert ev in el._unsub
+        assert ev not in el._rx_con._sub
 
         # manually reset unsubscriptions
         el._unsub = ()
-        el._handlers = el.default_handlers
+        el._handlers = default_handlers
 
-        # test once connected
+        # not allowed after connect
         el.connect()
-        assert el.unsubscribe(ev)
-        assert ev not in el._handlers
-        assert ev in el._unsub
-        assert ev not in el._rx_con._sub
-        assert el.connected()
-
-        # not allowed after start
-        el.start()
         with pytest.raises(ConfigurationError):
             assert el.unsubscribe(ev)
 
-    def test_reconnect(self, el, con):
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 5),
+        reason="No auto-reconnect support without coroutines"
+    )
+    def test_reconnect(self, el):
         el.connect()
+        con = el._tx_con
         assert con.connected()
-        el.con = con
         assert el.connected()
+        el.start()
         # trigger server disconnect event
         con.api('reload mod_event_socket')
+        while con.connected():
+            time.sleep(0.01)
+
+        while not con.connected():
+            time.sleep(0.01)
+        # con.protocol.sendrecv('exit')
         # ensure connections were brought back up
         assert con.connected()
         assert el.connected()
         e = con.api('status')
         assert e
         assert con.connected()
-        # remove connection from listener set
-        delattr(el, 'con')
 
-    def test_call(self, checkcalls):
+    def test_call(self, ael, checkcalls):
         """Test a simple call (a pair of sessions) through FreeSWITCH
         """
         checkcalls(duration=3, sleep=1.3)
@@ -203,8 +214,8 @@ class TestListener:
         def set_var(sess):
             var[0] = 'yay'
 
-        ael.add_callback('CHANNEL_CREATE', 'default', throw_err)
-        ael.add_callback('CHANNEL_CREATE', 'default', set_var)
+        ael.event_loop.add_callback('CHANNEL_CREATE', 'default', throw_err)
+        ael.event_loop.add_callback('CHANNEL_CREATE', 'default', set_var)
 
         checkcalls(duration=3, sleep=1.3)
         # ensure callback chain wasn't halted
@@ -255,9 +266,9 @@ class TestClient:
         from switchy.marks import get_callbacks, event_callback
         from switchy import utils
         with pytest.raises(AttributeError):
-            # need an observer assigned first
+            # need an listener assigned first
             client.load_app(TonePlay)
-        client.listener = el  # assign observer manually
+        client.listener = el  # assign listener manually
         assert client.listener is el
 
         # loading
@@ -280,7 +291,7 @@ class TestClient:
         assert app is not client._apps['TonePlay2'][name]
 
         # check that callbacks are registered with listener
-        cbmap = client.listener.consumers[app.cid]
+        cbmap = client.listener.event_loop.consumers[app.cid]
         for evname, cbtype, obj in get_callbacks(app):
             assert evname in cbmap
             reg_cb = cbmap[evname][0]
@@ -299,11 +310,12 @@ class TestClient:
         client.unload_app(app.cid)
         assert app.cid not in client._apps
         with pytest.raises(KeyError):
-            client.listener.consumers[app.cid]
+            client.listener.event_loop.consumers[app.cid]
 
         # Bert should still be there
         assert bid in client._apps
-        cbs = client.listener.consumers[client.apps.Bert['Bert'].cid]
+        cbs = client.listener.event_loop.consumers[
+            client.apps.Bert['Bert'].cid]
         assert cbs
         cbcount = len(cbs)
 
@@ -328,16 +340,16 @@ class TestClient:
         assert name not in client._apps
         assert name not in client.apps.Bert
         # Bert cbs should still be active
-        assert len(client.listener.consumers[bid]) == cbcount
+        assert len(client.listener.event_loop.consumers[bid]) == cbcount
 
     def test_commands(self, client):
         from switchy.utils import APIError
         from switchy.connection import ConnectionError
         # unconnected attempt
         with pytest.raises(ConnectionError):
-            client.api('doggy')
+            client.cmd('doggy')
         client.connect()
         # bad command
         with pytest.raises(APIError):
-            client.api('doggy')
-        assert client.api('status')
+            client.cmd('doggy')
+        assert client.cmd('status')

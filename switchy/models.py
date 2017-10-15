@@ -7,7 +7,12 @@ Models representing FreeSWITCH entities
 import time
 from collections import deque
 import multiprocessing as mp
+from pprint import pprint
 from . import utils
+
+
+if utils.py35:
+    from concurrent import futures
 
 
 class TimeoutError(Exception):
@@ -20,8 +25,8 @@ class JobError(utils.ESLError):
 
 class Events(object):
     """Event collection which for most intents and purposes should quack like
-    a collections.deque. Data lookups are delegated to the internal
-    deque of events in lilo order.
+    a ``collections.deque``. Data lookups are delegated to the internal deque
+    of events in lilo order.
     """
     def __init__(self, event=None):
         self._events = deque()
@@ -50,7 +55,7 @@ class Events(object):
         """
         # iterate from most recent event
         for ev in self._events:
-            value = ev.getHeader(str(key))
+            value = ev.get(str(key))
             if value:
                 return value
         return default
@@ -72,7 +77,10 @@ class Events(object):
         """Print serialized event data in chronological order to stdout
         """
         for ev in reversed(list(self._events)[index:]):
-            print(ev.serialize())
+            if getattr(ev, 'serialize', None):
+                print(ev.serialize())
+            else:
+                pprint(ev)
 
 
 class Session(object):
@@ -81,8 +89,9 @@ class Session(object):
     create_ev = 'CHANNEL_CREATE'
 
     # TODO: eventually uuid should be removed
-    def __init__(self, event, uuid=None, con=None):
+    def __init__(self, event, event_loop=None, uuid=None, con=None):
         self.events = Events(event)
+        self.event_loop = event_loop
         self.uuid = uuid or self.events['Unique-ID']
         self.con = con
         # sub-namespace for apps to set/get state
@@ -483,13 +492,17 @@ class Job(object):
     :param str sess_uuid: optional session uuid if job is associated with an
         active FS session
     '''
-    def __init__(self, event, sess_uuid=None, callback=None, client_id=None,
-                 kwargs={}):
-        self.events = Events(event)
-        self.uuid = self.events['Job-UUID']  # event.getHeader('Job-UUID')
+    def __init__(self, event_or_fut, sess_uuid=None, callback=None,
+                 client_id=None, con=None, kwargs={}):
+        self.fut = event_or_fut if getattr(
+            event_or_fut, 'result', None) else None
+        self.events = Events(event_or_fut) if not self.fut else None
+        # self.uuid = self.events['Job-UUID']
         self.sess_uuid = sess_uuid
         self.launch_time = time.time()
         self.cid = client_id  # placeholder for client ident
+        self.con = con
+        self._log = None
 
         # when the job returns use this callback
         self._cb = callback
@@ -497,6 +510,29 @@ class Job(object):
         self._result = None
         self._failed = False
         self._ev = None  # signal/sync job completion
+
+    @property
+    def log(self):
+        """Local logger instance.
+        """
+        if not self._log:
+            self._log = utils.get_logger(utils.pstr(self.con.host))
+
+        return self._log
+
+    @property
+    def uuid(self):
+        if self.fut:  # py35+ only
+            try:
+                event = self.fut.result()
+            except futures.TimeoutError:
+                self.log.warn(
+                    "Response timeout for job {}"
+                    .format(self.sess_uuid)
+                )
+            self.events = Events(event)
+            self.fut = None
+        return self.events['Job-UUID']
 
     @property
     def result(self):

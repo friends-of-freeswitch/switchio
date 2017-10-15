@@ -22,7 +22,7 @@ hold state and be mutated at runtime. This allows for all sorts of dynamic call
 processing logic. *Apps* can also be shared across a *FreeSWITCH* process cluster
 allowing for centralized call processing overtop a scalable service system.
 
-Applications are :ref:`loaded <appload>` either using a :py:class:`~switchy.observe.Client`
+Applications are :ref:`loaded <appload>` either using a :py:class:`~switchy.api.Client`
 or, in the case of an *switchy* cluster :doc:`Service <services>`, an
 :py:class:`~switchy.apps.AppManager` instance.
 
@@ -75,7 +75,7 @@ a global::
 .. note::
     This is meant to be a simple example and not actually
     implemented for practical use.
-    :py:meth:`switchy.observe.EventListener.count_calls` exists
+    :py:meth:`switchy.handlers.EventListener.count_calls` exists
     for this very purpose.
 
 
@@ -83,13 +83,13 @@ Event Handlers
 **************
 An event handler is any callable marked by :py:meth:`handler` which
 is expected to handle a received `ESLEvent` object and process it within the
-:py:class:`~switchy.observe.EventListener` event loop. It's function signature
+:py:class:`~switchy.handlers.EventListener` event loop. It's function signature
 should expect a single argument, that being the received event.
 
-Example handlers can be found in the :py:class:`~switchy.observe.EventListener`
+Example handlers can be found in the :py:class:`~switchy.handlers.EventListener`
 such as the default `CHANNEL_ANSWER` handler
 
-.. literalinclude:: ../switchy/observe.py
+.. literalinclude:: ../switchy/handlers.py
     :pyobject: EventListener._handle_answer
 
 As you can see a knowledge of the underlying `ESL SWIG python
@@ -109,7 +109,7 @@ app which is provided as a built-in for Switchy
     :pyobject: TonePlay
 
 
-:py:class:`Clients <switchy.observe.Client>` who load this app will originate
+:py:class:`Clients <switchy.api.Client>` who load this app will originate
 calls wherein a simple tone is played infinitely and echoed back to
 the caller until each call is hung up.
 

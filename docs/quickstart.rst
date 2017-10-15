@@ -70,13 +70,13 @@ What happens behind the scenes here is the following:
 
     * at the `with`, necessary internal Switchy components are instantiated in memory
       and connected to a *FreeSWITCH* process listening on the `fsip` ESL ip address.
-    * at the `caller()`, an :py:meth:`~switchy.observe.Client.originate` command is
-      invoked asynchronously via a :py:meth:`~switchy.observe.Client.bgapi` call.
+    * at the `caller()`, an :py:meth:`~switchy.api.Client.originate` command is
+      invoked asynchronously via a :py:meth:`~switchy.api.Client.bgapi` call.
     * the background :py:class:`~switchy.models.Job` returned by that command is handled
       to completion **synchronously** wherein the call blocks until the originating session has
       reached the connected state.
     * the corresponding origininating :py:class:`~switchy.models.Session` is returned along with
-      a reference to a :py:meth:`switchy.observe.EventListener.waitfor` blocker method.
+      a reference to a :py:meth:`switchy.handlers.EventListener.waitfor` blocker method.
     * the call is kept up for 1 second and then :py:meth:`hungup <switchy.models.Session.hangup>`.
     * internal Switchy components are disconnected from the *FreeSWITCH* process at the close of the
       `with` block.

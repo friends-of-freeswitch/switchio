@@ -28,9 +28,14 @@ def pytest_addoption(parser):
                      default=2, help="Number of docker containers to spawn")
 
 
+@pytest.fixture(scope='session')
+def travis():
+    return os.environ.get('TRAVIS', False)
+
+
 @pytest.fixture(scope='session', autouse=True)
 def loglevel(request):
-    level = max(40 - request.config.option.verbose * 10, 10)
+    level = max(40 - request.config.option.verbose * 10, 5)
     if sys.stdout.isatty():
         # enable console logging
         utils.log_to_stderr(level)
@@ -141,8 +146,8 @@ def cps(request):
 def con(fshost):
     '''Deliver a esl connection to fshost
     '''
-    from switchy.connection import Connection
-    with Connection(fshost) as con:
+    from switchy.connection import get_connection
+    with get_connection(fshost) as con:
         yield con
 
 
@@ -150,9 +155,10 @@ def con(fshost):
 def el(fshost):
     'deliver a connected event listener'
     from switchy import get_listener
-    el = get_listener(fshost)
+    listener = get_listener(fshost)
+    el = listener.event_loop
     assert not el.connected()
-    yield el
+    yield listener
     el.disconnect()
     # verify state
     assert not el.connected()

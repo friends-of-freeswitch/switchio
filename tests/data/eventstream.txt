@@ -1,0 +1,167 @@
+Content-Type: auth/request
+
+Content-Type: command/reply
+Reply-Text: +OK accepted
+
+Content-Type: command/reply
+Reply-Text: +OK bye
+
+Content-Length: 67
+Content-Type: text/disconnect-notice
+
+Disconnected, goodbye.
+See you at ClueCon! http://www.cluecon.com/
+
+Content-Length: 5407
+Content-Type: text/event-plain
+
+Event-Name: CHANNEL_CREATE
+Core-UUID: ed56dab6-a6fc-11e4-960f-6f83a2e5e50a
+FreeSWITCH-Hostname: evoluxdev
+FreeSWITCH-Switchname: evoluxdev
+FreeSWITCH-IPv4: 172.16.7.69
+FreeSWITCH-IPv6: ::1
+Event-Date-Local: 2015-01-28 15:00:44
+Event-Date-GMT: Wed, 28 Jan 2015 18:00:44 GMT
+Event-Date-Timestamp: 1422468044671081
+Event-Calling-File: switch_core_state_machine.c
+Event-Calling-Function: switch_core_session_run
+Event-Calling-Line-Number: 509
+Event-Sequence: 3372
+Channel-State: CS_INIT
+Channel-Call-State: DOWN
+Channel-State-Number: 2
+Channel-Name: sofia/internal/100@192.168.50.4
+Unique-ID: d0b1da34-a727-11e4-9728-6f83a2e5e50a
+Call-Direction: inbound
+Presence-Call-Direction: inbound
+Channel-HIT-Dialplan: true
+Channel-Presence-ID: 100@192.168.50.4
+Channel-Call-UUID: d0b1da34-a727-11e4-9728-6f83a2e5e50a
+Answer-State: ringing
+Caller-Direction: inbound
+Caller-Logical-Direction: inbound
+Caller-Username: 100
+Caller-Dialplan: XML
+Caller-Caller-ID-Name: edev - 100
+Caller-Caller-ID-Number: 100
+Caller-Orig-Caller-ID-Name: edev - 100
+Caller-Orig-Caller-ID-Number: 100
+Caller-Network-Addr: 192.168.50.1
+Caller-ANI: 100
+Caller-Destination-Number: 101
+Caller-Unique-ID: d0b1da34-a727-11e4-9728-6f83a2e5e50a
+Caller-Source: mod_sofia
+Caller-Context: out-extensions
+Caller-Channel-Name: sofia/internal/100@192.168.50.4
+Caller-Profile-Index: 1
+Caller-Profile-Created-Time: 1422468044671081
+Caller-Channel-Created-Time: 1422468044671081
+Caller-Channel-Answered-Time: 0
+Caller-Channel-Progress-Time: 0
+Caller-Channel-Progress-Media-Time: 0
+Caller-Channel-Hangup-Time: 0
+Caller-Channel-Transfer-Time: 0
+Caller-Channel-Resurrect-Time: 0
+Caller-Channel-Bridged-Time: 0
+Caller-Channel-Last-Hold: 0
+Caller-Channel-Hold-Accum: 0
+Caller-Screen-Bit: true
+Caller-Privacy-Hide-Name: false
+Caller-Privacy-Hide-Number: false
+variable_direction: inbound
+variable_uuid: d0b1da34-a727-11e4-9728-6f83a2e5e50a
+variable_call_uuid: d0b1da34-a727-11e4-9728-6f83a2e5e50a
+variable_session_id: 9
+variable_sip_from_user: 100
+variable_sip_from_uri: 100@192.168.50.4
+variable_sip_from_host: 192.168.50.4
+variable_channel_name: sofia/internal/100@192.168.50.4
+variable_sip_call_id: 6bG.Hj5UCe8pDFEy1R9FO8EIfHtKrZ3H
+variable_ep_codec_string: GSM@8000h@20i@13200b,PCMU@8000h@20i@64000b,PCMA@8000h@20i@64000b,G722@8000h@20i@64000b
+variable_sip_local_network_addr: 192.168.50.4
+variable_sip_network_ip: 192.168.50.1
+variable_sip_network_port: 58588
+variable_sip_received_ip: 192.168.50.1
+variable_sip_received_port: 58588
+variable_sip_via_protocol: udp
+variable_sip_authorized: true
+variable_Event-Name: REQUEST_PARAMS
+variable_Core-UUID: ed56dab6-a6fc-11e4-960f-6f83a2e5e50a
+variable_FreeSWITCH-Hostname: evoluxdev
+variable_FreeSWITCH-Switchname: evoluxdev
+variable_FreeSWITCH-IPv4: 172.16.7.69
+variable_FreeSWITCH-IPv6: ::1
+variable_Event-Date-Local: 2015-01-28 15:00:44
+variable_Event-Date-GMT: Wed, 28 Jan 2015 18:00:44 GMT
+variable_Event-Date-Timestamp: 1422468044671081
+variable_Event-Calling-File: sofia.c
+variable_Event-Calling-Function: sofia_handle_sip_i_invite
+variable_Event-Calling-Line-Number: 8539
+variable_Event-Sequence: 3368
+variable_sip_number_alias: 100
+variable_sip_auth_username: 100
+variable_sip_auth_realm: 192.168.50.4
+variable_number_alias: 100
+variable_requested_domain_name: 192.168.50.4
+variable_record_stereo: true
+variable_transfer_fallback_extension: operator
+variable_toll_allow: celular_ddd,celular_local,fixo_ddd,fixo_local,ligar_para_outro_ramal,ramais_evolux_office
+variable_evolux_cc_position: 100
+variable_user_context: out-extensions
+variable_accountcode: dev
+variable_callgroup: dev
+variable_effective_caller_id_name: Evolux 100
+variable_effective_caller_id_number: 100
+variable_outbound_caller_id_name: Dev
+variable_outbound_caller_id_number: 0000000000
+variable_user_name: 100
+variable_domain_name: 192.168.50.4
+variable_sip_from_user_stripped: 100
+variable_sip_from_tag: ocZZPAo1FTdXA10orlmCaYeqc4mzYem1
+variable_sofia_profile_name: internal
+variable_recovery_profile_name: internal
+variable_sip_full_via: SIP/2.0/UDP 172.16.7.70:58588;rport=58588;branch=z9hG4bKPj-0Wi47Dyiq1mz3t.Bm8aluRrPEHF7-6C;received=192.168.50.1
+variable_sip_from_display: edev - 100
+variable_sip_full_from: "edev - 100" <sip:100@192.168.50.4>;tag=ocZZPAo1FTdXA10orlmCaYeqc4mzYem1
+variable_sip_full_to: <sip:101@192.168.50.4>
+variable_sip_req_user: 101
+variable_sip_req_uri: 101@192.168.50.4
+variable_sip_req_host: 192.168.50.4
+variable_sip_to_user: 101
+variable_sip_to_uri: 101@192.168.50.4
+variable_sip_to_host: 192.168.50.4
+variable_sip_contact_params: ob
+variable_sip_contact_user: 100
+variable_sip_contact_port: 58588
+variable_sip_contact_uri: 100@192.168.50.1:58588
+variable_sip_contact_host: 192.168.50.1
+variable_rtp_use_codec_string: G722,PCMA,PCMU,GSM,G729
+variable_sip_user_agent: Telephone 1.1.4
+variable_sip_via_host: 172.16.7.70
+variable_sip_via_port: 58588
+variable_sip_via_rport: 58588
+variable_max_forwards: 70
+variable_presence_id: 100@192.168.50.4
+variable_switch_r_sdp: v=0
+o=- 3631463817 3631463817 IN IP4 172.16.7.70
+s=pjmedia
+b=AS:84
+t=0 0
+a=X-nat:0
+m=audio 4016 RTP/AVP 103 102 104 109 3 0 8 9 101
+c=IN IP4 172.16.7.70
+b=AS:64000
+a=rtpmap:103 speex/16000
+a=rtpmap:102 speex/8000
+a=rtpmap:104 speex/32000
+a=rtpmap:109 iLBC/8000
+a=fmtp:109 mode=30
+a=rtpmap:3 GSM/8000
+a=rtpmap:0 PCMU/8000
+a=rtpmap:8 PCMA/8000
+a=rtpmap:9 G722/8000
+a=rtpmap:101 telephone-event/8000
+a=fmtp:101 0-15
+a=rtcp:4017 IN IP4 172.16.7.70
+

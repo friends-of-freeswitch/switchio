@@ -15,6 +15,9 @@ import importlib
 import pkgutil
 
 
+py35 = sys.version_info >= (3, 5)
+
+
 class ESLError(Exception):
     """An error pertaining to the connection"""
 
@@ -32,11 +35,11 @@ class APIError(ESLError):
 
 
 # fs-like log format with a thread name prefix
-LOG_FORMAT = (
-    "%(asctime)s (%(threadName)s) [%(levelname)s] %(name)s "
-    "%(filename)s:%(lineno)d : %(message)s"
-)
+PREFIX = "%(asctime)s (%(threadName)s) "
+LEVEL = "[%(levelname)s] "
+LOG_FORMAT = PREFIX + LEVEL + ("%(name)s %(filename)s:%(lineno)d : %(message)s")
 DATE_FORMAT = '%b %d %H:%M:%S'
+TRACE = 5
 
 
 def get_logger(name=None):
@@ -66,7 +69,9 @@ def log_to_stderr(level=None):
                 'WARNING': 'purple',
                 'INFO': 'green',
                 'DEBUG': 'yellow',
+                'TRACE': 'cyan',
             }
+            logging.addLevelName(TRACE, 'TRACE')
             formatter = colorlog.ColoredFormatter(
                 "%(log_color)s" + LOG_FORMAT,
                 datefmt=DATE_FORMAT,
@@ -193,10 +198,10 @@ def uuid():
 def get_event_time(event, epoch=0.0):
     '''Return micro-second time stamp value in seconds
     '''
-    value = event.getHeader('Event-Date-Timestamp')
+    value = event.get('Event-Date-Timestamp')
     if value is None:
         get_logger().warning("Event '{}' has no timestamp!?".format(
-                             event.getHeader("Event-Name")))
+                             event.get("Event-Name")))
         return None
     return float(value) / 1e6 - epoch
 
@@ -299,3 +304,10 @@ def waitwhile(predicate, timeout=float('inf'), period=0.1, exc=True):
                 )
             return False
     return True
+
+
+def con_repr(self):
+    """Repr with a [<connection-status>] slapped in"""
+    rep = object.__repr__(self).strip('<>')
+    return "<{} [{}]>".format(
+        rep, "connected" if self.connected() else "disconnected")

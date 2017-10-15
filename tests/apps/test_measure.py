@@ -245,14 +245,15 @@ def test_measurers(measure, tmpdir, storetype):
     assert figpath.exists()
 
 
-def test_write_speed(measure, storer):
+def test_write_speed(measure, storer, travis):
     """Assert we can write and read "quickly" to the storer
     """
     sleeptime = 0.1
+    if travis:
+        sleeptime += 0.1
+
     ds = write_bufs(3, ds=storer)
     numentries = 3 * ds._buf_size
-    if isinstance(ds.data, list):
-        sleeptime = 0.1
     time.sleep(sleeptime)  # wait to flush 3 bufs...
     assert len(ds.data) == numentries
     if measure.storage.pd:
@@ -265,7 +266,7 @@ def test_with_orig(get_orig, measure, storer):
     """
     from switchy.apps import players
     pd = measure.pd
-    orig = get_orig('doggy', rate=60)
+    orig = get_orig('doggy', rate=100)
     orig.load_app(players.TonePlay)
 
     # configure max calls originated to length of of storer buffer
@@ -275,6 +276,7 @@ def test_with_orig(get_orig, measure, storer):
     # orig.limit = orig.max_offered = 1
     if pd:
         assert cdr_storer._buffer.bi == 0
+
     orig.start()
 
     # wait for all calls to come up then hupall
@@ -314,7 +316,8 @@ def test_with_orig(get_orig, measure, storer):
             assert cdr_storer._buffer.bi == 1
 
         assert len(cdr_storer.store) == cdr_storer._buf_size
-        # one or more rows should be in the buffer while the rest is in the store
+        # one or more rows should be in the buffer while the rest is in the
+        # store
         assert len(cdr_storer.store) <= orig.total_originated_sessions - 1
 
     assert len(cdr_storer.store)  # flushed to disk

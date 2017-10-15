@@ -38,6 +38,7 @@ setup(
         'switchy',
         'switchy.apps',
         'switchy.apps.measure',
+        'switchy.connection',
     ],
     entry_points={
         'console_scripts': [

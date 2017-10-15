@@ -70,9 +70,9 @@ license, except where explicitly noted.
     :target: https://pypi.python.org/pypi/switchy
 .. |pypi| image:: https://img.shields.io/pypi/v/switchy.svg
     :target: https://pypi.python.org/pypi/switchy
-.. |travis| image:: https://img.shields.io/travis/friends-of-freeswitch/switchy/master.svg
-    :target: https://travis-ci.org/friends-of-freeswitch/switchy
+.. |travis| image:: https://img.shields.io/travis/friends-of-freeswitch/switchio/master.svg
+    :target: https://travis-ci.org/friends-of-freeswitch/switchio
 .. |pypi_downloads| image:: https://img.shields.io/pypi/d/switchy.svg
     :target: https://pypi.python.org/pypi/switchy
 .. |docs| image:: https://readthedocs.org/projects/switchy/badge/?version=latest
-     :target: http://switchy.readthedocs.io/en/latest/?badge=latest
+    :target: http://switchy.readthedocs.io/en/latest/?badge=latest
