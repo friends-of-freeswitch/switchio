@@ -23,7 +23,7 @@ with open('README.rst') as f:
 
 
 setup(
-    name="switchy",
+    name="switchio",
     version='0.1.0.alpha1',
     description='Async FreeSWITCH cluster control purpose-built on '
                 'traffic theory and stress testing.',
@@ -32,22 +32,22 @@ setup(
     author='Sangoma Technologies',
     maintainer='Tyler Goodlet',
     maintainer_email='tgoodlet@gmail.com',
-    url='https://github.com/friends-of-freeswitch/switchy',
+    url='https://github.com/friends-of-freeswitch/switchio',
     platforms=['linux'],
     packages=[
-        'switchy',
-        'switchy.apps',
-        'switchy.apps.measure',
-        'switchy.connection',
+        'switchio',
+        'switchio.apps',
+        'switchio.apps.measure',
+        'switchio.connection',
     ],
     entry_points={
         'console_scripts': [
-            'switchy = switchy.cli:cli',
+            'switchio = switchio.cli:cli',
         ]
     },
     install_requires=reqs,
     package_data={
-        'switchy': ['../conf/switchydp.xml']
+        'switchio': ['../conf/switchiodp.xml']
     },
     extras_require={
         'metrics': ['pandas>=0.18'],
