@@ -1,28 +1,28 @@
 Built-in Apps
 -------------
-.. automodule:: switchy.apps
+.. automodule:: switchio.apps
     :members:
 
 Load testing
 ============
-.. automodule:: switchy.apps.call_gen
+.. automodule:: switchio.apps.call_gen
     :members:
 
 Measurement Collection
 ======================
-.. automodule:: switchy.apps.measure.cdr
+.. automodule:: switchio.apps.measure.cdr
     :members:
 
-.. automodule:: switchy.apps.measure.sys
+.. automodule:: switchio.apps.measure.sys
     :members:
 
 Media testing
 =============
-.. automodule:: switchy.apps.players
+.. automodule:: switchio.apps.players
     :members:
 
-.. automodule:: switchy.apps.dtmf
+.. automodule:: switchio.apps.dtmf
     :members:
 
-.. automodule:: switchy.apps.bert
+.. automodule:: switchio.apps.bert
     :members:

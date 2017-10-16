@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# switchy documentation build configuration file, created by
+# switchio documentation build configuration file, created by
 # sphinx-quickstart2 on Tue Feb 17 13:32:45 2015.
 #
 # This file is execfile()d with the current directory set to its
@@ -53,7 +53,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'switchy'
+project = u'switchio'
 copyright = u'2015, Sangoma Technologies'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -115,7 +115,7 @@ html_theme = 'alabaster'
 # documentation.
 html_theme_options = {
     'github_user': 'friends-of-freeswitch',
-    'github_repo': 'switchy',
+    'github_repo': 'switchio',
     'github_button': 'true',
     'github_banner': 'true',
     'page_width': '1080px',
@@ -199,7 +199,7 @@ html_static_path = []   # ['_static']
 #html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'switchydoc'
+htmlhelp_basename = 'switchiodoc'
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -219,7 +219,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  ('index', 'switchy.tex', u'switchy Documentation',
+  ('index', 'switchio.tex', u'switchio Documentation',
    u'Tyler Goodlet', 'manual'),
 ]
 
@@ -249,7 +249,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'switchy', u'switchy Documentation',
+    ('index', 'switchio', u'switchio Documentation',
      [u'Tyler Goodlet'], 1)
 ]
 
@@ -263,8 +263,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'switchy', u'switchy Documentation',
-   u'Tyler Goodlet', 'switchy', 'One line description of project.',
+  ('index', 'switchio', u'switchio Documentation',
+   u'Tyler Goodlet', 'switchio', 'One line description of project.',
    'Miscellaneous'),
 ]
 

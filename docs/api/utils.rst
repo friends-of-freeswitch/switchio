@@ -1,4 +1,4 @@
 Utils
 -----
-.. automodule:: switchy.utils
+.. automodule:: switchio.utils
     :members:

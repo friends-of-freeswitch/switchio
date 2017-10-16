@@ -7,7 +7,7 @@
 
 Internals tutorial
 ==================
-Getting familiar with Switchy's guts means learning to put the
+Getting familiar with ``switchio``'s guts means learning to put the
 appropriate components together to generate a call. This simple guide is
 meant to provide some commentary surrounding low level components and
 interfaces so that you can begin reading the source code.
@@ -17,24 +17,24 @@ It is assumed you are already familiar with the prerequisite
 
 Primary Components
 ------------------
-Currently there are 3 main objects in Switchy for driving
+Currently there are 3 main objects in ``switchio`` for driving
 *FreeSWITCH*:
 
-:py:class:`~switchy.connection.Connection` - a thread safe wrapper around the
+:py:class:`~switchio.connection.Connection` - a thread safe wrapper around the
 `ESL SWIG python package`_'s `ESLConnection`
 
-:py:class:`~switchy.handlers.EventListener` - the type that contains the core
+:py:class:`~switchio.handlers.EventListener` - the type that contains the core
 event processing loop and logic
-    - Primarily concerned with observing and tracking the state of
-      a single *FreeSWITCH* process
+    - Primarily concerned with observing and tracking the state of a single
+      *FreeSWITCH* process
     - Normally a one-to-one pairing of listeners to slave processes/servers
       is recommended to ensure deterministic control.
-    - Contains a :py:class:`~switchy.connection.Connection` used mostly for receiving
-      events only transmitting ESL commands when dictated by :doc:`Switchy apps <apps>`
+    - Contains a :py:class:`~switchio.connection.Connection` used mostly for receiving
+      events only transmitting ESL commands when dictated by :doc:```switchio`` apps <apps>`
 
-:py:class:`~switchy.api.Client` - a client for controlling *FreeSWITCH* using the ESL inbound method
-    - contains a :py:class:`~switchy.connection.Connection` for direct synchronous commands and
-      optionally an :py:class:`~switchy.handlers.EventListener` for processing asynchronous calls
+:py:class:`~switchio.api.Client` - a client for controlling *FreeSWITCH* using the ESL inbound method
+    - contains a :py:class:`~switchio.connection.Connection` for direct synchronous commands and
+      optionally an :py:class:`~switchio.handlers.EventListener` for processing asynchronous calls
 
 For this guide we will focus mostly on the latter two since they are the
 primary higher level components the rest of the library builds upon.
@@ -48,7 +48,7 @@ A Client can be used for invoking or sending **synchronous** commands to the
 To connect simply pass the hostname or ip address of the slave server at
 instantiation::
 
-    >>> from switchy import Client
+    >>> from switchio import Client
     >>> client = Client('vm-host')
     >>> client.connect()  # could have passed the hostname here as well
     >>> client.api('status')  # call ESL `api` command directly
@@ -60,13 +60,13 @@ instantiation::
     >>> client.cmd('not a real command')
     Traceback (most recent call last):
         File "<stdin>", line 1, in <module>
-        File "switchy/api.py", line 1093, in cmd
+        File "switchio/api.py", line 1093, in cmd
            return self.api(cmd).getBody().strip()
-        File "switchy/handlers.py", line 1084, in api
+        File "switchio/handlers.py", line 1084, in api
            consumed, response = EventListener._handle_socket_data(event)
-        File "switchy/api.py", line 651, in _handle_socket_data
+        File "switchio/api.py", line 651, in _handle_socket_data
            raise APIError(body)
-    switchy.utils.APIError: -ERR not Command not found!
+    switchio.utils.APIError: -ERR not Command not found!
 
 Now let's initiate a call originating from the slave process's
 *caller* which is by default the `external`_ sip profile::
@@ -74,11 +74,11 @@ Now let's initiate a call originating from the slave process's
     >>> client.originate(dest_url='9196@intermediary_hostname:5060')
     Traceback (most recent call last):
         File "<stdin>", line 1, in <module>
-        File "switchy/api.py", line 1177, in originate
+        File "switchio/api.py", line 1177, in originate
             listener = self._assert_alive(listener)
-        File "switchy/api.py", line 1115, in _assert_alive
+        File "switchio/api.py", line 1115, in _assert_alive
             assert self.listener, "No listener associated with this client"
-        File "switchy/api.py", line 973, in get_listener
+        File "switchio/api.py", line 973, in get_listener
             "No listener has been assigned for this client")
         AttributeError: No listener has been assigned for this client
 
@@ -94,18 +94,18 @@ which drives the slave process using commands to trigger **new** state(s).
 Again, any time a `Client` makes an **asynchronous** call an `EventListener` is
 needed to handle and report back the result(s).
 
-Let's create and assign an :py:class:`~switchy.handlers.EventListener`::
+Let's create and assign an :py:class:`~switchio.handlers.EventListener`::
 
-    >>> from switchy import get_listener
+    >>> from switchio import get_listener
     >>> l = get_listener('vm-host')
     >>> l  # initially disconnected to allow for unsubcriptions from the default event set
     <EventListener [disconnected]>
     >>> l.connect()
-    Feb 25 10:33:05 [INFO] switchy.EventListener@vm-host api.py:346 : Connected listener 'd2d4ee82-bd02-11e4-8b48-74d02bc595d7' to 'vm-host'
+    Feb 25 10:33:05 [INFO] switchio.EventListener@vm-host api.py:346 : Connected listener 'd2d4ee82-bd02-11e4-8b48-74d02bc595d7' to 'vm-host'
     >>> l
     <EventListener [connected]>
     >>> l.start()
-    Feb 25 10:35:30 [INFO] switchy.EventListener@vm-host api.py:287 : starting event loop thread
+    Feb 25 10:35:30 [INFO] switchio.EventListener@vm-host api.py:287 : starting event loop thread
     >>> client.listener = l
 
 .. note::
@@ -121,7 +121,7 @@ extension once the *caller* is answered, and calling the `echo` extension,
         dp_exten=9197,
         proxy='intermediary_hostname:5060'
     )
-    <switchy.models.Job at 0x7feea01c6c90>
+    <switchio.models.Job at 0x7feea01c6c90>
 
     >>> client.listener.calls  # check the active calls collection
     OrderedDict([('72451178-bd0c-11e4-9d26-74d02bc595d7', <Call(72451178-bd0c-11e4-9d26-74d02bc595d7, 2 sessions)>)])
@@ -132,8 +132,8 @@ extension once the *caller* is answered, and calling the `echo` extension,
     profile to use the *default* dialplan by assigning it's *context* parameter
 
 
-The async `originate` call returns to us a :py:class:`switchy.models.Job`
-instance (as would any call to :py:meth:`switchy.api.Client.bgapi`).
+The async `originate` call returns to us a :py:class:`switchio.models.Job`
+instance (as would any call to :py:meth:`switchio.api.Client.bgapi`).
 A `Job` provides the same interface as that of the
 :py:class:`multiprocessing.pool.AsyncResult` and can be handled to
 completion synchronously::
@@ -151,36 +151,36 @@ completion synchronously::
     >>> client.hupall()  # hangup the call
 
 
-Call control using Switchy apps
--------------------------------
-To use Switchy at its fullest potential, :doc:`applications <apps>` can be
+Call control using ``switchio`` apps
+------------------------------------
+To use ``switchio`` at its fullest potential, :doc:`applications <apps>` can be
 written to process state tracked by the `EventListener`. The main
 benefit is that apps can be written in pure Python somewhat like the
 `mod_python <https://freeswitch.org/confluence/display/FREESWITCH/mod_python>`_
-module provided with *FreeSWITCH*. Switchy gives the added benefit that
+module provided with *FreeSWITCH*. ``switchio`` gives the added benefit that
 the Python process does not have to run on the slave machine and in fact
 **multiple** applications can be managed independently of **multiple**
-slave configurations thanks to Switchy's use of the ESL `inbound`_ method.
+slave configurations thanks to ``switchio``'s use of the ESL `inbound`_ method.
 
 
 .. _appload:
 
 App Loading
 ***********
-Switchy apps are loaded using :py:meth:`switchy.api.Client.load_app`.
+``switchio`` apps are loaded using :py:meth:`switchio.api.Client.load_app`.
 Each app is referenced by it's appropriate name (if none is provided) which
 allows for the appropriate callback lookups to be completed by the `EventListener`.
 
 We can now accomplish the same tone play steps from above using the
 built-in :ref:`TonePlay <toneplayapp>` app::
 
-    >>> from switchy.apps.players import TonePlay
+    >>> from switchio.apps.players import TonePlay
     >>> client.load_app(TonePlay)
-    Feb 25 13:27:43 [INFO] switchy.Client@vm-host api.py:1020 : Loading call app 'TonePlay'
+    Feb 25 13:27:43 [INFO] switchio.Client@vm-host api.py:1020 : Loading call app 'TonePlay'
     'fd27be58-bd1b-11e4-b22d-74d02bc595d7'  # the app uuid since None provided
 
     >>> client.apps.TonePlay
-    <switchy.apps.players.TonePlay at 0x7f7c5fdaf650>
+    <switchio.apps.players.TonePlay at 0x7f7c5fdaf650>
 
     >>> isinstance(client.apps.TonePlay, TonePlay)  # Loading the app type instantiates it
     True
@@ -189,7 +189,7 @@ built-in :ref:`TonePlay <toneplayapp>` app::
     App loading is *atomic* so if you mess up app implementation you don't have
     to worry that inserted callbacks are left registered with the `EventListener`
 
-Assuming the Switchy :ref:`park-only dialplan <parkonly>` is used by the
+Assuming the ``switchio`` :ref:`park-only dialplan <parkonly>` is used by the
 `external`_ sip profile we can now originate our call again::
 
     >>> job = client.originate('park@vm-host:5080',
@@ -207,8 +207,8 @@ As a summary, here is an snippet showing all these steps together:
 .. code-block:: python
 
     import time
-    from switchy import Client, EventListener
-    from switchy.apps.players import TonePlay
+    from switchio import Client, EventListener
+    from switchio.apps.players import TonePlay
 
     # init
     listener = EventListener('vm-host')
@@ -234,7 +234,7 @@ As a summary, here is an snippet showing all these steps together:
     orig_sess.hangup()
 
 Conveniently enough, the boilerplate here
-is almost exactly what the :py:func:`~switchy.api.get_client`
+is almost exactly what the :py:func:`~switchio.api.get_client`
 context manager does internally.  An example of usage can be found in
 the :doc:`quickstart <quickstart>` guide.
 

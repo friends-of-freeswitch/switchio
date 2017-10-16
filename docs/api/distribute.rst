@@ -1,4 +1,4 @@
 Distributed cluster tools
 -------------------------
-.. automodule:: switchy.distribute
+.. automodule:: switchio.distribute
     :members:

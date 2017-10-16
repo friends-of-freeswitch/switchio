@@ -1,10 +1,10 @@
-switchy
-=======
+switchio
+========
 Fast `FreeSWITCH`_ control purpose-built on `traffic theory`_ and `stress testing`_.
 
 Overview
 --------
-Switchy intends to be a *fast* control library for harnessing the power of
+``switchio`` intends to be a *fast* control library for harnessing the power of
 the *FreeSWITCH* telephony engine whilst leveraging the expressiveness of
 Python. It relies on the *FreeSWITCH* ESL `inbound`_ method for control and
 was originally built for generating traffic using *FreeSWITCH* clusters.
@@ -25,7 +25,7 @@ Features
 
 *FreeSWITCH* Configuration
 **************************
-Switchy relies on some baseline server :ref:`deployment <fsconfig>` steps for
+``switchio`` relies on some baseline server :ref:`deployment <fsconfig>` steps for
 import-and-go usage.
 
 
@@ -39,7 +39,7 @@ import-and-go usage.
 .. _traffic theory:
     https://en.wikipedia.org/wiki/Teletraffic_engineering
 .. _github:
-    https://github.com/sangoma/switchy
+    https://github.com/sangoma/switchio
 .. _ESL SWIG python package:
     https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
 .. _pandas:

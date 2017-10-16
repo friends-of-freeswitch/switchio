@@ -1,36 +1,36 @@
-switchy
+switchio
 =======
 async FreeSWITCH_ cluster control using pure Python_!
 
 |pypi| |travis| |versions| |pypi_downloads| |docs|
 
-``switchy`` intends to be the "flask_ for VoIP" but with a focus on performance and
+``switchio`` intends to be the "flask_ for VoIP" but with a focus on performance and
 scalable service system design. Please `read the docs`_ for more information!
 
 .. _FreeSWITCH: https://freeswitch.org/
 .. _Python: https://www.python.org/
 .. _flask: http://flask.pocoo.org/
-.. _read the docs: https://switchy.readthedocs.org/
+.. _read the docs: https://switchio.readthedocs.org/
 
 Installation
 ============
 Note that you need to at least have the SWIG_ package installed in your
-Linux distribution before installing ``switchy`` via ``pip``::
+Linux distribution before installing ``switchio`` via ``pip``::
 
     yum install swig
     # or
     apt-get install swig
 
 Once you have SWIG installed (the ``swig`` command should be available)
-you can use ``pip`` to install ``switchy``::
+you can use ``pip`` to install ``switchio``::
 
-    pip install switchy
+    pip install switchio
 
 .. _SWIG: http://www.swig.org/
 
 Dependencies
 ============
-Currently `switchy` uses the `ESL SWIG package`_ distributed with the FreeSWITCH sources.
+Currently `switchio` uses the `ESL SWIG package`_ distributed with the FreeSWITCH sources.
 We intend to add alternative backends in the future including greenswitch_ and support
 for mod_amqp_.
 
@@ -43,9 +43,9 @@ Some optional numerical packages are required to record performance measurements
 ===============  ================ ================================
 Feature          Dependency        Installation
 ===============  ================ ================================
-Metrics Capture  `pandas`_        ``pip install switchy[metrics]``
-Graphing         `matplotlib`_    ``pip install switchy[graphing]``
-HDF5             `pytables`_ [#]_ ``pip install switchy[hdf5]``
+Metrics Capture  `pandas`_        ``pip install switchio[metrics]``
+Graphing         `matplotlib`_    ``pip install switchio[graphing]``
+HDF5             `pytables`_ [#]_ ``pip install switchio[hdf5]``
 ===============  ================ ================================
 
 .. [#] ``pytables`` support is a bit shaky and not recommended unless
@@ -66,13 +66,13 @@ license, except where explicitly noted.
     License, v. 2.0. If a copy of the MPL was not distributed with this
     file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-.. |versions| image:: https://img.shields.io/pypi/pyversions/switchy.svg
-    :target: https://pypi.python.org/pypi/switchy
-.. |pypi| image:: https://img.shields.io/pypi/v/switchy.svg
-    :target: https://pypi.python.org/pypi/switchy
+.. |versions| image:: https://img.shields.io/pypi/pyversions/switchio.svg
+    :target: https://pypi.python.org/pypi/switchio
+.. |pypi| image:: https://img.shields.io/pypi/v/switchio.svg
+    :target: https://pypi.python.org/pypi/switchio
 .. |travis| image:: https://img.shields.io/travis/friends-of-freeswitch/switchio/master.svg
     :target: https://travis-ci.org/friends-of-freeswitch/switchio
-.. |pypi_downloads| image:: https://img.shields.io/pypi/d/switchy.svg
-    :target: https://pypi.python.org/pypi/switchy
-.. |docs| image:: https://readthedocs.org/projects/switchy/badge/?version=latest
-    :target: http://switchy.readthedocs.io/en/latest/?badge=latest
+.. |pypi_downloads| image:: https://img.shields.io/pypi/d/switchio.svg
+    :target: https://pypi.python.org/pypi/switchio
+.. |docs| image:: https://readthedocs.org/projects/switchio/badge/?version=latest
+    :target: http://switchio.readthedocs.io/en/latest/?badge=latest

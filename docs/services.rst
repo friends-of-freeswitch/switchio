@@ -10,11 +10,11 @@
 
 Building a cluster service
 ==========================
-`switchy` supports building full fledged routing systems just like you can
+`switchio` supports building full fledged routing systems just like you can
 with *FreeSWITCH*'s `XML dialplan`_ but with the added benefit that you
 can use a centralized "dialplan" to control a *FreeSWITCH* process cluster.
 
-This means call control logic can reside in one (or more) *switchy* process(es)
+This means call control logic can reside in one (or more) *switchio* process(es)
 running on a separate server allowing you to separate the *brains* and
 *logic* from the *muscle* and *functionality* when designing a scalable
 *FreeSWITCH* service system.
@@ -25,7 +25,7 @@ A service is very easy to create given a set of :ref:`deployed <fsconfig>`
 
 .. code-block:: python
 
-    from switchy import Service, event_callback
+    from switchio import Service, event_callback
 
     class Proxier(object):
         """Proxy all inbound calls to the destination specified in the SIP
@@ -48,17 +48,17 @@ no other app has consumed the event/session for processing).
 
 Launching a service
 -------------------
-You can launch ``switchy`` services using the :ref:`cli client <cli_client>`.
+You can launch ``switchio`` services using the :ref:`cli client <cli_client>`.
 Simply specify the list of FreeSWITCH hosts to connect to and specify
 the desired :doc:`app(s) <apps>` which should be loaded using (multiples
 of) the ``--app`` option::
 
-    switchy serve freeswitch1.net freeswitch2.net --app switchy.apps.routers:Proxier
+    switchio serve freeswitch1.net freeswitch2.net --app switchio.apps.routers:Proxier
 
 This runs the example from above.
 You can also load apps from arbitrary Python modules you've written::
 
-    switchy serve freeswitch1.net freeswitch2.net --app ./path/to/dialplan.py:router
+    switchio serve freeswitch1.net freeswitch2.net --app ./path/to/dialplan.py:router
 
 .. note::
     The name specified **after** the ``':'`` is the attribute that
@@ -69,7 +69,7 @@ You can also load apps from arbitrary Python modules you've written::
 
 `Flask`-like routing
 --------------------
-Using the :py:class:`~switchy.apps.routers.Router` :doc:`app <apps>` we
+Using the :py:class:`~switchio.apps.routers.Router` :doc:`app <apps>` we
 can define a routing system reminiscent of `flask`_.
 
 Let's start with an example of `blocking certain codes`_:
@@ -77,7 +77,7 @@ Let's start with an example of `blocking certain codes`_:
 .. code-block:: python
     :caption: dialplan.py
 
-    from switchy.apps.routers import Router
+    from switchio.apps.routers import Router
 
     router = Router(guards={
         'Call-Direction': 'inbound',
@@ -91,7 +91,7 @@ Let's start with an example of `blocking certain codes`_:
 
 There's a few things going on here:
 
-- A :py:class:`~switchy.apps.routers.Router` is created with a *guard*
+- A :py:class:`~switchio.apps.routers.Router` is created with a *guard*
   ``dict`` which determines strict constraints on *event headers* which
   **must** be matched exactly for the ``Router`` to invoke registered
   (via ``@route``) functions.
@@ -100,15 +100,15 @@ There's a few things going on here:
   with a SIP ``407`` response code.
 - The first 3 arguments to ``reject_international`` are required,
   namely, ``sess``, ``match``, and ``router`` and correspond to the
-  :py:class:`~switchy.models.Session`, `re.MatchObject`_, and
-  :py:class:`~switchy.apps.routers.Router` respectively.
+  :py:class:`~switchio.models.Session`, `re.MatchObject`_, and
+  :py:class:`~switchio.apps.routers.Router` respectively.
 
 
 In summmary, we can define *patterns* which must be matched against
 `event headers`_ before a particular *route function* will be invoked.
 
 The signature for ``Router.route`` which comes from
-:py:class:`~switchy.utils.PatternCaller` is:
+:py:class:`~switchio.utils.PatternCaller` is:
 
 .. py:decorator:: route(pattern, field=None, kwargs)
 
@@ -118,9 +118,9 @@ The ``pattern`` must be matched against the ``field`` *event header* in order fo
 the *route* to be called with ``kwargs`` (i.e. ``reject_international(**kwargs)``).
 
 
-You can run this app directly using ``switchy serve``::
+You can run this app directly using ``switchio serve``::
 
-    switchy serve freeswitch1.net freeswitch2.net --app ./dialplan.py:router
+    switchio serve freeswitch1.net freeswitch2.net --app ./dialplan.py:router
 
 .. note::
     In the case above this is the ``Router`` *instance* which has
@@ -131,7 +131,7 @@ based on the default ``'Caller-Destination-Number'`` *event header*:
 
 .. code-block:: python
 
-    from switchy.apps.routers import Router
+    from switchio.apps.routers import Router
 
     router = Router({'Call-Direction': 'inbound'})
 
@@ -189,25 +189,25 @@ single "dialplan" for all nodes in our *FreeSWITCH* cluster:
 
 
 .. note::
-    If you'd like to try out *switchy* routes alongside your existing
+    If you'd like to try out *switchio* routes alongside your existing
     XML dialplan (assuming you've added the :ref:`park only <parkonly>`
     context in your existing config) you can either pass in
-    ``{"Caller-Context": "switchy"}`` as a ``guard`` or you can load
+    ``{"Caller-Context": "switchio"}`` as a ``guard`` or you can load
     the router with:
 
-    ``s.apps.load_app(router, app_id='switchy', header='Caller-Context')``
+    ``s.apps.load_app(router, app_id='switchio', header='Caller-Context')``
 
 
 Replicating XML dialplan features
 *********************************
-The main difference with using *switchy* for call control is that
+The main difference with using *switchio* for call control is that
 everything is processed at **runtime** as opposed to having separate *parse*
 and *execute* phases.
 
 Retrieving Variables
 ^^^^^^^^^^^^^^^^^^^^
 `Accessing variable`_ values from *FreeSWITCH* is already built into
-*switchy*'s :doc:`sessionapi` using traditional `getitem`_ access.
+*switchio*'s :doc:`sessionapi` using traditional `getitem`_ access.
 
 Basic Logic
 ^^^^^^^^^^^
