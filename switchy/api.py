@@ -28,7 +28,7 @@ class Client(object):
     Provides a high level api for registering apps, originating calls, and
     managing an event listener and its event loop.
     '''
-    app_id_header = utils.xheaderify('switchy_app')
+    app_id_header = utils.xheaderify('switchio_app')
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
                  call_tracking_header=None, listener=None, logger=None):
@@ -37,7 +37,7 @@ class Client(object):
         self.auth = auth
         # works under the assumption that x-headers are forwarded by the proxy
         self.call_tracking_header = call_tracking_header or utils.xheaderify(
-            'switchy_originating_session')
+            'switchio_originating_session')
 
         self._id = utils.uuid()
         self._orig_cmd = None

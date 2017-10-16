@@ -15,7 +15,7 @@ _apps = OrderedDict()
 
 
 def app(*args, **kwargs):
-    '''Decorator to register switchy application classes.
+    '''Decorator to register switchio application classes.
    Example usage:
 
    .. code-block:: python
@@ -24,7 +24,7 @@ def app(*args, **kwargs):
        class CoolAppController(object):
            pass
 
-       # This will register the class as a switchy app.
+       # This will register the class as a switchio app.
        # The name of the app defaults to `class.__name__`.
        # The help for the app is taken from `class.__doc__`.
 

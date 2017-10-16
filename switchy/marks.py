@@ -11,8 +11,8 @@ def marker(event_type, cb_type='callback'):
     """Decorator to mark a callback function
     for handling events of a particular type
     """
-    et_attr = '_switchy_event'
-    cbt_attr = '_switchy_cb_type'
+    et_attr = '_switchio_event'
+    cbt_attr = '_switchio_cb_type'
 
     def inner(callback):
         try:
@@ -29,17 +29,17 @@ handler = partial(marker, cb_type='handler')
 
 
 def has_callbacks(ns):
-    """Check if this namespace contains switchy callbacks
+    """Check if this namespace contains switchio callbacks
 
     :param ns namespace: the namespace object containing marked callbacks
     :rtype: bool
     """
-    return any(getattr(obj, '_switchy_event', False) for obj in
+    return any(getattr(obj, '_switchio_event', False) for obj in
                vars(ns).values())
 
 
 def get_callbacks(ns, skip=(), only=False):
-    """Deliver all switchy callbacks found in a namespace object yielding
+    """Deliver all switchio callbacks found in a namespace object yielding
     event `handler` marked functions first followed by `event_callbacks`.
 
     :param ns namespace: the namespace object containing marked callbacks
@@ -52,8 +52,8 @@ def get_callbacks(ns, skip=(), only=False):
         except AttributeError:
             continue
         try:
-            ev_types = getattr(obj, '_switchy_event', False)
-            cb_type = getattr(obj, '_switchy_cb_type', None)
+            ev_types = getattr(obj, '_switchio_event', False)
+            cb_type = getattr(obj, '_switchio_cb_type', None)
         except ReferenceError:  # handle weakrefs
             continue
 

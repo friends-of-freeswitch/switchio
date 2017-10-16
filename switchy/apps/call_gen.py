@@ -494,7 +494,7 @@ class Originator(object):
         if self._thread is None or not self._thread.is_alive():
             self.log.debug("starting burst loop thread")
             self._thread = Thread(target=self._serve_forever,
-                                  name='switchy_burst_loop')
+                                  name='switchio_burst_loop')
             self._thread.daemon = True  # die with parent
             self._thread.start()
             time.sleep(0.1)
@@ -574,7 +574,7 @@ class Originator(object):
         The default predicate waits for all calls to end and for activation of
         the "STOPPED" state.
 
-        See `switchy.utils.waitwhile` for more details on predicate usage.
+        See `switchio.utils.waitwhile` for more details on predicate usage.
         """
         def calls_active():
             return self.count_calls() or not self.stopped()

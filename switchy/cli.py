@@ -7,7 +7,7 @@ import sys
 import importlib
 import time
 import click
-import switchy
+import switchio
 
 
 @click.group()
@@ -18,12 +18,12 @@ def cli():
 @cli.command('list-apps')
 @click.argument('module', nargs=1, required=False)
 def list_apps(module):
-    builtin_mods = switchy.apps.load()
+    builtin_mods = switchio.apps.load()
     click.echo(
         'Collected {} built-in apps from {} modules:\n'
-        .format(len(list(switchy.apps.iterapps())), len(builtin_mods))
+        .format(len(list(switchio.apps.iterapps())), len(builtin_mods))
     )
-    for mod, apps in switchy.apps.groupbymod():
+    for mod, apps in switchio.apps.groupbymod():
         click.echo('{}:\n'.format(mod))
         for name, app in apps:
             click.echo(
@@ -38,7 +38,7 @@ def list_apps(module):
                 type=click.Path(exists=True))
 def plot(file_name):
     import matplotlib  # errors if not installed
-    from switchy.apps import measure
+    from switchio.apps import measure
     df = measure.load(file_name)
     click.echo('Plotting {} ...\n'.format(file_name))
     df._plot(block=True)
@@ -48,7 +48,7 @@ def get_apps(appnames):
     """Retrieve and return a list of app types from a sequence of names.
     """
     apps = []
-    switchy.apps.load()
+    switchio.apps.load()
     for appspec in appnames:
         args = {}
         appname, _, argspec = appspec.partition('/')
@@ -71,7 +71,7 @@ def get_apps(appnames):
             sys.path.append(os.path.dirname(os.path.expanduser(path)))
             mod = __import__(modpath)
         else:  # load a built-in app by name
-            cls = switchy.apps.get(appname)
+            cls = switchio.apps.get(appname)
             attr = getattr(cls, '__name__', None)
             mod = None
 
@@ -120,7 +120,7 @@ def get_apps(appnames):
               help='Whether to jump into an interactive session '
               'after setting up the call originator')
 @click.option('--app', default=['Bert'], multiple=True,
-              help='Switchy application to load. You can pass this option '
+              help='switchio application to load. You can pass this option '
               'multiple times and the apps are loaded in the order specified. '
               'See the \'list-apps\' command to list available apps. For every '
               'listed app you can optionally specify arguments by adding a slash '
@@ -136,10 +136,10 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
          duration, interactive, app, metrics_file, loglevel, password):
     """Spin up an auto-dialer.
     """
-    log = switchy.utils.log_to_stderr(loglevel)
+    log = switchio.utils.log_to_stderr(loglevel)
     log.propagate = False
 
-    dialer = switchy.get_originator(
+    dialer = switchio.get_originator(
         hosts,
         rate=int(rate) if rate else None,
         limit=int(limit) if limit else None,
@@ -169,7 +169,7 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
         ip = m.group(1)
         port = m.group(2)
         if dest_url is None:
-            dest_url = 'switchy@{}:{}'.format(ip, port)
+            dest_url = 'switchio@{}:{}'.format(ip, port)
         # The originate cmd must route the call back to us using the specified
         # proxy (the device under test)
         if proxy is None:
@@ -236,7 +236,7 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
 @cli.command('serve')
 @click.argument('hosts', nargs=-1, required=True)
 @click.option('--app', default=[], multiple=True,
-              help='Switchy application to load (can pass multiple times '
+              help='switchio to load (can pass multiple times '
               'with apps loaded in the order specified).'
               '(see list-apps command to list available apps)')
 @click.option('--password', default='ClueCon',
@@ -249,11 +249,11 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
               default='internal',
               help='Profile to use for originating calls')
 def serve(hosts, profile, app, loglevel, password, app_header):
-    """Start a switchy service and block forever.
+    """Start a switchio service and block forever.
     """
-    log = switchy.utils.log_to_stderr(loglevel.upper())
+    log = switchio.utils.log_to_stderr(loglevel.upper())
     log.propagate = False
-    service = switchy.Service(hosts, auth=password)
+    service = switchio.Service(hosts, auth=password)
     apps = get_apps(app)
     if apps:
         for cls, _ in apps:

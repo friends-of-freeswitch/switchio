@@ -113,7 +113,7 @@ class Router(object):
     contents.
 
     Requires that the handling SIP profile had been configured to use the
-    'switchy' dialplan context or at the very least a context which contains a
+    'switchio' dialplan context or at the very least a context which contains a
     park action extension.
     '''
     # Signal a routing halt

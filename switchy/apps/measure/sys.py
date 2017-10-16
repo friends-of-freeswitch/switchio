@@ -5,7 +5,7 @@
 Rudimentary system stats collection using ``psutil``.
 """
 import time
-from switchy import event_callback, utils
+from switchio import event_callback, utils
 
 
 def sys_stats(df):
@@ -20,7 +20,7 @@ def sys_stats(df):
 
 
 class SysStats(object):
-    """A switchy app for capturing system performance stats during load test
+    """A switchio app for capturing system performance stats during load test
     using the `psutil`_ module.
 
     An instance of this app should be loaded if rate limited data gathering is
