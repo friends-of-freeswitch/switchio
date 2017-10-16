@@ -17,8 +17,8 @@ import pytest
 import time
 from copy import copy
 import contextlib
-from switchy import Service
-from switchy.apps.routers import Router
+from switchio import Service
+from switchio.apps.routers import Router
 from collections import defaultdict
 pysipp = pytest.importorskip("pysipp")
 
@@ -36,7 +36,7 @@ def router(fshost):
 
 @pytest.fixture
 def service(fshosts, router):
-    """A switchy routing service.
+    """A switchio routing service.
     """
     s = Service(fshosts)
     yield s

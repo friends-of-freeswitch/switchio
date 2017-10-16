@@ -9,7 +9,7 @@ import sys
 import time
 import pytest
 from pprint import pformat
-from switchy.utils import ConfigurationError
+from switchio.utils import ConfigurationError
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def proxy_dp(ael, client):
 
     # attempt to add measurement collection
     try:
-        from switchy.apps.measure import CDR
+        from switchio.apps.measure import CDR
     except ImportError:
         print("WARNING: numpy measurements not available")
     else:
@@ -261,10 +261,10 @@ class TestClient:
     def test_apps(self, client, el):
         """Test app loading, unloading
         """
-        from switchy.apps.players import TonePlay
-        from switchy.apps.bert import Bert
-        from switchy.marks import get_callbacks, event_callback
-        from switchy import utils
+        from switchio.apps.players import TonePlay
+        from switchio.apps.bert import Bert
+        from switchio.marks import get_callbacks, event_callback
+        from switchio import utils
         with pytest.raises(AttributeError):
             # need an listener assigned first
             client.load_app(TonePlay)
@@ -343,8 +343,8 @@ class TestClient:
         assert len(client.listener.event_loop.consumers[bid]) == cbcount
 
     def test_commands(self, client):
-        from switchy.utils import APIError
-        from switchy.connection import ConnectionError
+        from switchio.utils import APIError
+        from switchio.connection import ConnectionError
         # unconnected attempt
         with pytest.raises(ConnectionError):
             client.cmd('doggy')

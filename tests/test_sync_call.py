@@ -6,8 +6,8 @@ Tests for synchronous call helper
 """
 import time
 import pytest
-from switchy import sync_caller
-from switchy.apps.players import TonePlay, PlayRec
+from switchio import sync_caller
+from switchio.apps.players import TonePlay, PlayRec
 
 
 def test_toneplay(fsip):

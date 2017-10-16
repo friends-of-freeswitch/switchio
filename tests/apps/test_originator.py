@@ -6,13 +6,13 @@
 
 .. note::
     these tests assume that the `external` sip profile's context
-    has been assigned to the switchy dialplan.
+    has been assigned to the switchio dialplan.
 '''
 from __future__ import division
 import time
 import math
 import pytest
-from switchy.apps import dtmf, players
+from switchio.apps import dtmf, players
 
 
 def test_dialer_state(get_orig):

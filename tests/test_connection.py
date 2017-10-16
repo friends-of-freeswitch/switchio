@@ -6,12 +6,12 @@ Test ESL protocol and connection wrappers
 '''
 import os
 import pytest
-import switchy
-from switchy.connection import get_connection
+import switchio
+from switchio.connection import get_connection
 
 
 asyncio = pytest.importorskip("asyncio")
-from switchy.protocol import InboundProtocol
+from switchio.protocol import InboundProtocol
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def test_connect(con, loop, password, expect_auth):
         con.connect(password=password)
         assert con.protocol.authenticated()
     else:
-        with pytest.raises(switchy.ConnectionError):
+        with pytest.raises(switchio.ConnectionError):
             con.connect(password=password)
         assert not con.protocol.authenticated()
 

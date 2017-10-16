@@ -7,7 +7,7 @@ import socket
 import itertools
 import pytest
 from distutils import spawn
-from switchy import utils
+from switchio import utils
 
 
 def pytest_addoption(parser):
@@ -146,7 +146,7 @@ def cps(request):
 def con(fshost):
     '''Deliver a esl connection to fshost
     '''
-    from switchy.connection import get_connection
+    from switchio.connection import get_connection
     with get_connection(fshost) as con:
         yield con
 
@@ -154,7 +154,7 @@ def con(fshost):
 @pytest.yield_fixture
 def el(fshost):
     'deliver a connected event listener'
-    from switchy import get_listener
+    from switchio import get_listener
     listener = get_listener(fshost)
     el = listener.event_loop
     assert not el.connected()
@@ -169,7 +169,7 @@ def el(fshost):
 def client(fshost):
     """Deliver a core.Client connected to fshost
     """
-    from switchy import Client
+    from switchio import Client
     cl = Client(fshost)
     yield cl
     cl.disconnect()
