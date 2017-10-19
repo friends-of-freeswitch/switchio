@@ -1,4 +1,4 @@
 Connection wrappers
 -------------------
-.. automodule:: switchy.connection
+.. automodule:: switchio.connection
     :members:

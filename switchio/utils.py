@@ -45,7 +45,7 @@ TRACE = 5
 def get_logger(name=None):
     '''Return the package log or a sub-log for `name` if provided.
     '''
-    log = logging.getLogger('switchy')
+    log = logging.getLogger('switchio')
     return log.getChild(name) if name else log
 
 
@@ -111,7 +111,7 @@ def param2header(name):
     """
     var_keys = {
         'sip_h_X-',  # is it an x-header?
-        'switchy',  # custom switchy variable?
+        'switchio',  # custom switchio variable?
     }
     for key in var_keys:
         if key in name:

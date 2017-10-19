@@ -153,7 +153,7 @@ class Session(object):
 
     @property
     def appname(self):
-        return self.get('variable_switchy_app')
+        return self.get('variable_switchio_app')
 
     @property
     def host(self):

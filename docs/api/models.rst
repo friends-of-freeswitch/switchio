@@ -1,4 +1,4 @@
 Models
 ------
-.. automodule:: switchy.models
+.. automodule:: switchio.models
     :members:

@@ -15,7 +15,7 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
                         proxy=None,  # first hop uri
                         endpoint='sofia',
                         timeout=60,
-                        caller_id='Mr_Switchy',
+                        caller_id='Mr_switchio',
                         caller_id_num='1112223333',
                         codec='PCMU',
                         abs_codec='',
@@ -24,8 +24,8 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
     '''Return a formatted `originate` command string conforming
     to the syntax dictated by mod_commands of the form:
 
-    originate <call url> <exten>|&<application_name>(<app_args>) [<dialplan>]
-    [<context>] [<cid_name>] [<cid_num>] [<timeout_sec>]
+    ``originate <call url> <exten>|&<application_name>(<app_args>) [<dialplan>]
+    [<context>] [<cid_name>] [<cid_num>] [<timeout_sec>]``
 
     Parameters
     ----------
@@ -36,7 +36,6 @@ def build_originate_cmd(dest_url, uuid_str=None, profile='external',
     dp_extension: str
         destination dp extension where the originating session (a-leg) will
         processed just after the call is answered
-    etc...
 
     Returns
     -------

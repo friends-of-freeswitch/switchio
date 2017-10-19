@@ -1,4 +1,3 @@
-.. _services:
 .. toctree::
     :maxdepth: 2
     :hidden:
@@ -8,8 +7,8 @@
 
 Session API
 ===========
-*switchy* wraps *FreeSWITCH*'s `event header fields`_ and `call management commands`_
-inside the :py:class:`switchy.models.Session` type.
+*switchio* wraps *FreeSWITCH*'s `event header fields`_ and `call management commands`_
+inside the :py:class:`switchio.models.Session` type.
 
 There is already slew of supported commands and we encourage you to
 add any more you might require via a pull request on `github`_.
@@ -25,7 +24,7 @@ headers* via standard python ``__getitem__`` access:
 
 All chronological event data is kept until a ``Session`` is destroyed.
 If you'd like to access older state you can use the underlying
-:py:class:`~switchy.models.Events` instance:
+:py:class:`~switchio.models.Events` instance:
 
 .. code-block:: python
 
@@ -47,7 +46,7 @@ of `variable access`_ and in particular it would seem that
     sess['variable_sip_req_uri']
     sess['variable_sip_contact_user']
     sess['variable_read_codec']
-    sess['sip_h_X-switchy_app']
+    sess['sip_h_X-switchio_app']
 
 
 .. _event header fields:
@@ -55,7 +54,7 @@ of `variable access`_ and in particular it would seem that
 .. _call management commands:
     https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-CallManagementCommands
 .. _github:
-    https://github.com/sangoma/switchy
+    https://github.com/sangoma/switchio
 .. _variable access:
     https://freeswitch.org/confluence/display/FREESWITCH/XML+Dialplan#XMLDialplan-AccessingVariables
 .. _info app names:

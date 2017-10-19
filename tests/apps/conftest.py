@@ -2,7 +2,7 @@
 Apps testing
 """
 import pytest
-import switchy
+import switchio
 
 
 @pytest.yield_fixture
@@ -13,7 +13,7 @@ def get_orig(request, fsip):
     origs = []
 
     def factory(userpart, port=5080, limit=1, rate=1, offer=1, **kwargs):
-        orig = switchy.get_originator(
+        orig = switchio.get_originator(
             fsip,
             limit=limit,
             rate=rate,

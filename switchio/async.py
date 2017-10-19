@@ -260,7 +260,7 @@ class EventLoop(object):
             self.log.debug("starting event loop thread...")
             self._thread = Thread(
                 target=self._listen_forever, args=(),
-                name='switchy_event_loop[{}]'.format(self.host),
+                name='switchio_event_loop[{}]'.format(self.host),
             )
             self._thread.daemon = True  # die with parent
             self._thread.start()

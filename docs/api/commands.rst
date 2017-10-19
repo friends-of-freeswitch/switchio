@@ -1,4 +1,4 @@
 Command Builders
 ----------------
-.. automodule:: switchy.commands
+.. automodule:: switchio.commands
     :members:

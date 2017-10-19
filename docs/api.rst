@@ -28,7 +28,7 @@ A thread safe (plus more) wrapper around the ESL SWIG module's
 
 Observer components
 -------------------
-The core API :py:class:`~switchy.api.Client`
+The core API :py:class:`~switchio.api.Client`
 interface can be found in :doc:`api.py <api/observe>`.
 There are also some synchronous helpers hidden within.
 
@@ -36,7 +36,7 @@ There are also some synchronous helpers hidden within.
 Call Control Apps
 -----------------
 All the :doc:`built in apps <api/apps>` can be found in the
-:py:mod:`switchy.apps` subpackage.
+:py:mod:`switchio.apps` subpackage.
 
 
 .. _modelapi:
@@ -47,10 +47,10 @@ Model types
   *FreeSWITCH* channel and session objects as if they were local
   instances.
 
-* :py:class:`~switchy.models.Session` - represents a *FreeSWITCH*
+* :py:class:`~switchio.models.Session` - represents a *FreeSWITCH*
   `session` entity and provides a rich method api for control using
   `call management commands`_.
-* :py:class:`~switchy.models.Job` - provides a synchronous interface for
+* :py:class:`~switchio.models.Job` - provides a synchronous interface for
   background job handling.
 
 .. _call management commands:
@@ -63,7 +63,7 @@ Cluster tooling
 ---------------
 Extra helpers for managing a *FreeSWITCH* process cluster.
 
-* :py:class:`~switchy.distribute.MultiEval` - Invoke arbitrary python
+* :py:class:`~switchio.distribute.MultiEval` - Invoke arbitrary python
   expressions on a collection of objects.
-* :py:class:`~switchy.distribute.SlavePool` - a subclass which adds
+* :py:class:`~switchio.distribute.SlavePool` - a subclass which adds
   oberver component helper methods.

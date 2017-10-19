@@ -1,6 +1,6 @@
 Running Unit Tests
 ==================
-Switchy's unit test set relies on `pytest`_  and `tox`_.  Tests require a
+``switchio``'s unit test set relies on `pytest`_  and `tox`_.  Tests require a
 *FreeSWITCH* slave process which has been :doc:`deployed <fsconfig>`
 with the required baseline config and can be accessed by hostname.
 

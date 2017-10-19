@@ -10,8 +10,8 @@ import time
 import tempfile
 from functools import partial
 import pytest
-import switchy
-from switchy.apps.measure import pd
+import switchio
+from switchio.apps.measure import pd
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def measure(request):
     """Load the measurement sub-module as long as there are no import issues
     otherwise skip this test set.
     """
-    from switchy.apps import measure
+    from switchio.apps import measure
     return measure
 
 
@@ -145,7 +145,7 @@ def write_bufs(
     dtype=[('ints', 'i4'), ('strs', 'S5')],
     func=lambda i: (i, str(i)),
 ):
-    if not isinstance(ds, switchy.apps.measure.storage.DataStorer):
+    if not isinstance(ds, switchio.apps.measure.storage.DataStorer):
         ds = ds(
             'test_buffered_ds',
             dtype=dtype,
@@ -240,7 +240,7 @@ def test_measurers(measure, tmpdir, storetype):
     # double check figspec / partial func
     assert df._plot.args[1] == concat.figspec
     # ensure plotting doesn't throw errors
-    figpath = tmpdir.join('switchy_figure.png')
+    figpath = tmpdir.join('switchio_figure.png')
     assert df._plot(fname=str(figpath))
     assert figpath.exists()
 
@@ -264,7 +264,7 @@ def test_with_orig(get_orig, measure, storer):
     """Test that using a `DataStorer` with a single row dataframe
     stores data correctly
     """
-    from switchy.apps import players
+    from switchio.apps import players
     pd = measure.pd
     orig = get_orig('doggy', rate=100)
     orig.load_app(players.TonePlay)

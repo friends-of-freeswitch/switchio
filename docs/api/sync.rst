@@ -1,4 +1,4 @@
 Synchronous Calling
 ===================
-.. automodule:: switchy.sync
+.. automodule:: switchio.sync
     :members:

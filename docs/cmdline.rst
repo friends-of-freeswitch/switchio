@@ -2,11 +2,11 @@
 
 Command line client
 ===================
-``switchy`` provides a convenient cli to initiate auto-dialers and call control services with
-the help of click_. The program is installed as binary ``switchy``::
+``switchio`` provides a convenient cli to initiate auto-dialers and call control services with
+the help of click_. The program is installed as binary ``switchio``::
 
-    $ switchy
-    Usage: switchy [OPTIONS] COMMAND [ARGS]...
+    $ switchio
+    Usage: switchio [OPTIONS] COMMAND [ARGS]...
 
     Options:
       --help  Show this message and exit.
@@ -23,10 +23,10 @@ Listing apps
 ------------
 For example you can list the applications available (:doc:`apps` determine call flows)::
 
-    $ switchy list-apps
+    $ switchio list-apps
     Collected 5 built-in apps from 7 modules:
 
-    switchy.apps.bert:
+    switchio.apps.bert:
 
     `Bert`: Call application which runs the bert test application on both legs of a call
 
@@ -37,7 +37,7 @@ For example you can list the applications available (:doc:`apps` determine call 
         .. _here:
             https://github.com/moises-silva/freeswitch/issues/1
 
-    switchy.apps.players:
+    switchio.apps.players:
 
     `TonePlay`: Play a 'milli-watt' tone on the outbound leg and echo it back on the inbound
 
@@ -47,13 +47,13 @@ For example you can list the applications available (:doc:`apps` determine call 
         The filename provided must exist in the FreeSWITCH sounds directory such that
         ${FS_CONFIG_ROOT}/${sound_prefix}/<category>/<filename> points to a valid wave file.
 
-    switchy.apps.dtmf:
+    switchio.apps.dtmf:
 
     `DtmfChecker`: Play dtmf tones as defined by the iterable attr `sequence` with tone `duration`.
         Verify the rx sequence matches what was transmitted.  For each session which is answered start
         a sequence check. For any session that fails digit matching store it locally in the `failed` attribute.
 
-    switchy.apps.routers:
+    switchio.apps.routers:
 
     `Bridger`: Bridge sessions within a call an arbitrary number of times.  
 
@@ -63,8 +63,8 @@ Spawning the auto-dialer
 The applications listed can be used with the `app` option to the `dial` sub-command.
 `dial` is the main sub-command used to start a load test. Here is the help::
 
-    $ switchy dial --help
-    Usage: switchy dial [OPTIONS] HOSTS...
+    $ switchio dial --help
+    Usage: switchio dial [OPTIONS] HOSTS...
 
     Options:
       --proxy TEXT                    Hostname or IP address of the proxy device
@@ -81,7 +81,7 @@ The applications listed can be used with the `app` option to the `dial` sub-comm
                                       Whether to jump into an interactive session
                                       after setting up the call originator
       --debug / --no-debug            Whether to enable debugging
-      --app TEXT                      Switchy application to execute (see list-
+      --app TEXT                      ``switchio`` application to execute (see list-
                                       apps command to list available apps)
       --metrics-file TEXT             Store metrics at the given file location
       --help                          Show this message and exit.
@@ -98,7 +98,7 @@ calls offered with `max-offered`.
 For example, to start a test using an slave located at `1.1.1.1` to test device at `2.2.2.2` with a maximum of
 `2000` calls at `30` calls per second and stopping after placing `100,000` calls you can do::
 
-    $ switchy dial 1.1.1.1 --profile external --proxy 2.2.2.2 --rate 30 --limit 2000 --max-offered 100000
+    $ switchio dial 1.1.1.1 --profile external --proxy 2.2.2.2 --rate 30 --limit 2000 --max-offered 100000
 
     Slave 1.1.1.1 SIP address is at 1.1.1.1:5080
     Starting load test for server 2.2.2.2 at 30cps using 1 slaves
@@ -116,7 +116,7 @@ You can then use the `plot` sub-command to generate graphs of the collected data
 
 Launching a cluster routing service
 -----------------------------------
-You can also launch cluster controllers using ``switchy serve``.
+You can also launch cluster controllers using ``switchio serve``.
 See :ref:`services` for more details.
 
 .. _click: http://click.pocoo.org/5/

@@ -7,7 +7,7 @@
     <param name="sip-trace" value="yes"/>
 
     <param name="dialplan" value="XML"/>
-    <param name="context" value="switchy"/>
+    <param name="context" value="switchio"/>
     <param name="codec-prefs" value="$${global_codec_prefs}"/>
 
     <param name="rtp-ip" value="$${local_ip_v4}"/>

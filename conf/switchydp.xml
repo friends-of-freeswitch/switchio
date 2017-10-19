@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A context for relinquishing control of all calls to Switchy, the inbound ESL client -->
-<context name="switchy">
+<!-- A context for relinquishing control of all calls to switchio, the inbound ESL client -->
+<context name="switchio">
   <!-- Park call and transfer control to esl -->
-  <extension name="switchypark">
+  <extension name="switchiopark">
     <condition field="destination_number" expression="^(.*)$">
       <action application="park"/>
     </condition>

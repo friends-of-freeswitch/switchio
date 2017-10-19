@@ -5,7 +5,7 @@ import os
 import pickle
 from functools import partial
 from collections import OrderedDict, namedtuple
-from switchy import utils
+from switchio import utils
 from .storage import *
 
 # re-export(s)
@@ -131,7 +131,7 @@ class Measurers(object):
         # infer storage backend from first store
         name, m = next(iter(iterapps))
         storetype = m.storer.storetype
-        storepath = os.path.join(dirpath, "switchy_measures")
+        storepath = os.path.join(dirpath, "switchio_measures")
 
         framedict = OrderedDict()
         # raw data sets
@@ -147,7 +147,7 @@ class Measurers(object):
 
         storepath = storetype.multiwrite(storepath, framedict.items())
         # dump pickle file containing figspec (and possibly other meta-data)
-        pklpath = os.path.join(dirpath, 'switchy_measures.pkl')
+        pklpath = os.path.join(dirpath, 'switchio_measures.pkl')
         with open(pklpath, 'wb') as pklfile:
             pickle.dump(
                 {'storepath': storepath, 'figspecs': self._figspecs,

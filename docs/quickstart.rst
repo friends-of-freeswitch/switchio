@@ -9,15 +9,15 @@ Quick-Start - Originating a single call
 =======================================
 Assuming you've gone through the required :doc:`deployment steps
 <fsconfig>` to setup at least one slave, initiating a call becomes
-very simple using the Switchy command line::
+very simple using the ``switchio`` command line::
 
-    $ switchy dial vm-host sip-cannon --profile external --proxy myproxy.com --rate 1 --limit 1 --max-offered 1
+    $ switchio dial vm-host sip-cannon --profile external --proxy myproxy.com --rate 1 --limit 1 --max-offered 1
 
     ...
 
-    Aug 26 21:59:01 [INFO] switchy cli.py:114 : Slave sip-cannon.qa.sangoma.local SIP address is at 10.10.8.19:5080
-    Aug 26 21:59:01 [INFO] switchy cli.py:114 : Slave vm-host.qa.sangoma.local SIP address is at 10.10.8.21:5080
-    Aug 26 21:59:01 [INFO] switchy cli.py:120 : Starting load test for server dut-008.qa.sangoma.local at 1cps using 2 slaves
+    Aug 26 21:59:01 [INFO] switchio cli.py:114 : Slave sip-cannon.qa.sangoma.local SIP address is at 10.10.8.19:5080
+    Aug 26 21:59:01 [INFO] switchio cli.py:114 : Slave vm-host.qa.sangoma.local SIP address is at 10.10.8.21:5080
+    Aug 26 21:59:01 [INFO] switchio cli.py:120 : Starting load test for server dut-008.qa.sangoma.local at 1cps using 2 slaves
     <Originator: active-calls=0 state=INITIAL total-originated-sessions=0 rate=1 limit=1 max-offered=1 duration=5>
 
     ...
@@ -30,18 +30,18 @@ very simple using the Switchy command line::
     Dialing session completed!
 
 
-The Switchy `dial` sub-command takes several options and a list of minion IP addresses
-or hostnames. In this example ``switchy`` connected to the specified hosts, found the
+The ``switchio`` `dial` sub-command takes several options and a list of minion IP addresses
+or hostnames. In this example ``switchio`` connected to the specified hosts, found the
 requested SIP profile and initiated a single call with a duration of 5 seconds to the
 device under test (set with the `proxy` option).
 
-For more information on the switchy command line see :doc:`here <cmdline>`.
+For more information on the switchio command line see :doc:`here <cmdline>`.
 
 
 Originating a single call programatically from Python
 -----------------------------------------------------
-Making a call with switchy is quite simple using the built-in
-:py:func:`~switchy.sync.sync_caller` context manager.
+Making a call with switchio is quite simple using the built-in
+:py:func:`~switchio.sync.sync_caller` context manager.
 Again, if you've gone through the required :doc:`deployment steps
 <fsconfig>`, initiating a call becomes as simple as a few lines of python
 code
@@ -49,8 +49,8 @@ code
 .. code-block:: python
     :linenos:
 
-    from switchy import sync_caller
-    from switchy.apps.players import TonePlay
+    from switchio import sync_caller
+    from switchio.apps.players import TonePlay
 
     # here '192.168.0.10' would be the address of the server running a
     # FS process to be used as the call generator
@@ -68,17 +68,17 @@ code
 The most important lines are the `with` statement and line 10.
 What happens behind the scenes here is the following:
 
-    * at the `with`, necessary internal Switchy components are instantiated in memory
+    * at the `with`, necessary internal ``switchio`` components are instantiated in memory
       and connected to a *FreeSWITCH* process listening on the `fsip` ESL ip address.
-    * at the `caller()`, an :py:meth:`~switchy.api.Client.originate` command is
-      invoked asynchronously via a :py:meth:`~switchy.api.Client.bgapi` call.
-    * the background :py:class:`~switchy.models.Job` returned by that command is handled
+    * at the `caller()`, an :py:meth:`~switchio.api.Client.originate` command is
+      invoked asynchronously via a :py:meth:`~switchio.api.Client.bgapi` call.
+    * the background :py:class:`~switchio.models.Job` returned by that command is handled
       to completion **synchronously** wherein the call blocks until the originating session has
       reached the connected state.
-    * the corresponding origininating :py:class:`~switchy.models.Session` is returned along with
-      a reference to a :py:meth:`switchy.handlers.EventListener.waitfor` blocker method.
-    * the call is kept up for 1 second and then :py:meth:`hungup <switchy.models.Session.hangup>`.
-    * internal Switchy components are disconnected from the *FreeSWITCH* process at the close of the
+    * the corresponding origininating :py:class:`~switchio.models.Session` is returned along with
+      a reference to a :py:meth:`switchio.handlers.EventListener.waitfor` blocker method.
+    * the call is kept up for 1 second and then :py:meth:`hungup <switchio.models.Session.hangup>`.
+    * internal ``switchio`` components are disconnected from the *FreeSWITCH* process at the close of the
       `with` block.
 
 Note that the `sync_caller` api is not normally used for :doc:`stress testing <callgen>`
@@ -112,9 +112,9 @@ If you have ``pytest`` installed you can run this test like so::
 
 Implementation details
 **********************
-The implementation of :py:func:`~switchy.sync.sync_caller` is shown
+The implementation of :py:func:`~switchio.sync.sync_caller` is shown
 below and can be referenced alongside the :doc:`usage` to gain a better
-understanding of the inner workings of Switchy's api:
+understanding of the inner workings of ``switchio``'s api:
 
-.. literalinclude:: ../switchy/sync.py
+.. literalinclude:: ../switchio/sync.py
     :linenos:

@@ -7,8 +7,8 @@ CDR app for collecting signalling latency and performance stats.
 import weakref
 import itertools
 import time
-from switchy.marks import event_callback
-from switchy import utils
+from switchio.marks import event_callback
+from switchio import utils
 from .storage import pd, DataStorer
 
 
@@ -24,7 +24,7 @@ def call_metrics(df):
 
     mdf = pd.DataFrame(
         data={
-            'switchy_app': df['switchy_app'],
+            'switchio_app': df['switchio_app'],
             'hangup_cause': df['hangup_cause'],
             'hangup_index': df.index,
             'invite_latency': df['callee_create'] - df['caller_create'],
@@ -52,7 +52,7 @@ def call_metrics(df):
 #     return pd.DataFrame(
 #         cm.values,
 #         index=pd.MultiIndex.from_arrays(
-#             [df['switchy_app'], df['hangup_cause'], cm.index]),
+#             [df['switchio_app'], df['hangup_cause'], cm.index]),
 #         columns=cm.columns,
 #     )
 
@@ -102,7 +102,7 @@ class CDR(object):
     computations.
     """
     fields = [
-        ('switchy_app', 'S50'),
+        ('switchio_app', 'S50'),
         ('hangup_cause', 'S50'),
         ('caller_create', 'float64'),
         ('caller_answer',  'float64'),

@@ -5,8 +5,8 @@
 Make calls synchronously
 """
 from contextlib import contextmanager
-from switchy.apps.players import TonePlay
-from switchy.api import get_client
+from switchio.apps.players import TonePlay
+from switchio.api import get_client
 
 
 @contextmanager
@@ -23,7 +23,7 @@ def sync_caller(host, port='8021', password='ClueCon',
         def caller(dest_url, app_name, timeout=30, waitfor=None,
                    **orig_kwargs):
             # override the channel variable used to look up the intended
-            # switchy app to be run for this call
+            # switchio app to be run for this call
             if caller.app_lookup_vars:
                 client.listener.app_id_vars.extend(caller.app_lookup_vars)
 

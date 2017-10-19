@@ -1,4 +1,4 @@
 API components
 --------------
-.. automodule:: switchy.api
+.. automodule:: switchio.api
     :members:

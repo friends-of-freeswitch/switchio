@@ -21,7 +21,7 @@ Event-Calling-Line-Number: 1557
 Event-Sequence: 1633
 Job-UUID: 86b51ad6-ebb9-4bca-8a41-f28986dde3e4
 Job-Command: originate
-Job-Command-Arg: %7Boriginate_timeout%3D60,origination_caller_id_name%3DMr_Switchy,origination_caller_id_number%3D1112223333,originator_codec%3DPCMU,absolute_codec_string%3D,origination_uuid%3D8de782e0-83c9-11e7-af1b-001500e3e25c,ignore_display_updates%3Dtrue,ignore_early_media%3Dtrue,sip_h_X-switchy_originating_session%3D8de782e0-83c9-11e7-af1b-001500e3e25c,sip_h_X-switchy_app%3DTonePlay%7Dsofia/external/doggy%40192.168.0.105%3A5080%20%26park()
+Job-Command-Arg: %7Boriginate_timeout%3D60,origination_caller_id_name%3DMr_Switchy,origination_caller_id_number%3D1112223333,originator_codec%3DPCMU,absolute_codec_string%3D,origination_uuid%3D8de782e0-83c9-11e7-af1b-001500e3e25c,ignore_display_updates%3Dtrue,ignore_early_media%3Dtrue,sip_h_X-switchio_originating_session%3D8de782e0-83c9-11e7-af1b-001500e3e25c,sip_h_X-switchio_app%3DTonePlay%7Dsofia/external/doggy%40192.168.0.105%3A5080%20%26park()
 Content-Length: 41
 
 +OK 8de782e0-83c9-11e7-af1b-001500e3e25c
@@ -103,8 +103,8 @@ variable_originator_codec: PCMU
 variable_origination_uuid: 8de782e0-83c9-11e7-af1b-001500e3e25c
 variable_ignore_display_updates: true
 variable_ignore_early_media: true
-variable_sip_h_X-switchy_originating_session: 8de782e0-83c9-11e7-af1b-001500e3e25c
-variable_sip_h_X-switchy_app: TonePlay
+variable_sip_h_X-switchio_originating_session: 8de782e0-83c9-11e7-af1b-001500e3e25c
+variable_sip_h_X-switchio_app: TonePlay
 variable_originate_early_media: false
 variable_rtp_local_sdp_str: v%3D0%0D%0Ao%3DFreeSWITCH%201503007465%201503007466%20IN%20IP4%20192.168.0.105%0D%0As%3DFreeSWITCH%0D%0Ac%3DIN%20IP4%20192.168.0.105%0D%0At%3D0%200%0D%0Am%3Daudio%2021270%20RTP/AVP%200%20101%2013%0D%0Aa%3Drtpmap%3A0%20PCMU/8000%0D%0Aa%3Drtpmap%3A101%20telephone-event/8000%0D%0Aa%3Dfmtp%3A101%200-16%0D%0Aa%3Drtpmap%3A13%20CN/8000%0D%0Aa%3Dptime%3A20%0D%0Aa%3Dsendrecv%0D%0A
 variable_sip_outgoing_contact_uri: %3Csip%3Amod_sofia%40192.168.0.105%3A5080%3E
@@ -189,7 +189,7 @@ Event-Calling-Line-Number: 1557
 Event-Sequence: 1633
 Job-UUID: 86b51ad6-ebb9-4bca-8a41-f28986dde3e4
 Job-Command: originate
-Job-Command-Arg: %7Boriginate_timeout%3D60,origination_caller_id_name%3DMr_Switchy,origination_caller_id_number%3D1112223333,originator_codec%3DPCMU,absolute_codec_string%3D,origination_uuid%3D8de782e0-83c9-11e7-af1b-001500e3e25c,ignore_display_updates%3Dtrue,ignore_early_media%3Dtrue,sip_h_X-switchy_originating_session%3D8de782e0-83c9-11e7-af1b-001500e3e25c,sip_h_X-switchy_app%3DTonePlay%7Dsofia/external/doggy%40192.168.0.105%3A5080%20%26park()
+Job-Command-Arg: %7Boriginate_timeout%3D60,origination_caller_id_name%3DMr_Switchy,origination_caller_id_number%3D1112223333,originator_codec%3DPCMU,absolute_codec_string%3D,origination_uuid%3D8de782e0-83c9-11e7-af1b-001500e3e25c,ignore_display_updates%3Dtrue,ignore_early_media%3Dtrue,sip_h_X-switchio_originating_session%3D8de782e0-83c9-11e7-af1b-001500e3e25c,sip_h_X-switchio_app%3DTonePlay%7Dsofia/external/doggy%40192.168.0.105%3A5080%20%26park()
 Content-Length: 41
 
 +OK 8de782e0-83c9-11e7-af1b-001500e3e25c

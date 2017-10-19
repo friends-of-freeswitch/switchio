@@ -2,18 +2,18 @@
 
 *FreeSWITCH* configuration and deployment
 -----------------------------------------
-*switchy* relies on some basic *FreeSWITCH* configuration steps in order to enable
+*switchio* relies on some basic *FreeSWITCH* configuration steps in order to enable
 remote control via the `ESL inbound method`_.
 Most importantly, the ESL configuration file must be modified to listen
 on a known socket of choice and a *park-only* extension must be added to
-*FreeSWITCH*'s `XML dialplan`_. *switchy* comes packaged with an example
+*FreeSWITCH*'s `XML dialplan`_. *switchio* comes packaged with an example
 :ref:`park only dialplan <parkonly>` which you can copy-paste into your
 existing server(s).
 
 
 Event Socket
 ++++++++++++
-In order for *switchy* to talk to *FreeSWITCH* you must `enable ESL`_ to listen on all
+In order for *switchio* to talk to *FreeSWITCH* you must `enable ESL`_ to listen on all
 IP addrs at port `8021`.  This can configured by simply making the following change to
 the ``${FS_CONF_ROOT}/conf/autoload_configs/event_socket.conf.xml`` configuration file::
 
@@ -29,20 +29,20 @@ Park only dialplan
 ++++++++++++++++++
 An XML dialplan `extension`_ which places all *inbound* sessions into the
 `park`_ state should be added to all target *FreeSWITCH* servers you wish to control with
-*switchy*. An example `context`_ (``switchydp.xml``) is included in the `conf`_ directory
-of the source code.  If using this file you can enable *switchy* to control all calls
-received by a particular *FreeSWITCH* `SIP profile`_ by setting the ``"switchy"`` context.
+*switchio*. An example `context`_ (``switchiodp.xml``) is included in the `conf`_ directory
+of the source code.  If using this file you can enable *switchio* to control all calls
+received by a particular *FreeSWITCH* `SIP profile`_ by setting the ``"switchio"`` context.
 
 As an example you can modify *FreeSWITCH*'s default `external`_ profile found
 at ``${FS_CONF_ROOT}/conf/sip_profiles/external.xml``::
 
     <!-- Contents of  -->
     -- <param name="context" value="public"/>
-    ++ <param name="context" value="switchy"/>
+    ++ <param name="context" value="switchio"/>
 
 .. note::
     You can also add a park extension to your existing dialplan such that
-    only a subset of calls relinquish control to *switchy* (especially
+    only a subset of calls relinquish control to *switchio* (especially
     useful if you'd like to test on an extant production system).
 
 
@@ -61,7 +61,7 @@ to the originating *FreeSWITCH* (cluster) such that the originator hosts both th
     --------------   inbound sessions    ---------------------
 
 
-This allows *switchy* to perform *call tracking* (associate *outbound* with *inbound*
+This allows *switchio* to perform *call tracking* (associate *outbound* with *inbound*
 SIP sessions) and thus assume full control of call flow as well as measure signalling
 latency and other teletraffic metrics.
 
@@ -80,7 +80,7 @@ to the originator (caller)::
     </condition>
 
 .. note::
-    This could have alternatively be implemented as a *switchy* :ref:`app <proxyapp>`.
+    This could have alternatively be implemented as a *switchio* :ref:`app <proxyapp>`.
 
 
 Configuring FreeSWITCH for stress testing
@@ -129,7 +129,7 @@ You will also probably want to `raise the file descriptor count`_.
 .. _performance:
     https://freeswitch.org/confluence/display/FREESWITCH/Performance+Testing+and+Configurations
 .. _conf:
-    https://github.com/sangoma/switchy/tree/master/conf
+    https://github.com/sangoma/switchio/tree/master/conf
 .. _external:
     https://freeswitch.org/confluence/display/FREESWITCH/Configuring+FreeSWITCH#ConfiguringFreeSWITCH-External
 .. _enable ESL:

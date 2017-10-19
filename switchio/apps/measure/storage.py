@@ -13,7 +13,7 @@ from contextlib import contextmanager
 import tempfile
 import csv
 import os
-from switchy import utils
+from switchio import utils
 import multiprocessing as mp
 import time
 
@@ -55,7 +55,7 @@ def get_storetype(ext):
 
 
 def tmpfile(ext):
-    return tempfile.mktemp() + '_switchy_data.{}'.format(ext)
+    return tempfile.mktemp() + '_switchio_data.{}'.format(ext)
 
 
 class Terminate(Exception):
@@ -341,7 +341,7 @@ class RingBuffer(object):
 
 
 class DataStorer(object):
-    """Receive and store row-oriented data points from switchy apps.
+    """Receive and store row-oriented data points from switchio apps.
 
     A shared-memory buffer array is used to store the most recently written
     data (rows) and is flushed incrementally the to the chosen storage backend.
