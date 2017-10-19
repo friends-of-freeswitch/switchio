@@ -24,9 +24,8 @@ with open('README.rst') as f:
 
 setup(
     name="switchio",
-    version='0.1.0.alpha1',
-    description='Async FreeSWITCH cluster control purpose-built on '
-                'traffic theory and stress testing.',
+    version='0.1.0.alpha0',
+    description='asyncio powered FreeSWITCH cluster control',
     long_description=readme,
     license='Mozilla',
     author='Sangoma Technologies',
