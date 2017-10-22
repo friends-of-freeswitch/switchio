@@ -91,7 +91,7 @@ def test_parse_event_stream1(con, get_event_stream):
     assert ev4['variable_switch_r_sdp'][-1-len(last):-1] == last
 
 
-def test_parse_segmented_event_stream(con, get_event_stream):
+def test_parse_segmented_event_stream(get_event_stream):
     """Verify segmented packets are processed correctly.
     """
     prot = InboundProtocol(None, None, None)
