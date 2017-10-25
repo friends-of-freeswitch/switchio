@@ -313,7 +313,7 @@ class EventListener(object):
             return True, sess
 
         # allocate a session model
-        sess = Session(e, event_loop=self, uuid=uuid, con=con)
+        sess = Session(e, event_loop=self.event_loop, uuid=uuid, con=con)
         direction = sess['Call-Direction']
         self.log.debug("{} session created with uuid '{}'".format(
                        direction, uuid))
