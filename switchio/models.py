@@ -13,6 +13,7 @@ from . import utils
 
 if utils.py35:
     from concurrent import futures
+    import asyncio
 
 
 class TimeoutError(Exception):
@@ -97,6 +98,7 @@ class Session(object):
         # sub-namespace for apps to set/get state
         self.vars = {}
         self._log = None
+        self._futures = {}
 
         # public attributes
         self.duration = 0
@@ -431,7 +433,7 @@ class Session(object):
 
 
 class Call(object):
-    '''A collection of sessions which a compose a call
+    '''A collection of sessions which together compose a "phone call".
     '''
     def __init__(self, uuid, session):
         self.uuid = uuid

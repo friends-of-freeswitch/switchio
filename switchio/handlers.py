@@ -13,11 +13,17 @@ import operator
 import time
 import multiprocessing as mp
 from collections import deque, OrderedDict, Counter
-from .models import Session, Job, Call
 from .marks import handler, get_callbacks
 from .connection import ConnectionError
 from .async import get_event_loop
 from . import utils
+from .models import Job, Call
+
+
+if utils.py35:
+    from .py3_models import Session
+else:
+    from .models import Session
 
 
 class EventListener(object):
