@@ -10,7 +10,7 @@ import time
 import traceback
 from threading import Thread, current_thread
 import multiprocessing as mp
-from collections import deque, OrderedDict
+from collections import deque
 from . import utils
 from .utils import get_event_time
 from .connection import get_connection
