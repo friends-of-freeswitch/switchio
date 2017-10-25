@@ -6,12 +6,15 @@
 """
 Asyncio based reactor core
 """
+import functools
 import asyncio
-from functools import partial
 import time
+import traceback
+from collections import deque
 from threading import Thread, current_thread, get_ident
 from .async import EventLoop
 from . import utils
+from .utils import get_event_time
 
 
 def new_event_loop():
@@ -29,6 +32,10 @@ class AsyncIOEventLoop(EventLoop):
     """Re-implementation of the event loop with ``asyncio`` and coroutines
     support.
     """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._tasks = []
+
     def _run_loop(self):
         self.loop = loop = new_event_loop()
         loop._tid = get_ident()
@@ -101,7 +108,7 @@ class AsyncIOEventLoop(EventLoop):
             else:
                 evname = e.get('Event-Name')
                 if evname:
-                    consumed = self._process_event(e, evname)
+                    consumed = await self._process_event(e, evname)
                     if not consumed:
                         self.log.warn("unconsumed  event '{}'?".format(e))
                 else:
@@ -109,6 +116,84 @@ class AsyncIOEventLoop(EventLoop):
 
         self.log.debug("Exiting listen loop")
         self._running = False
+
+    async def _process_event(self, e, evname):
+        '''Process an ESL event by delegating to the appropriate handler
+        and any succeeding callback chain. This is the core handler lookup
+        routine and should be optimized for speed.
+
+        An event is considered consumed if:
+        1) the handler + callback chain returns True
+        2) the handler + callback chain raises a special exception
+
+        :param ESL.ESLEvent e: event received over esl on self._rx_con
+        :param str evname: event type/name string
+        '''
+        # epoch is the time when first event is received
+        if self._epoch:
+            self._fs_time = get_event_time(e)
+        else:
+            self._epoch = self._fs_time = get_event_time(e)
+
+        consumed = False  # is this event consumed by a handler/callback
+        if 'CUSTOM' in evname:
+            evname = e.get('Event-Subclass')
+        self.log.debug("receive event '{}'".format(evname))
+
+        uid = e.get('Unique-ID')
+
+        handler = self._handlers.get(evname, False)
+        loop = self.loop
+        if handler:
+            self.log.debug("handler is '{}'".format(handler))
+            try:
+                consumed, ret = utils.uncons(*handler(e))  # invoke handler
+                model = ret[0]
+
+                # attempt to lookup a consuming client app (callbacks) by id
+                cid = model.cid if model else self.get_id(e, 'default')
+                self.log.debug("consumers id is '{}'".format(cid))
+
+                if model:
+                    # signal any awaiting futures
+                    fut = model._futures.get(evname, None)
+                    if fut:
+                        fut.set_result(e)
+                        # seriously guys, this is literally so stupid
+                        await asyncio.sleep(0)  # resume waiting coroutines...
+
+                    consumers = self.consumers.get(cid, False)
+                    if consumers and consumed:
+                        coros = consumers.get(evname, ())
+                        self.log.debug(
+                            "consumer '{}' has routines {} registered for ev {}"
+                            .format(cid, coros, evname)
+                        )
+                        # look up and schedule coroutine chain
+                        # e -> handler -> coro1, coro2, ... coroN
+                        for coro in coros:
+                            task = asyncio.ensure_future(coro(*ret), loop=loop)
+                            self._tasks.append(task)
+
+                        # unblock `session.vars` waiters
+                        if model in self._sess2waiters:
+                            for var, events in self._sess2waiters[model].items():
+                                if model.vars.get(var):
+                                    [event.set() for event in events]
+
+            # exception raised by handler/chain on purpose?
+            except utils.ESLError:
+                consumed = True
+                self.log.warning("Caught ESL error for event '{}':\n{}"
+                                 .format(evname, traceback.format_exc()))
+            except Exception:
+                self.log.exception(
+                    "Failed to process event {} with uid {}"
+                    .format(evname, uid)
+                )
+            return consumed
+        else:
+            self.log.error("Unknown event '{}'".format(evname))
 
     def _stop(self):
         '''Stop bg thread and event loop.
@@ -138,7 +223,7 @@ class AsyncIOEventLoop(EventLoop):
         trigger_exit()
         pending = asyncio.Task.all_tasks(self.loop)
         self.loop.call_soon_threadsafe(
-            partial(asyncio.gather, *pending, loop=self.loop))
+            functools.partial(asyncio.gather, *pending, loop=self.loop))
 
         # tear down the event loop
         self.loop.stop()
@@ -172,3 +257,34 @@ class AsyncIOEventLoop(EventLoop):
             self._rx_con.subscribe((evname,))
         # add handler to active map
         self._handlers[evname] = handler
+
+    def add_coroutine(self, evname, ident, coro, *args, **kwargs):
+        """Register a coroutine which will be scheduled when events
+        of type ``evname`` are received.
+
+        The coroutine will be scheduled only when the value of
+        ``ident`` matches one of the ``self.app_id_headers`` values
+        read from the event. This allows for triggering certain coroutines
+        on specific session state/inputs.
+        """
+        prepend = kwargs.pop('prepend', False)
+        if not asyncio.iscoroutinefunction(coro):
+            return False
+        if args or kwargs:
+            coro = functools.partial(coro, *args, **kwargs)
+        d = self.consumers.setdefault(ident, {}).setdefault(evname, deque())
+        getattr(d, 'appendleft' if prepend else 'append')(coro)
+        return True
+
+    def remove_coroutine(self, evname, ident, coro):
+        """Remove the coroutine object registered for events of type ``evname``
+        app id header ``ident``.
+        """
+        ev_map = self.consumers[ident]
+        coros = ev_map[evname]
+        coros.remove(coro)
+        # clean up maps if now empty
+        if len(coros) == 0:
+            ev_map.pop(evname)
+        if len(ev_map) == 0:
+            self.consumers.pop(ident)
