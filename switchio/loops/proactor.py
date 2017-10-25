@@ -12,9 +12,9 @@ import time
 import traceback
 from collections import deque
 from threading import Thread, current_thread, get_ident
-from .async import EventLoop
-from . import utils
-from .utils import get_event_time
+from .reactor import EventLoop
+from .. import utils
+from ..utils import get_event_time
 
 
 def new_event_loop():
@@ -169,7 +169,7 @@ class AsyncIOEventLoop(EventLoop):
                             "consumer '{}' has routines {} registered for ev {}"
                             .format(cid, coros, evname)
                         )
-                        # look up and schedule coroutine chain
+                        # look up and schedule assigned coroutines
                         # e -> handler -> coro1, coro2, ... coroN
                         for coro in coros:
                             task = asyncio.ensure_future(coro(*ret), loop=loop)

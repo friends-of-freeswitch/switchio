@@ -38,6 +38,7 @@ setup(
         'switchio.apps',
         'switchio.apps.measure',
         'switchio.connection',
+        'switchio.loops',
     ],
     entry_points={
         'console_scripts': [

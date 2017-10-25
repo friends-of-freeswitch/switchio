@@ -11,9 +11,9 @@ import traceback
 from threading import Thread, current_thread
 import multiprocessing as mp
 from collections import deque
-from . import utils
-from .utils import get_event_time
-from .connection import get_connection
+from .. import utils
+from ..utils import get_event_time
+from ..connection import get_connection
 
 
 class EventLoop(object):
@@ -414,15 +414,3 @@ class EventLoop(object):
                                   .format(varname, timeout))
         cleanup(event)
         return res
-
-
-def get_event_loop(host, port=EventLoop.PORT, auth=EventLoop.AUTH,
-                   **kwargs):
-    '''Event loop factory. When using python 3.5 + an ``asyncio`` based loop
-    is used.
-    '''
-    if utils.py35:
-        from .reactor import AsyncIOEventLoop
-        return AsyncIOEventLoop(host, port, auth, **kwargs)
-    else:
-        return EventLoop(host, port, auth, **kwargs)
