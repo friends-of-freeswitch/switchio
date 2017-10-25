@@ -219,6 +219,10 @@ class AsyncIOEventLoop(EventLoop):
             self.loop.call_soon_threadsafe(
                 self._rx_con.protocol.event_queue.put_nowait, None)
 
+        # kill all pending coroutine tasks
+        for task in self._tasks:
+            task.cancel()
+
         # trigger event consumer to terminate
         trigger_exit()
         pending = asyncio.Task.all_tasks(self.loop)
