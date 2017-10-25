@@ -1,44 +1,40 @@
 switchio
-=======
-async FreeSWITCH_ cluster control using pure Python_!
+========
+asyncio_ powered FreeSWITCH_ cluster control using pure Python_ 3.5+!
 
 |pypi| |travis| |versions| |pypi_downloads| |docs|
 
-``switchio`` intends to be the "flask_ for VoIP" but with a focus on performance and
-scalable service system design. Please `read the docs`_ for more information!
+``switchio`` (pronounced *Switch Ee OoH*) is the next evolution of `switchy`_
+(think *Bulbasaur* -> *Ivysaur*) which leverages modern Python's new native
+coroutine_ syntax and, for now, asyncio_.
 
+API-wise the project intends to be the *flask_ for VoIP* but with
+a focus on performance and scalability more along the lines of sanic_.
+
+Please `read the docs`_ for more information!
+
+.. _asyncio: https://docs.python.org/3.6/library/asyncio.html
 .. _FreeSWITCH: https://freeswitch.org/
 .. _Python: https://www.python.org/
+.. _switchy: https://www.python.org/
+.. _coroutine: https://docs.python.org/3.6/library/asyncio-task.html
 .. _flask: http://flask.pocoo.org/
+.. _sanic: https://github.com/channelcat/sanic
 .. _read the docs: https://switchio.readthedocs.org/
+
 
 Installation
 ============
-Note that you need to at least have the SWIG_ package installed in your
-Linux distribution before installing ``switchio`` via ``pip``::
-
-    yum install swig
-    # or
-    apt-get install swig
-
-Once you have SWIG installed (the ``swig`` command should be available)
-you can use ``pip`` to install ``switchio``::
+For Python 3.5+ ``switchio`` comes ready out of the box::
 
     pip install switchio
 
-.. _SWIG: http://www.swig.org/
-
 Dependencies
 ============
-Currently `switchio` uses the `ESL SWIG package`_ distributed with the FreeSWITCH sources.
-We intend to add alternative backends in the future including greenswitch_ and support
-for mod_amqp_.
+Nothing other then Python 3.5+ is required!
 
-.. _ESL SWIG package: https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
-.. _greenswitch: https://github.com/EvoluxBR/greenswitch
-.. _mod_amqp: https://freeswitch.org/confluence/display/FREESWITCH/mod_amqp
-
-Some optional numerical packages are required to record performance measurements:
+If you'd like to record performance measurements some optional numerical
+packages can be used:
 
 ===============  ================ ================================
 Feature          Dependency        Installation
@@ -56,6 +52,7 @@ HDF5             `pytables`_ [#]_ ``pip install switchio[hdf5]``
 .. _pandas: http://pandas.pydata.org/
 .. _matplotlib: http://matplotlib.org/
 .. _pytables: http://www.pytables.org/
+
 
 License
 =======
