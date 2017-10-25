@@ -7,7 +7,7 @@ CDR app for collecting signalling latency and performance stats.
 import weakref
 import itertools
 import time
-from switchio.marks import event_callback
+from switchio.marks import coroutine
 from switchio import utils
 from .storage import pd, DataStorer
 
@@ -72,7 +72,8 @@ def call_metrics(df):
 
 #     # create step funcs for each hangup cause
 #     for cause in ctdf.hangup_cause.value_counts().keys():
-#         ctdf[cause.lower()] = (ctdf.hangup_cause == cause).astype(pd.np.float)
+#         ctdf[cause.lower()] = (
+#           ctdf.hangup_cause == cause).astype(pd.np.float)
 
 #     return ctdf
 
@@ -102,6 +103,7 @@ class CDR(object):
     computations.
     """
     fields = [
+        ('call_uuid', 'S50'),
         ('switchio_app', 'S50'),
         ('hangup_cause', 'S50'),
         ('caller_create', 'float64'),
@@ -142,10 +144,11 @@ class CDR(object):
     def storer(self):
         return self._ds
 
-    @event_callback('CHANNEL_CREATE')
-    def on_create(self, sess):
-        """Store total (cluster) session count at channel create time
-        """
+    @coroutine(
+        'CHANNEL_CREATE',
+        subscribe=('CHANNEL_ORIGINATE', 'CHANNEL_ANSWER', 'CHANNEL_HANGUP')
+    )
+    async def on_create(self, sess):
         call_vars = sess.call.vars
         # call number tracking
         if not call_vars.get('call_index', None):
@@ -154,60 +157,77 @@ class CDR(object):
         call_vars['session_count'] = self.pool.count_sessions()
         call_vars['erlangs'] = self.pool.count_calls()
 
-    @event_callback('CHANNEL_ORIGINATE')
-    def on_originate(self, sess):
-        # store local time stamp for originate
-        sess.times['originate'] = sess.time
-        sess.times['req_originate'] = time.time()
+        events_sub = list(self.on_create.switchio_events_sub)
+        while not sess.hungup:
+            # wait on subscribed events
+            events, pending = await sess.poll(events_sub)
+            for event in events:
+                evtype = event['Event-Name']
+                self.log.debug("{} Handling event type {} in CDR app".format(
+                    sess.uuid, evtype))
+                events_sub.remove(evtype)
 
-    @event_callback('CHANNEL_ANSWER')
-    def on_answer(self, sess):
-        sess.times['answer'] = sess.time
+                if evtype == 'CHANNEL_ORIGINATE':
+                    # store local time stamp for originate
+                    sess.times['originate'] = sess.time
+                    sess.times['req_originate'] = time.time()
+                    continue
 
-    @event_callback('CHANNEL_HANGUP')
-    def log_stats(self, sess, job):
-        """Append measurement data only once per call
-        """
-        sess.times['hangup'] = sess.time
-        call = sess.call
+                elif evtype == 'CHANNEL_ANSWER':
+                    sess.times['answer'] = sess.time
+                    continue
 
-        if call.sessions:  # still session(s) remaining to be hungup
-            call.caller = call.first
-            call.callee = call.last
-            if job:
-                call.job = job
-            return  # stop now since more sessions are expected to hangup
+                elif evtype == 'CHANNEL_HANGUP':
+                    # Append measurement data only once per call
+                    sess.times['hangup'] = sess.time
+                    call = sess.call
 
-        # all other sessions have been hungup so store all measurements
-        caller = getattr(call, 'caller', None)
-        if not caller:
-            # most likely only one leg was established and the call failed
-            # (i.e. call.caller was never assigned above)
-            caller = sess
+                    if call.sessions:
+                        # still session(s) remaining to be hungup
+                        call.caller = call.first
+                        call.callee = call.last
+                        # stop now since more sessions are expected to hangup
+                        continue
+                    else:
+                        # all other sessions have been hungup so store
+                        # all measurements
+                        caller = getattr(call, 'caller', None)
+                        if not caller:
+                            # most likely only one leg was established and the
+                            # call failed (i.e. call.caller was never assigned
+                            # above)
+                            caller = sess
 
-        callertimes = caller.times
-        callee = getattr(call, 'callee', None)
-        calleetimes = callee.times if callee else None
+                        callertimes = caller.times
+                        callee = getattr(call, 'callee', None)
+                        calleetimes = callee.times if callee else None
 
-        pool = self.pool
-        job = getattr(call, 'job', None)
-        # NOTE: the entries here correspond to the listed `CDR.fields`
-        rollover = self._ds.append_row((
-            caller.appname,
-            caller['Hangup-Cause'],
-            callertimes['create'],  # invite time index
-            callertimes['answer'],
-            callertimes['req_originate'],  # local time stamp
-            callertimes['originate'],
-            callertimes['hangup'],
-            # 2nd leg may not be successfully established
-            job.launch_time if job else None,
-            calleetimes['create'] if callee else None,
-            calleetimes['answer'] if callee else None,
-            calleetimes['hangup'] if callee else None,
-            pool.count_failed(),
-            call.vars['session_count'],
-            call.vars['erlangs'],
-        ))
-        if rollover:
-            self.log.debug('wrote data to disk')
+                        pool = self.pool
+                        job = call.job
+
+                        # NOTE: the entries here correspond to the listed
+                        # `CDR.fields` above
+                        rollover = self._ds.append_row((
+                            call.uuid,
+                            caller.appname,
+                            caller['Hangup-Cause'],
+                            callertimes['create'],  # invite time index
+                            callertimes['answer'],
+                            callertimes['req_originate'],  # local time stamp
+                            callertimes['originate'],
+                            callertimes['hangup'],
+                            # 2nd leg may not be successfully established
+                            job.launch_time if job else None,
+                            calleetimes['create'] if callee else None,
+                            calleetimes['answer'] if callee else None,
+                            calleetimes['hangup'] if callee else None,
+                            pool.count_failed(),
+                            call.vars['session_count'],
+                            call.vars['erlangs'],
+                        ))
+                        if rollover:
+                            self.log.debug('wrote data to disk')
+        else:
+            if events_sub:
+                self.log.debug("{} never received {} events".format(
+                    sess.uuid, events_sub))
