@@ -260,8 +260,10 @@ class AsyncIOEventLoop(EventLoop):
         # trigger event consumer to terminate
         trigger_exit()
         pending = asyncio.Task.all_tasks(self.loop)
-        self.loop.call_soon_threadsafe(
-            functools.partial(asyncio.gather, *pending, loop=self.loop))
+        if pending:
+            asyncio.run_coroutine_threadsafe(
+                asyncio.wait(pending, loop=self.loop), loop=self.loop
+            ).result()
 
         # tear down the event loop
         self.loop.stop()
