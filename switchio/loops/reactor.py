@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-Async event IO machinery.
+Event processing reactor machinery.
 """
 import functools
 import itertools
@@ -37,7 +37,7 @@ class EventLoop(object):
         self.log = utils.get_logger(utils.pstr(self))
         self._handlers = {}  # map: event-name -> func
         self._unsub = ()
-        self.consumers = {}  # callback chains, one for each event type
+        self.callbacks = {}  # callback chains, one for each event type
         self._sess2waiters = {}  # holds events being waited on
         self._blockers = []  # holds cached events for reuse
         # header name used for associating sip sessions into a 'call'
@@ -192,7 +192,7 @@ class EventLoop(object):
             return False
         if args or kwargs:
             callback = functools.partial(callback, *args, **kwargs)
-        d = self.consumers.setdefault(ident, {}).setdefault(evname, deque())
+        d = self.callbacks.setdefault(ident, {}).setdefault(evname, deque())
         getattr(d, 'appendleft' if prepend else 'append')(callback)
         return True
 
@@ -200,14 +200,14 @@ class EventLoop(object):
         """Remove the callback object registered under
         :var:`evname` and :var:`ident`.
         """
-        ev_map = self.consumers[ident]
+        ev_map = self.callbacks[ident]
         cbs = ev_map[evname]
         cbs.remove(callback)
         # clean up maps if now empty
         if len(cbs) == 0:
             ev_map.pop(evname)
         if len(ev_map) == 0:
-            self.consumers.pop(ident)
+            self.callbacks.pop(ident)
 
     def unsubscribe(self, events):
         '''Unsubscribe this event loop's connection from an events of
@@ -323,9 +323,9 @@ class EventLoop(object):
                 model = ret[0]
                 cid = model.cid if model else self.get_id(e, 'default')
                 self.log.debug("consumer id is '{}'".format(cid))
-                consumers = self.consumers.get(cid, False)
-                if consumers and consumed:
-                    cbs = consumers.get(evname, ())
+                callbacks = self.callbacks.get(cid, False)
+                if callbacks and consumed:
+                    cbs = callbacks.get(evname, ())
                     self.log.debug(
                         "consumer '{}' has callback {} registered for ev {}"
                         .format(cid, cbs, evname)

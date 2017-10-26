@@ -4,9 +4,10 @@
 #
 # Copyright (c) 2017 Tyler Goodlet <tgoodlet@gmail.com>
 """
-Asyncio based reactor core
+``asyncio`` based proactor loop.
 """
 import functools
+import itertools
 import asyncio
 import time
 import traceback
@@ -45,6 +46,7 @@ class AsyncIOEventLoop(EventLoop):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.coroutines = {}  # coroutine chains, one for each event type
         self._tasks = []
 
     def _run_loop(self):
@@ -163,8 +165,27 @@ class AsyncIOEventLoop(EventLoop):
 
                 # attempt to lookup a consuming client app (callbacks) by id
                 cid = model.cid if model else self.get_id(e, 'default')
-                self.log.debug("consumers id is '{}'".format(cid))
+                self.log.debug("app id is '{}'".format(cid))
 
+                callbacks = self.callbacks.get(cid, False)
+                if callbacks and consumed:
+                    cbs = callbacks.get(evname, ())
+                    self.log.debug(
+                        "consumer '{}' has callback {} registered for ev {}"
+                        .format(cid, cbs, evname)
+                    )
+                    # look up the client's callback chain and run
+                    # e -> handler -> cb1, cb2, ... cbN
+                    # XXX assign ret on each interation in an attempt to avoid
+                    # python's dynamic scope lookup
+                    for cb, ret in zip(cbs, itertools.repeat(ret)):
+                        try:
+                            cb(*ret)
+                        except Exception:
+                            self.log.exception(
+                                "Failed to execute callback {} for event "
+                                "with uid {}".format(cb, uid)
+                            )
                 if model:
                     # signal any awaiting futures
                     fut = model._futures.get(evname, None)
@@ -175,18 +196,18 @@ class AsyncIOEventLoop(EventLoop):
                         # and confusing
                         await just_yield()
 
-                    consumers = self.consumers.get(cid, False)
-                    if consumers and consumed:
-                        coros = consumers.get(evname, ())
-                        self.log.debug(
-                            "app '{}' has coroutines {} registered for ev {}"
-                            .format(cid, coros, evname)
-                        )
-                        # look up and schedule assigned coroutines
-                        # e -> handler -> coro1, coro2, ... coroN
-                        for coro in coros:
-                            task = asyncio.ensure_future(coro(*ret), loop=loop)
-                            self._tasks.append(task)
+                coroutines = self.coroutines.get(cid, False)
+                if coroutines and consumed:
+                    coros = coroutines.get(evname, ())
+                    self.log.debug(
+                        "app '{}' has coroutines {} registered for ev {}"
+                        .format(cid, coros, evname)
+                    )
+                    # look up and schedule assigned coroutines
+                    # e -> handler -> coro1, coro2, ... coroN
+                    for coro in coros:
+                        task = asyncio.ensure_future(coro(*ret), loop=loop)
+                        self._tasks.append(task)
 
                         # unblock `session.vars` waiters
                         if model in self._sess2waiters:
@@ -289,7 +310,7 @@ class AsyncIOEventLoop(EventLoop):
             return False
         if args or kwargs:
             coro = functools.partial(coro, *args, **kwargs)
-        d = self.consumers.setdefault(ident, {}).setdefault(evname, deque())
+        d = self.coroutines.setdefault(ident, {}).setdefault(evname, deque())
         getattr(d, 'appendleft' if prepend else 'append')(coro)
         return True
 
@@ -297,11 +318,11 @@ class AsyncIOEventLoop(EventLoop):
         """Remove the coroutine object registered for events of type ``evname``
         app id header ``ident``.
         """
-        ev_map = self.consumers[ident]
+        ev_map = self.coroutines[ident]
         coros = ev_map[evname]
         coros.remove(coro)
         # clean up maps if now empty
         if len(coros) == 0:
             ev_map.pop(evname)
         if len(ev_map) == 0:
-            self.consumers.pop(ident)
+            self.coroutines.pop(ident)
