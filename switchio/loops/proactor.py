@@ -17,6 +17,17 @@ from .. import utils
 from ..utils import get_event_time
 
 
+@asyncio.coroutine
+def just_yield():
+    """A "just yield" coroutine which triggers an interation of the event loop.
+
+    If you think this is a nightmare to understand have you asked yourself how
+    this will ever work once these legacy types of generator "coroutines" are
+    removed from the language?
+    """
+    yield
+
+
 def new_event_loop():
     """Get the fastest loop available.
     """
@@ -159,14 +170,16 @@ class AsyncIOEventLoop(EventLoop):
                     fut = model._futures.get(evname, None)
                     if fut:
                         fut.set_result(e)
+                        # resume waiting coroutines...
                         # seriously guys, this is literally so stupid
-                        await asyncio.sleep(0)  # resume waiting coroutines...
+                        # and confusing
+                        await just_yield()
 
                     consumers = self.consumers.get(cid, False)
                     if consumers and consumed:
                         coros = consumers.get(evname, ())
                         self.log.debug(
-                            "consumer '{}' has routines {} registered for ev {}"
+                            "app '{}' has coroutines {} registered for ev {}"
                             .format(cid, coros, evname)
                         )
                         # look up and schedule assigned coroutines
@@ -177,9 +190,9 @@ class AsyncIOEventLoop(EventLoop):
 
                         # unblock `session.vars` waiters
                         if model in self._sess2waiters:
-                            for var, events in self._sess2waiters[model].items():
+                            for var, evs in self._sess2waiters[model].items():
                                 if model.vars.get(var):
-                                    [event.set() for event in events]
+                                    [event.set() for event in evs]
 
             # exception raised by handler/chain on purpose?
             except utils.ESLError:
