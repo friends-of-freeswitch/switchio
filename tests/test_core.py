@@ -9,7 +9,7 @@ import sys
 import time
 import pytest
 from pprint import pformat
-from switchio import utils
+from switchio import utils, connection
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ IDS = ['callback']
 
 if utils.py35:
     import asyncio
-    from .asyncio_helpers import bridge2dest_coroutine
+    from .asyncio_helpers import *
     DPS.append(bridge2dest_coroutine)
     IDS.append('coroutine')
 
@@ -100,7 +100,7 @@ def monitor(el):
 
 
 @pytest.fixture
-def checkcalls(proxy_dp, scenario, ael, travis):
+def checkcalls(scenario, ael, travis):
     """Return a function that can be used to make calls and check that call
     counting is fast and correct.
     """
@@ -144,7 +144,6 @@ def checkcalls(proxy_dp, scenario, ael, travis):
     return inner
 
 
-@pytest.mark.usefixtures('load_limits')
 class TestListener:
     def test_startup(self, el):
         '''verify internal connections and listener startup
@@ -157,6 +156,17 @@ class TestListener:
         el.start()
         assert el.is_alive()
         pytest.raises(utils.ConfigurationError, el.connect)
+
+    @pytest.mark.skipif(
+        sys.version_info < (3,0),
+        reason="SWIG sucks",
+    )
+    def test_unreachable_host(self, el, fshost):
+        # TODO: test the invalid password / ACL cases
+        octets = fshost.split('.')
+        addr = '.'.join(octets[:-1] + ['254'])
+        with pytest.raises(connection.ConnectionError):
+            el.connect(host=addr)
 
     def test_disconnect(self, el):
         '''Verify we can disconnect after having started the event loop
@@ -216,12 +226,12 @@ class TestListener:
         assert e
         assert con.connected()
 
-    def test_call(self, ael, checkcalls):
+    def test_call(self, ael, proxy_dp, checkcalls):
         """Test a simple call (a pair of sessions) through FreeSWITCH
         """
         checkcalls(duration=3, sleep=1.3)
 
-    def test_cb_err(self, ael, checkcalls):
+    def test_cb_err(self, ael, proxy_dp, checkcalls):
         """Verify that the callback chain is never halted due to a single
         callback's error
         """
@@ -240,7 +250,8 @@ class TestListener:
         # ensure callback chain wasn't halted
         assert var
 
-    def test_track_cps(self, checkcalls, cps):
+    @pytest.mark.usefixtures('load_limits')
+    def test_track_cps(self, proxy_dp, checkcalls, cps):
         '''load fs with up to 250 cps and test that we're fast enough
         to track all the created session within a 1 sec period
 
@@ -250,7 +261,8 @@ class TestListener:
         '''
         checkcalls(rate=cps, limit=cps, call_count=cps, duration=4)
 
-    def test_track_1kcapacity(self, checkcalls, cps):
+    @pytest.mark.usefixtures('load_limits')
+    def test_track_1kcapacity(self, proxy_dp, checkcalls, cps):
         '''load fs with up to 1000 simultaneous calls
         and test we (are fast enough to) track all the created sessions
 
