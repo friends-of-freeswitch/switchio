@@ -84,7 +84,7 @@ class AsyncIOConnection(object):
         self.disconnect()
 
     def connect(self, host=None, port=None, password=None, loop=None,
-                block=True):
+                block=True, timeout=0):
         """Connect the underlying protocol.
 
         If ``block`` is set to false returns a coroutine.
@@ -107,16 +107,21 @@ class AsyncIOConnection(object):
                 """
                 for _ in range(5):
                     try:
-                        await loop.create_connection(lambda: prot, host, port)
+
+                        await asyncio.wait_for(
+                            loop.create_connection(lambda: prot, host, port),
+                            timeout=timeout)
                         break
-                    except ConnectionRefusedError:
+                    except (
+                        ConnectionRefusedError, asyncio.TimeoutError
+                    ) as err:
                         time.sleep(0.05)  # I wouldn't tweak this if I were you
                         self.log.warning(
                             "Connection to {}:{} failed, retrying..."
                             .format(host, port)
                         )
                 else:
-                    raise ConnectionRefusedError(msg.format(host, port))
+                    raise ConnectionError(msg.format(host, port))
 
                 # TODO: consider using the asyncio_timeout lib here
                 try:
