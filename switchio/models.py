@@ -99,6 +99,7 @@ class Session(object):
         self.vars = {}
         self._log = None
         self._futures = {}
+        self.tasks = {}
 
         # public attributes
         self.duration = 0
