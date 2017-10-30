@@ -6,11 +6,12 @@
 """
 ``asyncio`` based proactor loop.
 """
-import functools
+import logging
 import itertools
 import asyncio
 import time
 import traceback
+from functools import partial
 from collections import deque
 from threading import Thread, current_thread, get_ident
 from .reactor import EventLoop
@@ -40,6 +41,16 @@ def new_event_loop():
         return asyncio.new_event_loop()
 
 
+def handle_result(task, log, model):
+    """Handle coroutine-task results.
+    """
+    try:
+        task.result()
+        log.debug("Completed {}".format(task))
+    except Exception:
+        log.exception("{} failed with:".format(task))
+
+
 class AsyncIOEventLoop(EventLoop):
     """Re-implementation of the event loop with ``asyncio`` and coroutines
     support.
@@ -47,28 +58,30 @@ class AsyncIOEventLoop(EventLoop):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.coroutines = {}  # coroutine chains, one for each event type
-        self._tasks = []
+        self._entry_fut = None
 
-    def _run_loop(self):
+    def _run_loop(self, debug):
         self.loop = loop = new_event_loop()
         loop._tid = get_ident()
         # FIXME: causes error with a thread safety check in Future.call_soon()
         # called from Future.add_done_callback() - stdlib needs a patch?
-        # loop.set_debug(True)
+        if debug:
+            loop.set_debug(debug)
+            logging.getLogger('asyncio').setLevel(logging.DEBUG)
         asyncio.set_event_loop(loop)
         self.loop.run_forever()
 
-    def _launch_bg_loop(self):
+    def _launch_bg_loop(self, debug=False):
         if self._thread is None or not self._thread.is_alive():
             self.log.debug("starting event loop thread...")
             self._thread = Thread(
-                target=self._run_loop, args=(),
+                target=self._run_loop, args=(debug,),
                 name='switchio_event_loop[{}]'.format(self.host),
             )
             self._thread.daemon = True  # die with parent
             self._thread.start()
 
-    def connect(self, loop=None):
+    def connect(self, loop=None, timeout=3, **conn_kwargs):
         '''Initialize underlying receive connection.
         '''
         # TODO: once we remove SWIG/py27 support this check can be removed
@@ -85,14 +98,23 @@ class AsyncIOEventLoop(EventLoop):
                 time.sleep(0.1)
 
         future = asyncio.run_coroutine_threadsafe(
-            self._rx_con.connect(block=False, loop=self.loop), self.loop)
-        future.result(1)
+            self._rx_con.connect(block=False, loop=self.loop, **conn_kwargs),
+            self.loop
+        )
+        future.result()  # pass through any timeout or conn errors
 
         # subscribe for events
         self._rx_con.subscribe(
             (ev for ev in self._handlers if ev not in self._unsub))
         self.log.info("Connected event loop '{}' to '{}'".format(self._id,
                       self.host))
+
+    def get_tasks(self, include_current=False):
+        tasks = asyncio.Task.all_tasks(self.loop)
+        if not include_current:
+            curr = asyncio.Task.current_task(self.loop)
+            tasks.discard(curr)
+        return tuple(tasks)
 
     def start(self):
         '''Start this loop's listen coroutine and start processing
@@ -101,7 +123,7 @@ class AsyncIOEventLoop(EventLoop):
         if not self._rx_con.connected():
             raise utils.ConfigurationError("you must call 'connect' first")
 
-        self.listen = asyncio.run_coroutine_threadsafe(
+        self._entry_fut = asyncio.run_coroutine_threadsafe(
             self._listen_forever(), loop=self.loop)
 
     async def _listen_forever(self):
@@ -114,7 +136,7 @@ class AsyncIOEventLoop(EventLoop):
             e = await self._rx_con.recv_event()
             # self.log.warning(get_event_time(e) - self._fs_time)
             if e is None:
-                self.log.debug("Exiting listen loop")
+                self.log.debug("Breaking from listen loop")
                 break
             elif not e:
                 self.log.error("Received empty event!?")
@@ -126,6 +148,15 @@ class AsyncIOEventLoop(EventLoop):
                         self.log.warn("unconsumed  event '{}'?".format(e))
                 else:
                     self.log.warn("received unnamed event '{}'?".format(e))
+
+        pending = self.get_tasks()
+        if pending:
+            self.log.debug("Waiting on all pending tasks {}".format(pending))
+            for task in pending:
+                if not task.done():
+                    self.log.warning("Cancelling {}".format(task))
+                    task.cancel()
+                    task.print_stack()
 
         self.log.debug("Exiting listen loop")
         self._running = False
@@ -188,8 +219,8 @@ class AsyncIOEventLoop(EventLoop):
                             )
                 if model:
                     # signal any awaiting futures
-                    fut = model._futures.get(evname, None)
-                    if fut:
+                    fut = model._futures.pop(evname, None)
+                    if fut and not fut.cancelled():
                         fut.set_result(e)
                         # resume waiting coroutines...
                         # seriously guys, this is literally so stupid
@@ -207,7 +238,9 @@ class AsyncIOEventLoop(EventLoop):
                     # e -> handler -> coro1, coro2, ... coroN
                     for coro in coros:
                         task = asyncio.ensure_future(coro(*ret), loop=loop)
-                        self._tasks.append(task)
+                        task.add_done_callback(
+                            partial(handle_result, log=self.log, model=model))
+                        await just_yield()  # loop spin
 
                         # unblock `session.vars` waiters
                         if model in self._sess2waiters:
@@ -253,17 +286,23 @@ class AsyncIOEventLoop(EventLoop):
             self.loop.call_soon_threadsafe(
                 self._rx_con.protocol.event_queue.put_nowait, None)
 
-        # kill all pending coroutine tasks
-        for task in self._tasks:
-            task.cancel()
-
-        # trigger event consumer to terminate
+        # trigger and wait on event processor loop to terminate
         trigger_exit()
-        pending = asyncio.Task.all_tasks(self.loop)
+        if self._entry_fut:
+            self._entry_fut.result(10)
+
+        pending = self.get_tasks(include_current=True)
         if pending:
+            self.log.debug("Waiting on all pending tasks {}".format(pending))
             asyncio.run_coroutine_threadsafe(
                 asyncio.wait(pending, loop=self.loop), loop=self.loop
-            ).result()
+                ).result(3)
+
+            for task in pending:
+                try:
+                    task.result()
+                except Exception as err:
+                    self.log.exception(task)
 
         # tear down the event loop
         self.loop.stop()
@@ -311,7 +350,7 @@ class AsyncIOEventLoop(EventLoop):
         if not asyncio.iscoroutinefunction(coro):
             return False
         if args or kwargs:
-            coro = functools.partial(coro, *args, **kwargs)
+            coro = partial(coro, *args, **kwargs)
         d = self.coroutines.setdefault(ident, {}).setdefault(evname, deque())
         getattr(d, 'appendleft' if prepend else 'append')(coro)
         return True
