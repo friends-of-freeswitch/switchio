@@ -9,7 +9,7 @@ The format is based on `Keep a Changelog`_ and this project adheres to
 .. _Semantic Versioning: http://semver.org/
 
 
-0.1.0.alpha0 - 2017-10-20
+0.1.0.alpha0 - 2017-10-27
 -------------------------
 Added
 *****
@@ -26,6 +26,8 @@ support will be dropped likely for the first non-alpha release.
   ``asyncio.Protocol``.
 - Event loop core rewritten to support Python 3.5 coroutines and `asyncio`_
   engine.
+- Coroutine app support using a ``@coroutine`` decorator and an extended
+  ``Session`` API which allows for awaiting particular (sets) of events.
 
 Removed
 *******

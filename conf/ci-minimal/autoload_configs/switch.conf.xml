@@ -3,9 +3,9 @@
     <param name="colorize-console" value="true"/>
 
     <!-- Max number of sessions to allow at any given time -->
-    <param name="max-sessions" value="1000"/>
+    <param name="max-sessions" value="10000"/>
     <!--Most channels to create per second -->
-    <param name="sessions-per-second" value="30"/>
+    <param name="sessions-per-second" value="1000"/>
 
     <!-- Default Global Log Level - value is one of debug,info,notice,warning,err,crit,alert -->
     <param name="loglevel" value="debug"/>
