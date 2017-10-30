@@ -89,9 +89,9 @@ class EventLoop(object):
         """
         return self._running
 
-    def connected(self):
+    def connected(self, **kwargs):
         '''Return a bool representing the aggregate cons status'''
-        return self._rx_con.connected()
+        return self._rx_con.connected(**kwargs)
 
     def disconnect(self):
         '''Shutdown this event loop's bg thread and disconnect all esl sockets.
@@ -131,7 +131,7 @@ class EventLoop(object):
         """
         return self._thread.join(timeout) if self._thread else None
 
-    def connect(self):
+    def connect(self, **conn_kwargs):
         '''Connect and initialize all managed ESL connections
         '''
         # don't allow other threads to connect when event loop is active
@@ -140,7 +140,7 @@ class EventLoop(object):
         if current_thread() is not self._thread and self.is_alive():
             raise utils.ConfigurationError(
                 "event loop is already active, call 'disconnect' first")
-        self._rx_con.connect()
+        self._rx_con.connect(**conn_kwargs)
         # subscribe rx for all events dictated by current handler set
         self._rx_con.subscribe(
             (ev for ev in self._handlers if ev not in self._unsub))
