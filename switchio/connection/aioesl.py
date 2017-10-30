@@ -65,7 +65,7 @@ class AsyncIOConnection(object):
             host name or ip address for server hosting an esl connection.
         port : string
             port where esl connection socket is being offered.
-        auth : string
+        password : string
             authentication password for esl connection.
         """
         self.host = host
@@ -83,8 +83,11 @@ class AsyncIOConnection(object):
     def __exit__(self, exception_type, exception_val, trace):
         self.disconnect()
 
-    def connect(self, host=None, port=None, password=None, loop=None,
-                block=True, timeout=0):
+    def connect(
+            self, host=None, port=None, password=None, loop=None,
+            block=True,
+            timeout=0.5  # seems to be the optimal wait value
+    ):
         """Connect the underlying protocol.
 
         If ``block`` is set to false returns a coroutine.
@@ -115,7 +118,6 @@ class AsyncIOConnection(object):
                     except (
                         ConnectionRefusedError, asyncio.TimeoutError
                     ) as err:
-                        time.sleep(0.05)  # I wouldn't tweak this if I were you
                         self.log.warning(
                             "Connection to {}:{} failed, retrying..."
                             .format(host, port)

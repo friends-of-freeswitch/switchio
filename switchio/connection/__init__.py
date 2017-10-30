@@ -23,4 +23,4 @@ def get_connection(host, port=8021, password='ClueCon', loop=None):
         return AsyncIOConnection(host, port=port, password=password, loop=loop)
     else:
         from .swig import SWIGConnection
-        return SWIGConnection(host, port=port, auth=password)
+        return SWIGConnection(host, port=port, password=password)
