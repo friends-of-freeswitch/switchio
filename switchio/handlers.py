@@ -365,8 +365,8 @@ class EventListener(object):
         uuid = e.get('Unique-ID')
         sess = self.sessions.get(uuid, None)
         if sess:
-            self.log.debug('answered session {} with call direction {}'
-                           .format(uuid,  e.get('Call-Direction')))
+            self.log.debug("answered {} session '{}'"
+                           .format(e.get('Call-Direction'), uuid))
             sess.answered = True
             self.total_answered_sessions += 1
             sess.update(e)
@@ -443,6 +443,14 @@ class EventListener(object):
                 cause, deque(maxlen=1000)).append(sess)
 
         self.log.debug("hungup Session '{}'".format(uuid))
+
+        # cancel any pending consumer coroutine-tasks
+        for name, fut in sess._futures.items():
+            self.log.warning("Cancelling {} awaited {}".format(name, fut))
+            for task in sess.tasks.get(fut, ()):
+                task.print_stack()
+            fut.cancel()
+
         # hangups are always consumed
         return True, sess, job
 
@@ -456,9 +464,9 @@ class EventListener(object):
     def is_running(self):
         return self.event_loop.is_running()
 
-    def connect(self):
-        self.event_loop.connect()
-        self._tx_con.connect()
+    def connect(self, **kwargs):
+        self.event_loop.connect(**kwargs)
+        self._tx_con.connect(**kwargs)
 
     def connected(self):
         return self.event_loop.connected()
