@@ -464,15 +464,16 @@ def get_client(host, port='8021', auth='ClueCon', apps=None):
             )
     # client setup/teardown
     client.listener.start()
-    yield client
+    try:
+        yield client
+    finally:
+        # unload app set
+        if apps:
+            for value, app in apps:
+                client.unload_app(value)
 
-    # unload app set
-    if apps:
-        for value, app in apps:
-            client.unload_app(value)
-
-    client.listener.disconnect()
-    client.disconnect()
+        client.listener.disconnect()
+        client.disconnect()
 
 
 # legacy alias
