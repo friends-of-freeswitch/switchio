@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-switchio: A FreeSWITCH control and stress testing micro framework.
+switchio: ``asyncio`` powered FreeSWITCH cluster control
 
 Licensed under the MPL 2.0 license (see `LICENSE` file)
 """
@@ -20,7 +20,7 @@ from .sync import sync_caller
 from .serve import Service
 
 __package__ = 'switchio'
-__version__ = '0.1.0.alpha1'
+__version__ = '0.1.0.alpha0'
 __author__ = ('Sangoma Technologies', 'qa@eng.sangoma.com')
 
 

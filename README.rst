@@ -64,12 +64,12 @@ license, except where explicitly noted.
     file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 .. |versions| image:: https://img.shields.io/pypi/pyversions/switchio.svg
-    :target: https://pypi.python.org/pypi/switchio
+    :target: https://pypi.org/project/switchio
 .. |pypi| image:: https://img.shields.io/pypi/v/switchio.svg
-    :target: https://pypi.python.org/pypi/switchio
+    :target: https://pypi.org/project/switchio
 .. |travis| image:: https://img.shields.io/travis/friends-of-freeswitch/switchio/master.svg
     :target: https://travis-ci.org/friends-of-freeswitch/switchio
 .. |pypi_downloads| image:: https://img.shields.io/pypi/d/switchio.svg
-    :target: https://pypi.python.org/pypi/switchio
+    :target: https://pypi.org/project/switchio
 .. |docs| image:: https://readthedocs.org/projects/switchio/badge/?version=latest
-    :target: http://switchio.readthedocs.io/en/latest/?badge=latest
+    :target: http://switchio.readthedocs.io
