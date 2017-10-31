@@ -9,7 +9,7 @@ import sys
 import time
 import pytest
 from pprint import pformat
-from switchio.utils import ConfigurationError
+from switchio import utils, connection
 
 
 @pytest.fixture
@@ -27,22 +27,38 @@ def ael(el):
     el.disconnect()
 
 
-@pytest.fixture
-def proxy_dp(ael, client):
+def bridge2dest_callback(sess):
+    if sess['Call-Direction'] == 'inbound':
+        sess.bridge(dest_url=sess['variable_sip_req_uri'])
+
+
+DPS = [bridge2dest_callback]
+IDS = ['callback']
+
+
+if utils.py35:
+    import asyncio
+    from .asyncio_helpers import *
+    DPS.append(bridge2dest_coroutine)
+    IDS.append('coroutine')
+
+
+@pytest.fixture(params=DPS, ids=IDS)
+def proxy_dp(request, ael, client):
     """Provision listener with a 'proxy' dialplan app
     """
-    # define a chan park callback
-    def bridge2dest(sess):
-        '''bridge to the dest specified in the req uri
-        '''
-        if sess['Call-Direction'] == 'inbound':
-            sess.bridge(dest_url=sess['variable_sip_req_uri'])
+    routine = request.param
 
-    ev = "CHANNEL_PARK"  # no answer() is ever done...
-    # add a failover callback to provide the dialplan
-    ael.event_loop.add_callback(ev, 'default', bridge2dest)
-    # ensure callback was registered
-    assert bridge2dest in ael.event_loop.consumers['default'][ev]
+    ev = "CHANNEL_PARK"  # no sess.answer() is ever called
+
+    if utils.py35 and asyncio.iscoroutinefunction(routine):
+        # add a proxy coroutine to provide the dialplan
+        ael.event_loop.add_coroutine(ev, 'default', routine)
+        assert routine in ael.event_loop.coroutines['default'][ev]
+    else:
+        # add a proxy callback to provide the dialplan
+        ael.event_loop.add_callback(ev, 'default', routine)
+        assert routine in ael.event_loop.callbacks['default'][ev]
 
     # attempt to add measurement collection
     try:
@@ -84,7 +100,7 @@ def monitor(el):
 
 
 @pytest.fixture
-def checkcalls(proxy_dp, scenario, ael, travis):
+def checkcalls(scenario, ael, travis):
     """Return a function that can be used to make calls and check that call
     counting is fast and correct.
     """
@@ -109,10 +125,13 @@ def checkcalls(proxy_dp, scenario, ael, travis):
             start = time.time()
             msg = "Wasn't quite fast enough to track {} cps".format(rate)
             while ael.count_calls() != limit:
-                time.sleep(0.001)
+                time.sleep(0.0001)
             else:
                 assert ael.count_calls() == limit, msg
-                assert (time.time() - start) < sleep, msg
+                diff = time.time() - start
+                assert diff < sleep, msg
+
+            ael.log.info("Call tracking took {} seconds".format(diff))
 
             time.sleep(duration + sleep)
             assert ael.count_calls() == 0
@@ -125,19 +144,29 @@ def checkcalls(proxy_dp, scenario, ael, travis):
     return inner
 
 
-@pytest.mark.usefixtures('load_limits')
 class TestListener:
     def test_startup(self, el):
         '''verify internal connections and listener startup
         '''
-        pytest.raises(ConfigurationError, el.start)
+        pytest.raises(utils.ConfigurationError, el.start)
         el.connect()
         assert el.connected()
 
         # verify event loop thread
         el.start()
         assert el.is_alive()
-        pytest.raises(ConfigurationError, el.connect)
+        pytest.raises(utils.ConfigurationError, el.connect)
+
+    @pytest.mark.skipif(
+        sys.version_info < (3,0),
+        reason="SWIG sucks",
+    )
+    def test_unreachable_host(self, el, fshost):
+        # TODO: test the invalid password / ACL cases
+        octets = fshost.split('.')
+        addr = '.'.join(octets[:-1] + ['254'])
+        with pytest.raises(connection.ConnectionError):
+            el.connect(host=addr)
 
     def test_disconnect(self, el):
         '''Verify we can disconnect after having started the event loop
@@ -169,7 +198,7 @@ class TestListener:
 
         # not allowed after connect
         el.connect()
-        with pytest.raises(ConfigurationError):
+        with pytest.raises(utils.ConfigurationError):
             assert el.unsubscribe(ev)
 
     @pytest.mark.skipif(
@@ -197,12 +226,12 @@ class TestListener:
         assert e
         assert con.connected()
 
-    def test_call(self, ael, checkcalls):
+    def test_call(self, ael, proxy_dp, checkcalls):
         """Test a simple call (a pair of sessions) through FreeSWITCH
         """
         checkcalls(duration=3, sleep=1.3)
 
-    def test_cb_err(self, ael, checkcalls):
+    def test_cb_err(self, ael, proxy_dp, checkcalls):
         """Verify that the callback chain is never halted due to a single
         callback's error
         """
@@ -221,7 +250,8 @@ class TestListener:
         # ensure callback chain wasn't halted
         assert var
 
-    def test_track_cps(self, checkcalls, cps):
+    @pytest.mark.usefixtures('load_limits')
+    def test_track_cps(self, proxy_dp, checkcalls, cps):
         '''load fs with up to 250 cps and test that we're fast enough
         to track all the created session within a 1 sec period
 
@@ -231,7 +261,8 @@ class TestListener:
         '''
         checkcalls(rate=cps, limit=cps, call_count=cps, duration=4)
 
-    def test_track_1kcapacity(self, checkcalls, cps):
+    @pytest.mark.usefixtures('load_limits')
+    def test_track_1kcapacity(self, proxy_dp, checkcalls, cps):
         '''load fs with up to 1000 simultaneous calls
         and test we (are fast enough to) track all the created sessions
 
@@ -291,7 +322,7 @@ class TestClient:
         assert app is not client._apps['TonePlay2'][name]
 
         # check that callbacks are registered with listener
-        cbmap = client.listener.event_loop.consumers[app.cid]
+        cbmap = client.listener.event_loop.callbacks[app.cid]
         for evname, cbtype, obj in get_callbacks(app):
             assert evname in cbmap
             reg_cb = cbmap[evname][0]
@@ -310,11 +341,11 @@ class TestClient:
         client.unload_app(app.cid)
         assert app.cid not in client._apps
         with pytest.raises(KeyError):
-            client.listener.event_loop.consumers[app.cid]
+            client.listener.event_loop.callbacks[app.cid]
 
         # Bert should still be there
         assert bid in client._apps
-        cbs = client.listener.event_loop.consumers[
+        cbs = client.listener.event_loop.callbacks[
             client.apps.Bert['Bert'].cid]
         assert cbs
         cbcount = len(cbs)
@@ -340,7 +371,7 @@ class TestClient:
         assert name not in client._apps
         assert name not in client.apps.Bert
         # Bert cbs should still be active
-        assert len(client.listener.event_loop.consumers[bid]) == cbcount
+        assert len(client.listener.event_loop.callbacks[bid]) == cbcount
 
     def test_commands(self, client):
         from switchio.utils import APIError

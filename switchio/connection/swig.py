@@ -29,7 +29,7 @@ class SWIGConnection(object):
 
     (Note: must be explicitly connected before use.)
     '''
-    def __init__(self, host, port='8021', auth='ClueCon',
+    def __init__(self, host, port='8021', password='ClueCon',
                  locked=True, lock=None):
         """
         Parameters
@@ -38,7 +38,7 @@ class SWIGConnection(object):
             host name or ip address for server hosting an esl connection.
         port : string
             port where esl connection socket is being offered.
-        auth : string
+        password : string
             authentication password for esl connection.
         locked : bool
             indicates whether to return a thread safe derivative of the default
@@ -49,7 +49,7 @@ class SWIGConnection(object):
         """
         self.host = host
         self.port = port
-        self.auth = auth
+        self.password = password
         self.log = utils.get_logger(utils.pstr(self))
         self._sub = ()  # events subscription
         if locked:
@@ -141,17 +141,17 @@ class SWIGConnection(object):
             return not bool(ret)
         return False
 
-    def connect(self, host=None, port=None, auth=None):
+    def connect(self, host=None, port=None, password=None):
         """Reconnect if disconnected
         """
-        host = host or self.host
-        port = port or self.port
-        auth = auth or self.auth
+        self.host = host = host or self.host
+        self.port = port = port or self.port
+        self.password = password = password or self.password
         if not self.connected():
             # XXX: try a few times since connections seem to be flaky
             # We should probably try to fix this in the _ESL.so
             for _ in range(5):
-                self._con = ESLconnection(*map(str, (host, port, auth)))
+                self._con = ESLconnection(*map(str, (host, port, password)))
                 time.sleep(0.05)  # I wouldn't tweak this if I were you.
                 if self.connected() and check_con(self._con):
                         break
@@ -183,7 +183,7 @@ class SWIGConnection(object):
             self._sub += (name,)
 
     def new_connection(self):
-        return type(self)(self.host, self.port, self.auth)
+        return type(self)(self.host, self.port, self.password)
 
     def recv_event(self):
         return self._preproc_event(self._con.recvEvent())

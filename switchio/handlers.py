@@ -13,11 +13,17 @@ import operator
 import time
 import multiprocessing as mp
 from collections import deque, OrderedDict, Counter
-from .models import Session, Job, Call
 from .marks import handler, get_callbacks
 from .connection import ConnectionError
-from .async import get_event_loop
+from .loops import get_event_loop
 from . import utils
+from .models import Job, Call
+
+
+if utils.py35:
+    from .py3_models import Session
+else:
+    from .models import Session
 
 
 class EventListener(object):
@@ -313,7 +319,7 @@ class EventListener(object):
             return True, sess
 
         # allocate a session model
-        sess = Session(e, event_loop=self, uuid=uuid, con=con)
+        sess = Session(e, event_loop=self.event_loop, uuid=uuid, con=con)
         direction = sess['Call-Direction']
         self.log.debug("{} session created with uuid '{}'".format(
                        direction, uuid))
@@ -359,8 +365,8 @@ class EventListener(object):
         uuid = e.get('Unique-ID')
         sess = self.sessions.get(uuid, None)
         if sess:
-            self.log.debug('answered session {} with call direction {}'
-                           .format(uuid,  e.get('Call-Direction')))
+            self.log.debug("answered {} session '{}'"
+                           .format(e.get('Call-Direction'), uuid))
             sess.answered = True
             self.total_answered_sessions += 1
             sess.update(e)
@@ -437,6 +443,14 @@ class EventListener(object):
                 cause, deque(maxlen=1000)).append(sess)
 
         self.log.debug("hungup Session '{}'".format(uuid))
+
+        # cancel any pending consumer coroutine-tasks
+        for name, fut in sess._futures.items():
+            self.log.warning("Cancelling {} awaited {}".format(name, fut))
+            for task in sess.tasks.get(fut, ()):
+                task.print_stack()
+            fut.cancel()
+
         # hangups are always consumed
         return True, sess, job
 
@@ -450,9 +464,9 @@ class EventListener(object):
     def is_running(self):
         return self.event_loop.is_running()
 
-    def connect(self):
-        self.event_loop.connect()
-        self._tx_con.connect()
+    def connect(self, **kwargs):
+        self.event_loop.connect(**kwargs)
+        self._tx_con.connect(**kwargs)
 
     def connected(self):
         return self.event_loop.connected()

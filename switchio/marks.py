@@ -7,53 +7,64 @@ Marks for annotating callback functions
 from functools import partial
 
 
-def marker(event_type, cb_type='callback'):
+def extend_attr_list(obj, attr, items):
+    try:
+        getattr(obj, attr).extend(items)
+        # current_items.extend(items)
+    except AttributeError:
+        setattr(obj, attr, list(items))
+
+
+def marker(event_type, cb_type='callback', subscribe=()):
     """Decorator to mark a callback function
     for handling events of a particular type
     """
-    et_attr = '_switchio_event'
-    cbt_attr = '_switchio_cb_type'
+    et_attr = 'switchio_init_events'
+    es_attr = 'switchio_events_sub'
+    cbt_attr = '_switchio_handler_type'
 
-    def inner(callback):
-        try:
-            getattr(callback, et_attr).append(event_type)
-        except AttributeError:
-            setattr(callback, et_attr, [event_type])
-        setattr(callback, cbt_attr, cb_type)
-        return callback
+    def inner(handler):
+        extend_attr_list(handler, et_attr, [event_type])
+        # append any additional subscriptions
+        extend_attr_list(handler, es_attr, subscribe)
+        setattr(handler, cbt_attr, cb_type)
+        return handler
+
     return inner
 
 
-event_callback = marker
+callback = event_callback = marker
+coroutine = partial(marker, cb_type='coroutine')
 handler = partial(marker, cb_type='handler')
 
 
 def has_callbacks(ns):
-    """Check if this namespace contains switchio callbacks
+    """Check if this namespace contains switchio callbacks.
 
     :param ns namespace: the namespace object containing marked callbacks
     :rtype: bool
     """
-    return any(getattr(obj, '_switchio_event', False) for obj in
+    return any(getattr(obj, 'switchio_init_events', False) for obj in
                vars(ns).values())
 
 
 def get_callbacks(ns, skip=(), only=False):
     """Deliver all switchio callbacks found in a namespace object yielding
-    event `handler` marked functions first followed by `event_callbacks`.
+    event `handler` marked functions first followed by non-handlers such as
+    callbacks and coroutines.
 
-    :param ns namespace: the namespace object containing marked callbacks
+    :param ns namespace: the namespace object containing marked handlers
     :yields: event_type, callback_type, callback_obj
     """
-    callbacks = []
+    non_handlers = []
     for name in (name for name in dir(ns) if name not in skip):
         try:
             obj = object.__getattribute__(ns, name)
         except AttributeError:
             continue
         try:
-            ev_types = getattr(obj, '_switchio_event', False)
-            cb_type = getattr(obj, '_switchio_cb_type', None)
+            ev_types = getattr(obj, 'switchio_init_events', False)
+            cb_type = getattr(obj, '_switchio_handler_type', None)
         except ReferenceError:  # handle weakrefs
             continue
 
@@ -63,7 +74,7 @@ def get_callbacks(ns, skip=(), only=False):
                     if cb_type == 'handler':  # deliver handlers immediately
                         yield ev, cb_type, obj
                     else:
-                        callbacks.append((ev, cb_type, obj))
-    else:  # yield all callbacks last
-        for tup in callbacks:
+                        non_handlers.append((ev, cb_type, obj))
+    else:  # yield all non_handlers last
+        for tup in non_handlers:
             yield tup

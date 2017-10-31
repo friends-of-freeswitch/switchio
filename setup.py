@@ -7,14 +7,16 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 from setuptools import setup
 import os
+import sys
 
 
 reqs = ['python-ESL', 'click']
 
 
 on_rtd = os.environ.get('READTHEDOCS') == 'True'
-if on_rtd:
+if on_rtd or sys.version_info >= (3, 5):
     # RTD doesn't package SWIG in their default env
+    # and we don't care about it on py2.7
     reqs.remove('python-ESL')
 
 
@@ -38,6 +40,7 @@ setup(
         'switchio.apps',
         'switchio.apps.measure',
         'switchio.connection',
+        'switchio.loops',
     ],
     entry_points={
         'console_scripts': [

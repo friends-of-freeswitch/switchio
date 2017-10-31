@@ -43,6 +43,11 @@ def loglevel(request):
     return level
 
 
+@pytest.fixture(scope='session', autouse=True)
+def log(loglevel):
+    return utils.log_to_stderr(loglevel)
+
+
 @pytest.fixture(scope='session')
 def confdir():
     dirname = os.path.dirname
@@ -74,7 +79,7 @@ def containers(request, confdir):
 
 
 @pytest.fixture(scope='session')
-def fshosts(request):
+def fshosts(request, log):
     '''Return the FS test server hostnames passed via the
     ``--fshost`` cmd line arg.
     '''
@@ -89,7 +94,12 @@ def fshosts(request):
     elif request.config.option.usedocker:
         containers = request.getfixturevalue('containers')
         for container in containers:
-            addrs.append(container.attrs['NetworkSettings']['IPAddress'])
+            ipaddr = container.attrs['NetworkSettings']['IPAddress']
+            addrs.append(ipaddr)
+            log.info(
+                "FS container @ {} access: docker exec -ti {} fs_cli"
+                .format(ipaddr, container.short_id)
+            )
         yield addrs
 
     else:

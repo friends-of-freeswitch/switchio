@@ -150,8 +150,9 @@ class Client(object):
                 # TODO: similar unloading on failure here as above?
                 listener.event_loop.add_handler(ev_type, obj)
                 handler_paths.append(ev_type, obj)
+                continue
 
-            elif cb_type == 'callback':
+            elif cb_type == 'callback' or cb_type == 'coroutine':
                 # add default handler if none exists
                 if ev_type not in listener.event_loop._handlers:
                     self.log.info(
@@ -162,16 +163,36 @@ class Client(object):
                         ev_type,
                         listener.lookup_sess
                     )
-                added = listener.event_loop.add_callback(
-                    ev_type, group_id, obj, prepend=prepend)
-                if not added:
-                    failed = obj
-                    for path in reversed(cb_paths):
-                        listener.event_loop.remove_callback(*path)
-                    break
-                cb_paths.append((ev_type, group_id, obj))
-                self.log.debug("'{}' event callback '{}' added for id '{}'"
-                               .format(ev_type, obj.__name__, group_id))
+
+                if cb_type == 'callback':
+                    added = listener.event_loop.add_callback(
+                        ev_type, group_id, obj, prepend=prepend)
+
+                elif cb_type == 'coroutine':
+
+                    added = listener.event_loop.add_coroutine(
+                        ev_type, group_id, obj, prepend=prepend)
+
+                    # subscribe for any additionally declared events
+                    for ev_type in obj.switchio_events_sub:
+                        if ev_type not in listener.event_loop._handlers:
+                            self.log.info(
+                                "adding default session lookup handler for "
+                                "event type '{}'".format(ev_type)
+                            )
+                            listener.event_loop.add_handler(
+                                ev_type,
+                                listener.lookup_sess
+                            )
+
+            if not added:
+                failed = obj
+                for path in reversed(cb_paths):
+                    listener.event_loop.remove_callback(*path)
+                break
+            cb_paths.append((ev_type, group_id, obj))
+            self.log.debug("'{}' event callback '{}' added for id '{}'"
+                           .format(ev_type, obj.__name__, group_id))
 
         if failed:
             raise TypeError("App load failed since '{}' is not a valid"
@@ -443,15 +464,16 @@ def get_client(host, port='8021', auth='ClueCon', apps=None):
             )
     # client setup/teardown
     client.listener.start()
-    yield client
+    try:
+        yield client
+    finally:
+        # unload app set
+        if apps:
+            for value, app in apps:
+                client.unload_app(value)
 
-    # unload app set
-    if apps:
-        for value, app in apps:
-            client.unload_app(value)
-
-    client.listener.disconnect()
-    client.disconnect()
+        client.listener.disconnect()
+        client.disconnect()
 
 
 # legacy alias

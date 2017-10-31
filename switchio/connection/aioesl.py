@@ -65,7 +65,7 @@ class AsyncIOConnection(object):
             host name or ip address for server hosting an esl connection.
         port : string
             port where esl connection socket is being offered.
-        auth : string
+        password : string
             authentication password for esl connection.
         """
         self.host = host
@@ -83,8 +83,11 @@ class AsyncIOConnection(object):
     def __exit__(self, exception_type, exception_val, trace):
         self.disconnect()
 
-    def connect(self, host=None, port=None, password=None, loop=None,
-                block=True):
+    def connect(
+            self, host=None, port=None, password=None, loop=None,
+            block=True,
+            timeout=0.5  # seems to be the optimal wait value
+    ):
         """Connect the underlying protocol.
 
         If ``block`` is set to false returns a coroutine.
@@ -94,6 +97,9 @@ class AsyncIOConnection(object):
         password = password or self.password
         self.loop = loop if loop else self.loop
         loop = self.loop
+        msg = ("Failed to connect to server at '{}:{}'\n"
+               "Please check that FreeSWITCH is running and "
+               "accepting ESL connections.".format(host, port))
 
         if not self.connected():
             prot = self.protocol = InboundProtocol(self.host, password, loop)
@@ -104,22 +110,26 @@ class AsyncIOConnection(object):
                 """
                 for _ in range(5):
                     try:
-                        await loop.create_connection(lambda: prot, host, port)
+
+                        await asyncio.wait_for(
+                            loop.create_connection(lambda: prot, host, port),
+                            timeout=timeout)
                         break
-                    except ConnectionRefusedError:
-                        time.sleep(0.05)  # I wouldn't tweak this if I were you
+                    except (
+                        ConnectionRefusedError, asyncio.TimeoutError
+                    ) as err:
                         self.log.warning(
                             "Connection to {}:{} failed, retrying..."
                             .format(host, port)
                         )
                 else:
-                    raise ConnectionRefusedError(
-                        "Failed to connect to server at '{}:{}'\n"
-                        "Please check that FreeSWITCH is running and "
-                        "accepting ESL connections.".format(host, port))
+                    raise ConnectionError(msg.format(host, port))
 
                 # TODO: consider using the asyncio_timeout lib here
-                await asyncio.wait_for(self.protocol.authenticate(), 10)
+                try:
+                    await asyncio.wait_for(self.protocol.authenticate(), 10)
+                except asyncio.TimeoutError:
+                    raise ConnectionRefusedError(msg.format(host, port))
 
             coro = try_connect(host, port, password, self.loop)
 

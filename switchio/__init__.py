@@ -10,11 +10,11 @@ from os import path
 from . import apps
 from .utils import get_logger, ESLError
 from .api import Client
-from .async import get_event_loop
+from .loops import get_event_loop
 from .handlers import get_listener
 from .apps.call_gen import get_originator
 from .distribute import SlavePool, MultiEval
-from .marks import event_callback, handler
+from .marks import event_callback, callback, handler, coroutine
 from .connection import get_connection, ConnectionError
 from .sync import sync_caller
 from .serve import Service
