@@ -10,6 +10,7 @@ import time
 import pytest
 from pprint import pformat
 from switchio import utils, connection
+import asyncio
 
 
 @pytest.fixture
@@ -31,16 +32,17 @@ def bridge2dest_callback(sess):
     if sess['Call-Direction'] == 'inbound':
         sess.bridge(dest_url=sess['variable_sip_req_uri'])
 
+async def bridge2dest_coroutine(sess):
+    '''Bridge to the dest specified in the req uri
+    '''
+    if sess['Call-Direction'] == 'inbound':
+        sess.bridge(dest_url=sess['variable_sip_req_uri'])
+        event = await sess.recv('CHANNEL_ANSWER')
+        assert event['Event-Name'] == 'CHANNEL_ANSWER'
 
-DPS = [bridge2dest_callback]
-IDS = ['callback']
 
-
-if utils.py35:
-    import asyncio
-    from .asyncio_helpers import *
-    DPS.append(bridge2dest_coroutine)
-    IDS.append('coroutine')
+DPS = [bridge2dest_callback, bridge2dest_coroutine]
+IDS = ['callback', 'coroutine']
 
 
 @pytest.fixture(params=DPS, ids=IDS)
@@ -51,7 +53,7 @@ def proxy_dp(request, ael, client):
 
     ev = "CHANNEL_PARK"  # no sess.answer() is ever called
 
-    if utils.py35 and asyncio.iscoroutinefunction(routine):
+    if asyncio.iscoroutinefunction(routine):
         # add a proxy coroutine to provide the dialplan
         ael.event_loop.add_coroutine(ev, 'default', routine)
         assert routine in ael.event_loop.coroutines['default'][ev]
@@ -157,10 +159,6 @@ class TestListener:
         assert el.is_alive()
         pytest.raises(utils.ConfigurationError, el.connect)
 
-    @pytest.mark.skipif(
-        sys.version_info < (3,0),
-        reason="SWIG sucks",
-    )
     def test_unreachable_host(self, el, fshost):
         # TODO: test the invalid password / ACL cases
         octets = fshost.split('.')
