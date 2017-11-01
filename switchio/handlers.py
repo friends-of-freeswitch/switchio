@@ -15,15 +15,9 @@ import multiprocessing as mp
 from collections import deque, OrderedDict, Counter
 from .marks import handler, get_callbacks
 from .connection import ConnectionError
-from .loops import get_event_loop
+from .loop import get_event_loop
 from . import utils
-from .models import Job, Call
-
-
-if utils.py35:
-    from .py3_models import Session
-else:
-    from .models import Session
+from .models import Job, Call, Session
 
 
 class EventListener(object):

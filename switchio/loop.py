@@ -15,9 +15,9 @@ import multiprocessing as mp
 from functools import partial
 from collections import deque
 from threading import Thread, current_thread, get_ident
-from .. import utils
-from ..utils import get_event_time
-from ..connection import get_connection
+from . import utils
+from .utils import get_event_time
+from .connection import get_connection
 
 
 @asyncio.coroutine
@@ -594,3 +594,11 @@ class EventLoop(object):
             ev_map.pop(evname)
         if len(ev_map) == 0:
             self.coroutines.pop(ident)
+
+
+def get_event_loop(host, port=EventLoop.PORT, auth=EventLoop.AUTH,
+                   **kwargs):
+    '''Event loop factory. When using python 3.5 + an ``asyncio`` based loop
+    is used.
+    '''
+    return EventLoop(host, port, auth, **kwargs)
