@@ -147,12 +147,6 @@ class EventListener(object):
         self.failed_jobs = Counter()
         self.total_answered_sessions = 0
 
-    def get_body(self, event):
-        if getattr(event, 'getBody', None):
-            return event.getBody()
-        else:
-            return operator.itemgetter('Body')(event)
-
     @handler('CHANNEL_PARK')
     @handler('CALL_UPDATE')
     def lookup_sess(self, e):
@@ -168,7 +162,7 @@ class EventListener(object):
 
     @handler('LOG')
     def _handle_log(self, e):
-        self.log.info(self.get_body(e))
+        self.log.info(e.get('Body'))
         return True, None
 
     @handler('SERVER_DISCONNECTED')
@@ -220,7 +214,7 @@ class EventListener(object):
         ok = '+OK '
         err = '-ERR'
         job_uuid = e.get('Job-UUID')
-        body = self.get_body(e)
+        body = e.get('Body')
         # always report errors even for jobs which we aren't tracking
         if err in body:
             resp = body.strip(err).strip()
