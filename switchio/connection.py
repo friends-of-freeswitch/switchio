@@ -10,9 +10,13 @@ import asyncio
 import time
 from functools import partial
 from threading import get_ident
-from . import ConnectionError
-from .. import utils
-from ..protocol import InboundProtocol
+from . import utils
+from .protocol import InboundProtocol
+
+
+
+class ConnectionError(utils.ESLError):
+    "Failed to connect to ESL"
 
 
 async def await_in_order(awaitables, loop, timeout=None):
@@ -245,3 +249,11 @@ class AsyncIOConnection(object):
         if '-ERR' in body.splitlines()[-1]:
             raise utils.APIError(body)
         return True, body
+
+
+def get_connection(host, port=8021, password='ClueCon', loop=None):
+    """ESL connection factory.
+    """
+    loop = loop or asyncio.get_event_loop()
+    loop._tid = get_ident()
+    return AsyncIOConnection(host, port=port, password=password, loop=loop)
