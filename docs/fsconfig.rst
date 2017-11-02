@@ -129,7 +129,7 @@ You will also probably want to `raise the file descriptor count`_.
 .. _performance:
     https://freeswitch.org/confluence/display/FREESWITCH/Performance+Testing+and+Configurations
 .. _conf:
-    https://github.com/sangoma/switchio/tree/master/conf
+    https://github.com/friends-of-freeswitch/switchio/tree/master/conf
 .. _external:
     https://freeswitch.org/confluence/display/FREESWITCH/Configuring+FreeSWITCH#ConfiguringFreeSWITCH-External
 .. _enable ESL:

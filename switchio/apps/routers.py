@@ -165,7 +165,7 @@ class Router(object):
             sess.hangup('NO_ROUTE_DESTINATION')
 
     @staticmethod
-    def bridge(sess, match, router, dest_url=None, out_profile=None,
+    async def bridge(sess, match, router, dest_url=None, out_profile=None,
                gateway=None, proxy=None):
         """A handy generic bridging function.
         """

@@ -54,7 +54,7 @@ of `variable access`_ and in particular it would seem that
 .. _call management commands:
     https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-CallManagementCommands
 .. _github:
-    https://github.com/sangoma/switchio
+    https://github.com/friends-of-freeswitch/switchio
 .. _variable access:
     https://freeswitch.org/confluence/display/FREESWITCH/XML+Dialplan#XMLDialplan-AccessingVariables
 .. _info app names:
