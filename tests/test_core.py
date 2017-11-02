@@ -5,7 +5,6 @@
 Tests for core components
 '''
 from __future__ import division
-import sys
 import time
 import pytest
 from pprint import pformat
@@ -31,6 +30,7 @@ def ael(el):
 def bridge2dest_callback(sess):
     if sess['Call-Direction'] == 'inbound':
         sess.bridge(dest_url=sess['variable_sip_req_uri'])
+
 
 async def bridge2dest_coroutine(sess):
     '''Bridge to the dest specified in the req uri
@@ -188,7 +188,7 @@ class TestListener:
         # unsubscribing for now non-extant handler
         assert not el.unsubscribe(ev)
         assert ev in el._unsub
-        assert ev not in el._rx_con._sub
+        assert ev not in el._con._sub
 
         # manually reset unsubscriptions
         el._unsub = ()
@@ -199,28 +199,22 @@ class TestListener:
         with pytest.raises(utils.ConfigurationError):
             assert el.unsubscribe(ev)
 
-    @pytest.mark.skipif(
-        sys.version_info >= (3, 5),
-        reason="No auto-reconnect support without coroutines"
-    )
     def test_reconnect(self, el):
         el.connect()
-        con = el._tx_con
+        con = el.event_loop._con
         assert con.connected()
         assert el.connected()
         el.start()
+        time.sleep(0.5)
         # trigger server disconnect event
-        con.api('reload mod_event_socket')
-        while con.connected():
-            time.sleep(0.01)
-
+        con.cmd('reload mod_event_socket')
         while not con.connected():
             time.sleep(0.01)
-        # con.protocol.sendrecv('exit')
+
         # ensure connections were brought back up
         assert con.connected()
         assert el.connected()
-        e = con.api('status')
+        e = con.cmd('status')
         assert e
         assert con.connected()
 
