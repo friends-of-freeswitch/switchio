@@ -9,12 +9,9 @@ processing and session modelling.
 Default event handlers for session, call and background job management
 are defined here.
 """
-import operator
-import time
 import multiprocessing as mp
 from collections import deque, OrderedDict, Counter
 from .marks import handler, get_callbacks
-from .connection import ConnectionError
 from .loop import get_event_loop
 from . import utils
 from .models import Job, Call, Session
@@ -32,7 +29,6 @@ class EventListener(object):
         self,
         event_loop,
         call_tracking_header='variable_call_uuid',
-        autorecon=30,
         max_limit=float('inf'),
     ):
         """
@@ -48,19 +44,8 @@ class EventListener(object):
             NOTE: in order for this association mechanism to work the
             intermediary device must be configured to forward the Xheaders
             it receives.
-
-        :param autorecon:
-            Enable reconnection attempts on loss of a server connection.
-            An integer value specifies the of number seconds to spend
-            re-trying the connection before bailing. A bool of 'True'
-            will poll indefinitely and 'False' will not poll at all.
-        :type autorecon: int or bool
         """
         self.event_loop = event_loop
-        if getattr(event_loop, '_run_loop', None):
-            self._tx_con = self.event_loop._rx_con
-        else:  # SWIG requires 2 due to lack of thread safety
-            self._tx_con = self.event_loop._rx_con.new_connection()
         self.sessions = OrderedDict()
         self.log = utils.get_logger(utils.pstr(self))
         # store last 1k of each type of failed session
@@ -71,7 +56,6 @@ class EventListener(object):
         self.sessions_per_app = Counter()
         self.max_limit = max_limit
         self.call_tracking_header = call_tracking_header
-        self.autorecon = autorecon
         # job synchronization
         self._lookup_blocker = mp.Event()  # used block event loop temporarily
         self._lookup_blocker.set()
@@ -167,37 +151,11 @@ class EventListener(object):
 
     @handler('SERVER_DISCONNECTED')
     def _handle_disconnect(self, e):
-        """optionally poll waiting for connection to resume until timeout
-        or shutdown
+        """Log disconnects.
         """
-        self.log.warning("handling DISCONNECT from server '{}'"
+        self.log.warning("Received DISCONNECT from server '{}'"
                          .format(self.host))
-        if getattr(self.event_loop, '_run_loop', None):
-            self.log.warning("No auto-reconnect support yet on py35+")
-            return True, None
-
-        self.disconnect()
-        count = self.autorecon
-        if count:
-            while count:
-                try:
-                    self.connect()
-                except ConnectionError:
-                    count -= 1
-                    self.log.warning("Failed reconnection attempt...retries"
-                                     " left {}".format(count))
-                    time.sleep(1)
-                else:
-                    assert self.event_loop.connected()
-                    assert self.is_alive()
-                    return True, None
-                    # if we couldn't reconnect then have this thread exit
-                    self._exit.set()
-                    self.log.warning(
-                        "Reconnection attempts to '{}' failed. Please call"
-                        " 'connect' manually when server is ready "
-                        .format(self.host))
-                    return True, None
+        return True, None
 
     @handler('BACKGROUND_JOB')
     def _handle_bj(self, e):
@@ -298,7 +256,7 @@ class EventListener(object):
         uuid = e.get('Unique-ID')
         # Record the newly activated session
         # TODO: pass con as weakref?
-        con = self._tx_con
+        con = self.event_loop._con
 
         # short circuit if we have already allocated a session since FS is
         # indeterminate about which event create|originate will arrive first
@@ -446,6 +404,10 @@ class EventListener(object):
     def host(self):
         return self.event_loop.host
 
+    @property
+    def port(self):
+        return self.event_loop.port
+
     def is_alive(self):
         return self.event_loop.is_alive()
 
@@ -453,8 +415,7 @@ class EventListener(object):
         return self.event_loop.is_running()
 
     def connect(self, **kwargs):
-        self.event_loop.connect(**kwargs)
-        self._tx_con.connect(**kwargs)
+        return self.event_loop.connect(**kwargs)
 
     def connected(self):
         return self.event_loop.connected()
@@ -462,9 +423,8 @@ class EventListener(object):
     def start(self):
         return self.event_loop.start()
 
-    def disconnect(self):
-        self.event_loop.disconnect()
-        self._tx_con.disconnect()
+    def disconnect(self, **kwargs):
+        return self.event_loop.disconnect(**kwargs)
 
     def unsubscribe(self, evname):
         return self.event_loop.unsubscribe(evname)

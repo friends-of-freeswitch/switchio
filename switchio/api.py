@@ -67,9 +67,7 @@ class Client(object):
     def set_listener(self, inst):
         self._listener = inst
         if inst:
-            # with asyncio use listener's transmitting connection for comms
-            if getattr(inst.event_loop, '_run_loop', None):
-                self._con = inst._tx_con
+            self._con = inst.event_loop._con
             # Set the listener's call tracking header
             self._listener.call_tracking_header = utils.param2header(
                 self.call_tracking_header)
@@ -336,7 +334,7 @@ class Client(object):
         listener = self._assert_alive(listener)
         # block the event loop while we insert our job
         listener.block_jobs()
-        con = listener._tx_con
+        con = listener.event_loop._con
         try:
             ev = con.bgapi(cmd)
             if ev:
@@ -491,7 +489,7 @@ def get_pool(contacts, **kwargs):
 
     # instantiate all pairs
     for contact in contacts:
-        if isinstance(contact, str) or isinstance(contact, unicode):
+        if isinstance(contact, str):
             contact = (contact,)
 
         # create pairs

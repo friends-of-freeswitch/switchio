@@ -94,8 +94,8 @@ class EventLoop(object):
         self.loop = loop  # only used in py3/asyncio
 
         # set up contained connections
-        self._rx_con = get_connection(self.host, self.port, self.auth,
-                                      loop=loop)
+        self._con = get_connection(self.host, self.port, self.auth,
+                                   loop=loop)
 
         self.coroutines = {}  # coroutine chains, one for each event type
         self._entry_fut = None
@@ -130,7 +130,7 @@ class EventLoop(object):
 
     def connected(self, **kwargs):
         '''Return a bool representing the aggregate cons status'''
-        return self._rx_con.connected(**kwargs)
+        return self._con.connected(**kwargs)
 
     def _run_loop(self, debug):
         self.loop = loop = new_event_loop()
@@ -170,13 +170,13 @@ class EventLoop(object):
                 time.sleep(0.1)
 
         future = asyncio.run_coroutine_threadsafe(
-            self._rx_con.connect(block=False, loop=self.loop, **conn_kwargs),
+            self._con.connect(block=False, loop=self.loop, **conn_kwargs),
             self.loop
         )
-        future.result()  # pass through any timeout or conn errors
+        future.result(3)  # pass through any timeout or conn errors
 
         # subscribe for events
-        self._rx_con.subscribe(
+        self._con.subscribe(
             (ev for ev in self._handlers if ev not in self._unsub))
         self.log.info("Connected event loop '{}' to '{}'".format(self._id,
                       self.host))
@@ -192,7 +192,8 @@ class EventLoop(object):
         '''Start this loop's listen coroutine and start processing
         all received events.
         '''
-        if not self._rx_con.connected():
+        self.log.debug("Starting event loop server")
+        if not self._con.connected():
             raise utils.ConfigurationError("you must call 'connect' first")
 
         self._entry_fut = asyncio.run_coroutine_threadsafe(
@@ -208,9 +209,9 @@ class EventLoop(object):
         '''
         self.log.debug("starting listen loop")
         self._running = True
-        while self._rx_con.connected():
+        while self._con.connected():
             # block waiting for next event
-            e = await self._rx_con.recv_event()
+            e = await self._con.recv_event()
             # self.log.warning(get_event_time(e) - self._fs_time)
             if e is None:
                 self.log.debug("Breaking from listen loop")
@@ -247,7 +248,7 @@ class EventLoop(object):
         1) the handler + callback chain returns True
         2) the handler + callback chain raises a special exception
 
-        :param ESL.ESLEvent e: event received over esl on self._rx_con
+        :param dict e: event received over esl
         :param str evname: event type/name string
         '''
         # epoch is the time when first event is received
@@ -391,7 +392,7 @@ class EventLoop(object):
         cleanup(event)
         return res
 
-    def disconnect(self):
+    def disconnect(self, **con_kwargs):
         '''Shutdown this event loop's bg thread and disconnect all esl sockets.
 
         WARNING
@@ -399,6 +400,9 @@ class EventLoop(object):
         This method should not be called by the event loop thread or you may
         see an indefinite block!
         '''
+        self.log.info(
+            "Disconnecting event loop '{}' from '{}'"
+            .format(self._id, self.host))
         if current_thread() is not self._thread and self.is_alive():
             self._stop()
             self._thread.join(timeout=1)
@@ -406,9 +410,7 @@ class EventLoop(object):
             # 1) bg thread was never started
             # 2) this is the bg thread which is obviously alive
             # it's one of the above so just kill con
-            self._rx_con.disconnect()
-        self.log.info("Disconnected event loop '{}' from '{}'".format(self._id,
-                      self.host))
+            return self._con.disconnect(**con_kwargs)
 
     def _stop(self):
         '''Stop bg thread and event loop.
@@ -417,22 +419,22 @@ class EventLoop(object):
             self.log.warn("Stop called from event loop thread?")
 
         # wait on disconnect success
-        self._rx_con.disconnect()
+        self._con.disconnect()
         for _ in range(10):
-            if self._rx_con.connected():
+            if self._con.connected():
                 time.sleep(0.1)
             else:
                 break
         else:
-            if self._rx_con.connected():
+            if self._con.connected():
                 raise TimeoutError("Failed to disconnect connection {}"
-                                   .format(self._rx_con))
+                                   .format(self._con))
 
         def trigger_exit():
             # manually signal listen-loop exit (usually stuck in polling
             # the queue for some weird reason?)
             self.loop.call_soon_threadsafe(
-                self._rx_con.protocol.event_queue.put_nowait, None)
+                self._con.protocol.event_queue.put_nowait, None)
 
         # trigger and wait on event processor loop to terminate
         trigger_exit()
@@ -480,8 +482,8 @@ class EventLoop(object):
                 "handler '{}' for events of type '{}' already exists"
                 .format(self._handlers[evname], evname))
 
-        if self._rx_con.connected() and evname not in self._rx_con._sub:
-            self._rx_con.subscribe((evname,))
+        if self._con.connected() and evname not in self._con._sub:
+            self._con.subscribe((evname,))
         # add handler to active map
         self._handlers[evname] = handler
 
@@ -556,7 +558,7 @@ class EventLoop(object):
                              "'{}'".format("', '".join(failed)))
 
         # reconnect rx con if already subscribed for unwanted events
-        rx = self._rx_con
+        rx = self._con
         if rx._sub and any(ev for ev in events if ev in rx._sub):
             rx.disconnect()
             # connects all cons which is a no-op if already connected
