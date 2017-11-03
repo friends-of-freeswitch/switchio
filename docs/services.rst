@@ -131,31 +131,60 @@ based on the default ``'Caller-Destination-Number'`` *event header*:
 
 .. code-block:: python
 
+    import switchio
     from switchio.apps.routers import Router
 
-    router = Router({'Call-Direction': 'inbound'})
+    router = Router(guards={
+        'Call-Direction': 'inbound',
+        'variable_sofia_profile': 'external'})
 
     @router.route('00(.*)|011(.*)', response='407')
     @router.route('1(.*)', gateway='long_distance_trunk')
     @router.route('2[1-9]{3}$', out_profile='internal', proxy='salespbx.com')
     @router.route('4[1-9]{3}$', out_profile='internal', proxy='supportpbx.com')
-    def bridge2dest(sess, match, router, out_profile=None, gateway=None,
-                    proxy=None, response=None):
+    async def trunking_dp(sess, match, router, out_profile=None, gateway=None,
+                          proxy=None, response=None):
         if response:
-            sess.log.warn("Rejecting international call to {}".format(
+            sess.log.warn("Rejecting call to {}".format(
                 sess['Caller-Destination-Number']))
             sess.respond(response)
             sess.hangup()
+            await sess.recv("CHANNEL_HANGUP")
+        else:
+            dest = sess['variable_sip_req_uri']
+            sess.log.info("Bridging to {}".format(dest))
 
-        sess.bridge(
-            # bridge back out the same profile if not specified
-            # (the default action taken by bridge)
-            profile=out_profile,
-            gateway=gateway,
-            # always use the SIP Request-URI
-            dest_url=sess['variable_sip_req_uri'],
-            proxy=proxy,
-        )
+            sess.bridge(
+                # bridge back out the same profile if not specified
+                # (the default action taken by bridge)
+                profile=out_profile,
+                gateway=gateway,
+                # always use the SIP Request-URI
+                dest_url=dest,
+                proxy=proxy,
+            )
+            try:
+                # suspend and wait up to a min for call to be answered
+                await sess.recv('CHANNEL_ANSWER', timeout=60)
+            except TimeoutError:
+                # play unreachable dest message
+                sess.answer()
+                await sess.recv('CHANNEL_ANSWER')
+                await asyncio.sleep(1)
+                sess.playback('misc/invalid_extension.wav')
+                await sess.recv("PLAYBACK_STOP")
+                sess.hangup()
+                await sess.recv("CHANNEL_HANGUP")
+
+    if __name__ ==  '__main__':
+        s = switchio.Service(['FS_host1.com', 'FS_host2.com', 'FS_host3.com'])
+        s.apps.load_app(router, app_id='default')
+        s.run()  # blocks forever
+
+.. note::
+    You can also use the cli client run directly::
+
+        $ switchio serve FS_host1.com FS_host2.com FS_host3.com --app ./dialplan.py:router
 
 Which defines that:
 
@@ -169,14 +198,15 @@ using `kwargs`_. This lets you specify data inputs you'd like used when
 a particular field matches. If not provided, sensible defaults can be
 specified in the function signature.
 
-Also note that the idea of `transferring to a context`_ becomes a simple function call:
+Also note that the idea of `transferring to a context`_ becomes a simple coroutine
+call:
 
 .. code-block:: python
 
     @router.route("^(XXXxxxxxxx)$")
     def test_did(sess, match, router):
         # call our route function from above
-        return bridge2dest(sess, match, router, profile='external')
+        return await bridge2dest(sess, match, router, profile='external')
 
 Just as before, we can run our ``router`` as a service and use a
 single "dialplan" for all nodes in our *FreeSWITCH* cluster:
