@@ -8,6 +8,7 @@ Asyncio ESL connection abstactions
 """
 import asyncio
 from functools import partial
+from concurrent import futures
 from threading import get_ident
 from . import utils
 from .protocol import InboundProtocol
@@ -54,33 +55,26 @@ def run_in_order_threadsafe(awaitables, loop, timeout=0.5, block=True):
     return future
 
 
-async def try_connect(host, port, password, prot, loop, log):
+async def connect_and_auth(host, port, password, prot, loop, log, timeout=0.5):
     """Try to create a connection and authenticate to the
     target FS ESL.
     """
     msg = ("Failed to connect to server at '{}:{}'\n"
            "Please check that FreeSWITCH is running and "
            "accepting ESL connections.".format(host, port))
-    for _ in range(5):
-        try:
-
-            await asyncio.wait_for(
-                loop.create_connection(lambda: prot, host, port),
-                timeout=0.1)
-            break
-        except (
-            ConnectionRefusedError, asyncio.TimeoutError, OSError,
-        ) as err:
-            log.warning(
-                "Connection to {}:{} failed, retrying..."
-                .format(host, port)
-            )
-    else:
+    try:
+        await asyncio.wait_for(
+            loop.create_connection(lambda: prot, host, port),
+            timeout=timeout)
+    except (
+        ConnectionRefusedError, asyncio.TimeoutError, OSError,
+        futures.TimeoutError,
+    ) as err:
         raise ConnectionError(msg.format(host, port))
 
     # TODO: consider using the asyncio_timeout lib here
     try:
-        await asyncio.wait_for(prot.authenticate(), 10)
+        await asyncio.wait_for(prot.authenticate(), timeout)
     except asyncio.TimeoutError:
         raise ConnectionRefusedError(msg.format(host, port))
 
@@ -95,13 +89,14 @@ async def async_reconnect(host, port, password, prot, loop, log):
 
     for i in range(count):
         try:
-            await try_connect(host, port, password, prot, loop, log)
+            await connect_and_auth(
+                host, port, password, prot, loop, log, timeout=1)
             break
         except ConnectionError:
             log.warning(
                 "Failed reconnection attempt...retries"
                 " left {}".format(count - i))
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
     else:
         log.warning(
             "Reconnection attempts to '{}' failed. Please call"
@@ -182,7 +177,8 @@ class Connection(object):
                 self.host, password, loop, autorecon=self.autorecon,
                 on_disconnect=reconnect)
 
-            coro = try_connect(host, port, password, prot, self.loop, self.log)
+            coro = connect_and_auth(
+                host, port, password, prot, self.loop, self.log)
 
             if block:  # wait for authorization sequence to complete
                 if loop.is_running():
