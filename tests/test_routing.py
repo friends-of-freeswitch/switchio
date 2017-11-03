@@ -86,15 +86,15 @@ def test_route_order(router):
     """Verify route registration order is maintained.
     """
     @router.route('0', field='did')
-    def doggy():
+    async def doggy():
         pass
 
     @router.route('0', field='did')
-    def kitty():
+    async def kitty():
         pass
 
     @router.route('0', field='did')
-    def mousey():
+    async def mousey():
         pass
 
     assert ['doggy', 'kitty', 'mousey'] == [
@@ -122,14 +122,14 @@ def test_break_on_true(fs_socks, service, router):
     router.sessions = []
 
     @router.route(did)
-    def answer(sess, router, match):
+    async def answer(sess, router, match):
         sess.answer()
         router.sessions.append(sess)
         # prevent the downstream hangup route from executing
         raise router.StopRouting
 
     @router.route(did)
-    def hangup(sess, router, match):
+    async def hangup(sess, router, match):
         sess.hangup()
 
     # don't reject on guard
@@ -181,17 +181,17 @@ def test_routes(scenarios, service, router, did, expect):
 
     # route to the b-leg SIPp UAS
     @router.route('bridge.*', field='Caller-Destination-Number')
-    def bridge(sess, match, router):
+    async def bridge(sess, match, router):
         sess.bridge()
         called[sess.con.host].append('bridge')
 
     @router.route('.*hangup')
-    def hangup(sess, router, match):
+    async def hangup(sess, router, match):
         sess.hangup()
         called[sess.con.host].append('hangup')
 
     @router.route('reject')
-    def reject(sess, router, match):
+    async def reject(sess, router, match):
         sess.respond('407')
         called[sess.con.host].append('reject')
 
