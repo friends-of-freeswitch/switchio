@@ -113,6 +113,7 @@ def checkcalls(scenario, ael, travis):
         scenario.call_count = call_count or limit
         scenario.pause_duration = int(duration * 1000)
         scenario.recv_timeout = scenario.pause_duration + 5000
+        scenario.timeout = sleep + 2
 
         scenario.log.info(
             "SIPp cmds: {}".format(pformat(scenario.cmditems()))
