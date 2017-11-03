@@ -9,7 +9,7 @@ from setuptools import setup
 
 reqs = ['click']
 
-with open('README.rst') as f:
+with open('README.rst', encoding='utf-8') as f:
     readme = f.read()
 
 
