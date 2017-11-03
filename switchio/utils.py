@@ -15,9 +15,6 @@ import importlib
 import pkgutil
 
 
-py35 = sys.version_info >= (3, 5)
-
-
 class ESLError(Exception):
     """An error pertaining to the connection"""
 
@@ -37,7 +34,8 @@ class APIError(ESLError):
 # fs-like log format with a thread name prefix
 PREFIX = "%(asctime)s (%(threadName)s) "
 LEVEL = "[%(levelname)s] "
-LOG_FORMAT = PREFIX + LEVEL + ("%(name)s %(filename)s:%(lineno)d : %(message)s")
+LOG_FORMAT = PREFIX + LEVEL + (
+    "%(name)s %(filename)s:%(lineno)d : %(message)s")
 DATE_FORMAT = '%b %d %H:%M:%S'
 TRACE = 5
 

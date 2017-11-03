@@ -11,12 +11,13 @@ import itertools
 import asyncio
 import time
 import traceback
+import multiprocessing as mp
 from functools import partial
 from collections import deque
 from threading import Thread, current_thread, get_ident
-from .reactor import EventLoop
-from .. import utils
-from ..utils import get_event_time
+from . import utils
+from .utils import get_event_time
+from .connection import get_connection
 
 
 @asyncio.coroutine
@@ -51,14 +52,85 @@ def handle_result(task, log, model):
         log.exception("{} failed with:".format(task))
 
 
-class AsyncIOEventLoop(EventLoop):
-    """Re-implementation of the event loop with ``asyncio`` and coroutines
-    support.
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class EventLoop(object):
+    '''Processes ESL events using a background (thread) ``asyncio`` event loop
+    and one ``aioesl`` connection.
+    '''
+    HOST = '127.0.0.1'
+    PORT = '8021'
+    AUTH = 'ClueCon'
+
+    def __init__(self, host=HOST, port=PORT, auth=AUTH, app_id_headers=None,
+                 loop=None):
+        '''
+        :param str host: Hostname or IP addr of the FS server
+        :param str port: Port on which the FS process is listening for ESL
+        :param str auth: Authentication password for connecting via ESL
+        '''
+        self.host = host
+        self.port = port
+        self.auth = auth
+        self.log = utils.get_logger(utils.pstr(self))
+        self._handlers = {}  # map: event-name -> func
+        self._unsub = ()
+        self.callbacks = {}  # callback chains, one for each event type
+        self._sess2waiters = {}  # holds events being waited on
+        self._blockers = []  # holds cached events for reuse
+        # header name used for associating sip sessions into a 'call'
+        self.app_id_headers = []
+        if app_id_headers:
+            self.app_id_headers = list(app_id_headers) + self.app_id_headers
+            self.log.debug(
+                "app lookup headers are: {}".format(self.app_id_headers))
+        self._id = utils.uuid()
+
+        # sync
+        self._exit = mp.Event()  # indicate when event loop should terminate
+        self._epoch = self._fs_time = 0.0
+
+        # mockup thread
+        self._thread = None
+        self._running = False
+        self.loop = loop  # only used in py3/asyncio
+
+        # set up contained connections
+        self._con = get_connection(self.host, self.port, self.auth,
+                                   loop=loop)
+
         self.coroutines = {}  # coroutine chains, one for each event type
         self._entry_fut = None
+
+    def __dir__(self):
+        return utils.dirinfo(self)
+
+    __repr__ = utils.con_repr
+
+    ident = utils.pstr
+
+    @property
+    def epoch(self):
+        '''Time first event was received from server'''
+        return self._epoch
+
+    @property
+    def uptime(self):
+        '''Uptime in minutes as per last received event time stamp'''
+        return (self._fs_time - self._epoch) / 60.0
+
+    def is_alive(self):
+        '''Return bool indicating if event loop thread is running.
+        '''
+        return self._thread.is_alive() if self._thread else False
+
+    def is_running(self):
+        """Return ``bool`` indicating if event loop is waiting on events for
+        processing.
+        """
+        return self._running
+
+    def connected(self, **kwargs):
+        '''Return a bool representing the aggregate cons status'''
+        return self._con.connected(**kwargs)
 
     def _run_loop(self, debug):
         self.loop = loop = new_event_loop()
@@ -98,13 +170,13 @@ class AsyncIOEventLoop(EventLoop):
                 time.sleep(0.1)
 
         future = asyncio.run_coroutine_threadsafe(
-            self._rx_con.connect(block=False, loop=self.loop, **conn_kwargs),
+            self._con.connect(block=False, loop=self.loop, **conn_kwargs),
             self.loop
         )
-        future.result()  # pass through any timeout or conn errors
+        future.result(3)  # pass through any timeout or conn errors
 
         # subscribe for events
-        self._rx_con.subscribe(
+        self._con.subscribe(
             (ev for ev in self._handlers if ev not in self._unsub))
         self.log.info("Connected event loop '{}' to '{}'".format(self._id,
                       self.host))
@@ -120,20 +192,26 @@ class AsyncIOEventLoop(EventLoop):
         '''Start this loop's listen coroutine and start processing
         all received events.
         '''
-        if not self._rx_con.connected():
+        self.log.debug("Starting event loop server")
+        if not self._con.connected():
             raise utils.ConfigurationError("you must call 'connect' first")
 
         self._entry_fut = asyncio.run_coroutine_threadsafe(
             self._listen_forever(), loop=self.loop)
+
+    def wait(self, timeout=None):
+        """Wait until the event loop thread terminates or timeout.
+        """
+        return self._thread.join(timeout) if self._thread else None
 
     async def _listen_forever(self):
         '''Process events until stopped
         '''
         self.log.debug("starting listen loop")
         self._running = True
-        while self._rx_con.connected():
+        while self._con.connected():
             # block waiting for next event
-            e = await self._rx_con.recv_event()
+            e = await self._con.recv_event()
             # self.log.warning(get_event_time(e) - self._fs_time)
             if e is None:
                 self.log.debug("Breaking from listen loop")
@@ -170,7 +248,7 @@ class AsyncIOEventLoop(EventLoop):
         1) the handler + callback chain returns True
         2) the handler + callback chain raises a special exception
 
-        :param ESL.ESLEvent e: event received over esl on self._rx_con
+        :param dict e: event received over esl
         :param str evname: event type/name string
         '''
         # epoch is the time when first event is received
@@ -262,6 +340,78 @@ class AsyncIOEventLoop(EventLoop):
         else:
             self.log.error("Unknown event '{}'".format(evname))
 
+    def get_id(self, e, default=None):
+        """Acquire the client/consumer (app) id for event :var:`e`
+        """
+        for var in self.app_id_headers:
+            ident = e.get(var)
+            if ident:
+                self.log.debug(
+                    "app id lookup using '{}' successfully returned '{}'"
+                    .format(var, ident)
+                )
+                return ident
+        return default
+
+    def waitfor(self, sess, varname, timeout=None):
+        '''Wait on a boolen variable `varname` to be set to true for
+        session `sess` as read from `sess.vars['varname']`.
+        This call blocks until the attr is set to `True` most usually
+        by a callback.
+
+        WARNING
+        -------
+        Do not call this from the event loop thread!
+        '''
+        # retrieve cached event/blocker if possible
+        event = mp.Event() if not self._blockers else self._blockers.pop()
+        waiters = self._sess2waiters.setdefault(sess, {})  # sess -> {vars: ..}
+        events = waiters.setdefault(varname, [])  # var -> [events]
+        events.append(event)
+
+        def cleanup(event):
+            """Dealloc events and waiter data structures.
+            """
+            event.clear()  # make it block for next cached use
+            events.remove(event)  # event lifetime expires with this call
+            self._blockers.append(event)  # cache for later use
+            if not events:  # event list is now empty so delete
+                waiters.pop(varname)
+            if not waiters:  # no vars being waited so delete
+                self._sess2waiters.pop(sess)
+
+        # event was set faster then we could wait on it
+        if sess.vars.get(varname):
+            cleanup(event)
+            return True
+
+        res = event.wait(timeout=timeout)  # block
+        if timeout and not res:
+            raise mp.TimeoutError("'{}' was not set within '{}' seconds"
+                                  .format(varname, timeout))
+        cleanup(event)
+        return res
+
+    def disconnect(self, **con_kwargs):
+        '''Shutdown this event loop's bg thread and disconnect all esl sockets.
+
+        WARNING
+        -------
+        This method should not be called by the event loop thread or you may
+        see an indefinite block!
+        '''
+        self.log.info(
+            "Disconnecting event loop '{}' from '{}'"
+            .format(self._id, self.host))
+        if current_thread() is not self._thread and self.is_alive():
+            self._stop()
+            self._thread.join(timeout=1)
+        else:
+            # 1) bg thread was never started
+            # 2) this is the bg thread which is obviously alive
+            # it's one of the above so just kill con
+            return self._con.disconnect(**con_kwargs)
+
     def _stop(self):
         '''Stop bg thread and event loop.
         '''
@@ -269,22 +419,22 @@ class AsyncIOEventLoop(EventLoop):
             self.log.warn("Stop called from event loop thread?")
 
         # wait on disconnect success
-        self._rx_con.disconnect()
+        self._con.disconnect()
         for _ in range(10):
-            if self._rx_con.connected():
+            if self._con.connected():
                 time.sleep(0.1)
             else:
                 break
         else:
-            if self._rx_con.connected():
+            if self._con.connected():
                 raise TimeoutError("Failed to disconnect connection {}"
-                                   .format(self._rx_con))
+                                   .format(self._con))
 
         def trigger_exit():
             # manually signal listen-loop exit (usually stuck in polling
             # the queue for some weird reason?)
             self.loop.call_soon_threadsafe(
-                self._rx_con.protocol.event_queue.put_nowait, None)
+                self._con.protocol.event_queue.put_nowait, None)
 
         # trigger and wait on event processor loop to terminate
         trigger_exit()
@@ -332,10 +482,89 @@ class AsyncIOEventLoop(EventLoop):
                 "handler '{}' for events of type '{}' already exists"
                 .format(self._handlers[evname], evname))
 
-        if self._rx_con.connected() and evname not in self._rx_con._sub:
-            self._rx_con.subscribe((evname,))
+        if self._con.connected() and evname not in self._con._sub:
+            self._con.subscribe((evname,))
         # add handler to active map
         self._handlers[evname] = handler
+
+    def add_callback(self, evname, ident, callback, *args, **kwargs):
+        '''Register a callback for events of type `evname` to be called
+        with provided args, kwargs when an event is received by this event
+            loop.
+
+        Parameters
+        ----------
+        evname : string
+            name of mod_event event type you wish to subscribe for with the
+            provided callback
+        callback : callable
+            callable which will be invoked when events of type evname are
+            received on this event loop's rx connection
+        args, kwargs : initial arguments which will be partially applied to
+            callback right now
+        '''
+        prepend = kwargs.pop('prepend', False)
+        # TODO: need to check outputs and error on signature mismatch!
+        if not utils.is_callback(callback):
+            return False
+        if args or kwargs:
+            callback = partial(callback, *args, **kwargs)
+        d = self.callbacks.setdefault(ident, {}).setdefault(evname, deque())
+        getattr(d, 'appendleft' if prepend else 'append')(callback)
+        return True
+
+    def remove_callback(self, evname, ident, callback):
+        """Remove the callback object registered under
+        :var:`evname` and :var:`ident`.
+        """
+        ev_map = self.callbacks[ident]
+        cbs = ev_map[evname]
+        cbs.remove(callback)
+        # clean up maps if now empty
+        if len(cbs) == 0:
+            ev_map.pop(evname)
+        if len(ev_map) == 0:
+            self.callbacks.pop(ident)
+
+    def unsubscribe(self, events):
+        '''Unsubscribe this event loop's connection from an events of
+        a cetain type.
+
+        Parameters
+        ----------
+        events : string or iterable
+            name of mod_event event type(s) you wish to unsubscribe from
+            (FS server will not be told to send you events of this type)
+        '''
+        if self.connected():
+            raise utils.ConfigurationError(
+                "you must disconnect this event loop before unsubscribing"
+                " from events"
+            )
+        failed = []
+        popped = False
+        if isinstance(events, str):
+            events = (events,)
+        # remove all active handlers
+        for ev_name in events:
+            self._unsub += (ev_name,)
+            try:
+                self._handlers.pop(ev_name)
+                popped = True
+            except KeyError:
+                failed.append(ev_name)
+        if failed:
+            self.log.warning("no handler(s) registered for events of type "
+                             "'{}'".format("', '".join(failed)))
+
+        # reconnect rx con if already subscribed for unwanted events
+        rx = self._con
+        if rx._sub and any(ev for ev in events if ev in rx._sub):
+            rx.disconnect()
+            # connects all cons which is a no-op if already connected
+            self.connect()
+
+        return popped
 
     def add_coroutine(self, evname, ident, coro, *args, **kwargs):
         """Register a coroutine which will be scheduled when events
@@ -367,3 +596,11 @@ class AsyncIOEventLoop(EventLoop):
             ev_map.pop(evname)
         if len(ev_map) == 0:
             self.coroutines.pop(ident)
+
+
+def get_event_loop(host, port=EventLoop.PORT, auth=EventLoop.AUTH,
+                   **kwargs):
+    '''Event loop factory. When using python 3.5 + an ``asyncio`` based loop
+    is used.
+    '''
+    return EventLoop(host, port, auth, **kwargs)

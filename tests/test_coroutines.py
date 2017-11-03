@@ -9,15 +9,6 @@ from switchio import sync_caller
 from switchio import coroutine
 
 
-async def bridge2dest_coroutine(sess):
-    '''Bridge to the dest specified in the req uri
-    '''
-    if sess['Call-Direction'] == 'inbound':
-        sess.bridge(dest_url=sess['variable_sip_req_uri'])
-        event = await sess.recv('CHANNEL_ANSWER')
-        assert event['Event-Name'] == 'CHANNEL_ANSWER'
-
-
 def test_cancel_coro(fsip):
     """Verify that if a call never receives an event which is being
     waited that the waiting coroutine is cancelled at call hangup.

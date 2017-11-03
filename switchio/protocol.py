@@ -19,11 +19,14 @@ class InboundProtocol(asyncio.Protocol):
     """Inbound ESL client which delivers parsed events to an
     ``asyncio.Queue``.
     """
-    def __init__(self, host, password, loop):
+    def __init__(self, host, password, loop, autorecon=False,
+                 on_disconnect=None):
+        self.host = host
         self.password = password
         self.loop = loop
+        self.on_disconnect = on_disconnect
+        self.autorecon = autorecon
         self.event_queue = asyncio.Queue(loop=loop)
-        self.host = host
         self.log = utils.get_logger(utils.pstr(self))
         self.transport = None
         self._previous = None, None
@@ -53,11 +56,14 @@ class InboundProtocol(asyncio.Protocol):
         self.transport = transport
         self._disconnected = self.loop.create_future()
         self.authenticate()
+        self.log.debug("Authenticated to {}".format(self.host))
 
     def connection_lost(self, exc):
         self._auth_resp = None
         self.log.debug('The connection closed @ {}'.format(self.host))
         self._disconnected.set_result(True)
+        if self.autorecon:
+            self.on_disconnect(self)
 
     def reg_fut(self, ctype, fut=None):
         """Register and return a future wrapping an event packet to be
@@ -273,6 +279,7 @@ class InboundProtocol(asyncio.Protocol):
                 raise ConnectionError("Failed to disconnect with {}"
                                       .format(reply))
 
+        self.autorecon = False
         exit_resp = self.sendrecv('exit')
         exit_resp.add_done_callback(shutdown)
         return self._disconnected

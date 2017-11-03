@@ -5,11 +5,11 @@
 Tests for core components
 '''
 from __future__ import division
-import sys
 import time
 import pytest
 from pprint import pformat
 from switchio import utils, connection
+import asyncio
 
 
 @pytest.fixture
@@ -32,15 +32,17 @@ def bridge2dest_callback(sess):
         sess.bridge(dest_url=sess['variable_sip_req_uri'])
 
 
-DPS = [bridge2dest_callback]
-IDS = ['callback']
+async def bridge2dest_coroutine(sess):
+    '''Bridge to the dest specified in the req uri
+    '''
+    if sess['Call-Direction'] == 'inbound':
+        sess.bridge(dest_url=sess['variable_sip_req_uri'])
+        event = await sess.recv('CHANNEL_ANSWER')
+        assert event['Event-Name'] == 'CHANNEL_ANSWER'
 
 
-if utils.py35:
-    import asyncio
-    from .asyncio_helpers import *
-    DPS.append(bridge2dest_coroutine)
-    IDS.append('coroutine')
+DPS = [bridge2dest_callback, bridge2dest_coroutine]
+IDS = ['callback', 'coroutine']
 
 
 @pytest.fixture(params=DPS, ids=IDS)
@@ -51,7 +53,7 @@ def proxy_dp(request, ael, client):
 
     ev = "CHANNEL_PARK"  # no sess.answer() is ever called
 
-    if utils.py35 and asyncio.iscoroutinefunction(routine):
+    if asyncio.iscoroutinefunction(routine):
         # add a proxy coroutine to provide the dialplan
         ael.event_loop.add_coroutine(ev, 'default', routine)
         assert routine in ael.event_loop.coroutines['default'][ev]
@@ -111,6 +113,7 @@ def checkcalls(scenario, ael, travis):
         scenario.call_count = call_count or limit
         scenario.pause_duration = int(duration * 1000)
         scenario.recv_timeout = scenario.pause_duration + 5000
+        scenario.timeout = sleep + 2
 
         scenario.log.info(
             "SIPp cmds: {}".format(pformat(scenario.cmditems()))
@@ -157,10 +160,6 @@ class TestListener:
         assert el.is_alive()
         pytest.raises(utils.ConfigurationError, el.connect)
 
-    @pytest.mark.skipif(
-        sys.version_info < (3,0),
-        reason="SWIG sucks",
-    )
     def test_unreachable_host(self, el, fshost):
         # TODO: test the invalid password / ACL cases
         octets = fshost.split('.')
@@ -190,7 +189,7 @@ class TestListener:
         # unsubscribing for now non-extant handler
         assert not el.unsubscribe(ev)
         assert ev in el._unsub
-        assert ev not in el._rx_con._sub
+        assert ev not in el._con._sub
 
         # manually reset unsubscriptions
         el._unsub = ()
@@ -201,28 +200,22 @@ class TestListener:
         with pytest.raises(utils.ConfigurationError):
             assert el.unsubscribe(ev)
 
-    @pytest.mark.skipif(
-        sys.version_info >= (3, 5),
-        reason="No auto-reconnect support without coroutines"
-    )
     def test_reconnect(self, el):
         el.connect()
-        con = el._tx_con
+        con = el.event_loop._con
         assert con.connected()
         assert el.connected()
         el.start()
+        time.sleep(0.5)
         # trigger server disconnect event
-        con.api('reload mod_event_socket')
-        while con.connected():
-            time.sleep(0.01)
-
+        con.cmd('reload mod_event_socket')
         while not con.connected():
             time.sleep(0.01)
-        # con.protocol.sendrecv('exit')
+
         # ensure connections were brought back up
         assert con.connected()
         assert el.connected()
-        e = con.api('status')
+        e = con.cmd('status')
         assert e
         assert con.connected()
 

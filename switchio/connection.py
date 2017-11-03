@@ -7,12 +7,15 @@
 Asyncio ESL connection abstactions
 """
 import asyncio
-import time
 from functools import partial
+from concurrent import futures
 from threading import get_ident
-from . import ConnectionError
-from .. import utils
-from ..protocol import InboundProtocol
+from . import utils
+from .protocol import InboundProtocol
+
+
+class ConnectionError(utils.ESLError):
+    "Failed to connect to ESL"
 
 
 async def await_in_order(awaitables, loop, timeout=None):
@@ -52,12 +55,73 @@ def run_in_order_threadsafe(awaitables, loop, timeout=0.5, block=True):
     return future
 
 
-class AsyncIOConnection(object):
+async def connect_and_auth(host, port, password, prot, loop, log, timeout=0.5):
+    """Try to create a connection and authenticate to the
+    target FS ESL.
+    """
+    msg = ("Failed to connect to server at '{}:{}'\n"
+           "Please check that FreeSWITCH is running and "
+           "accepting ESL connections.".format(host, port))
+    try:
+        await asyncio.wait_for(
+            loop.create_connection(lambda: prot, host, port),
+            timeout=timeout)
+    except (
+        ConnectionRefusedError, asyncio.TimeoutError, OSError,
+        futures.TimeoutError,
+    ) as err:
+        raise ConnectionError(msg.format(host, port))
+
+    # TODO: consider using the asyncio_timeout lib here
+    try:
+        await asyncio.wait_for(prot.authenticate(), timeout)
+    except asyncio.TimeoutError:
+        raise ConnectionRefusedError(msg.format(host, port))
+
+
+async def async_reconnect(host, port, password, prot, loop, log):
+    log.info("Attempting to reconnect to {}:{}".format(host, port))
+    if not prot.autorecon:
+        log.debug("Autorecon had been disabled")
+        return
+    else:
+        count = prot.autorecon
+
+    for i in range(count):
+        try:
+            await connect_and_auth(
+                host, port, password, prot, loop, log, timeout=1)
+            break
+        except ConnectionError:
+            log.warning(
+                "Failed reconnection attempt...retries"
+                " left {}".format(count - i))
+            await asyncio.sleep(0.1)
+    else:
+        log.warning(
+            "Reconnection attempts to '{}' failed. Please call"
+            " 'connect' manually when server is ready "
+            .format(host))
+
+    if prot.connected():
+        log.info("Successfully reconnected to '{}:{}'"
+                 .format(host, port))
+
+
+class Connection(object):
     """An ESL connection implemented using an ``asyncio`` TCP protocol.
 
     Consider this API threadsafe.
+
+    :param autorecon:
+        Enable reconnection attempts on loss of a server connection.
+        An integer value specifies the of number seconds to spend
+        re-trying the connection before bailing. A bool of 'True'
+        will poll indefinitely and 'False' will not poll at all.
+    :type autorecon: int or bool
     """
-    def __init__(self, host, port='8021', password='ClueCon', loop=None):
+    def __init__(self, host, port='8021', password='ClueCon', loop=None,
+                 autorecon=30):
         """
         Parameters
         -----------
@@ -74,6 +138,7 @@ class AsyncIOConnection(object):
         self.log = utils.get_logger(utils.pstr(self))
         self._sub = ()  # events subscription
         self.loop = loop
+        self.autorecon = autorecon
         self.protocol = None
 
     def __enter__(self, **kwargs):
@@ -97,44 +162,30 @@ class AsyncIOConnection(object):
         password = password or self.password
         self.loop = loop if loop else self.loop
         loop = self.loop
-        msg = ("Failed to connect to server at '{}:{}'\n"
-               "Please check that FreeSWITCH is running and "
-               "accepting ESL connections.".format(host, port))
 
-        if not self.connected():
-            prot = self.protocol = InboundProtocol(self.host, password, loop)
+        if not self.connected() or not block:
 
-            async def try_connect(host, port, password, loop):
-                """Try to create a connection and authenticate to the
-                target FS ESL.
+            def reconnect(prot):
+                """Schedule a reconnection task.
                 """
-                for _ in range(5):
-                    try:
+                self.log.debug("Scheduling a reconnection task")
+                asyncio.ensure_future(async_reconnect(
+                    host, port, password, prot,
+                    loop, self.log), loop=loop)
 
-                        await asyncio.wait_for(
-                            loop.create_connection(lambda: prot, host, port),
-                            timeout=timeout)
-                        break
-                    except (
-                        ConnectionRefusedError, asyncio.TimeoutError
-                    ) as err:
-                        self.log.warning(
-                            "Connection to {}:{} failed, retrying..."
-                            .format(host, port)
-                        )
-                else:
-                    raise ConnectionError(msg.format(host, port))
+            prot = self.protocol = InboundProtocol(
+                self.host, password, loop, autorecon=self.autorecon,
+                on_disconnect=reconnect)
 
-                # TODO: consider using the asyncio_timeout lib here
-                try:
-                    await asyncio.wait_for(self.protocol.authenticate(), 10)
-                except asyncio.TimeoutError:
-                    raise ConnectionRefusedError(msg.format(host, port))
-
-            coro = try_connect(host, port, password, self.loop)
+            coro = connect_and_auth(
+                host, port, password, prot, self.loop, self.log)
 
             if block:  # wait for authorization sequence to complete
-                loop.run_until_complete(coro)
+                if loop.is_running():
+                    asyncio.run_coroutine_threadsafe(coro, loop=loop).result(3)
+                else:
+                    loop.run_until_complete(coro)
+
                 if not prot.connected() and not prot.authenticated():
                     raise ConnectionError(
                         "Failed to connect to server at '{}:{}'\n"
@@ -245,3 +296,11 @@ class AsyncIOConnection(object):
         if '-ERR' in body.splitlines()[-1]:
             raise utils.APIError(body)
         return True, body
+
+
+def get_connection(host, port=8021, password='ClueCon', loop=None):
+    """ESL connection factory.
+    """
+    loop = loop or asyncio.get_event_loop()
+    loop._tid = get_ident()
+    return Connection(host, port=port, password=password, loop=loop)

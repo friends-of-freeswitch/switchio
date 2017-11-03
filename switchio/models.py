@@ -4,16 +4,13 @@
 """
 Models representing FreeSWITCH entities
 """
+import asyncio
 import time
 from collections import deque
 import multiprocessing as mp
+from concurrent import futures
 from pprint import pprint
 from . import utils
-
-
-if utils.py35:
-    from concurrent import futures
-    import asyncio
 
 
 class TimeoutError(Exception):
@@ -78,10 +75,7 @@ class Events(object):
         """Print serialized event data in chronological order to stdout
         """
         for ev in reversed(list(self._events)[index:]):
-            if getattr(ev, 'serialize', None):
-                print(ev.serialize())
-            else:
-                pprint(ev)
+            pprint(ev)
 
 
 class Session(object):
@@ -431,6 +425,46 @@ class Session(object):
         """Return bool indicating whether this is an outbound session
         """
         return self['Call-Direction'] == 'outbound'
+
+    def unreg_tasks(self, fut):
+        self.tasks.pop(fut)
+        if fut.cancelled():  # otherwise it's popped in the event loop
+            self._futures.pop(fut._evname)
+
+    def recv(self, name, timeout=None):
+        """Return an awaitable which resumes once the event-type ``name``
+        is received for this session.
+        """
+        loop = self.event_loop.loop
+        fut = self._futures.setdefault(name, loop.create_future())
+        fut._evname = name
+        caller = asyncio.Task.current_task(loop)
+        # keep track of consuming coroutines
+        self.tasks.setdefault(fut, []).append(caller)
+        fut.add_done_callback(self.unreg_tasks)
+        return fut if not timeout else asyncio.wait_for(
+            fut, timeout, loop=loop)
+
+    async def poll(self, events, timeout=None,
+                   return_when=asyncio.FIRST_COMPLETED):
+        """Poll for any of a set of event types to be received for this session.
+        """
+        awaitables = {}
+        for name in events:
+            awaitables[self.recv(name)] = name
+        done, pending = await asyncio.wait(
+            awaitables, timeout=timeout, return_when=return_when)
+
+        if done:
+            ev_dicts = []
+            for fut in done:
+                awaitables.pop(fut)
+                ev_dicts.append(fut.result())
+            return ev_dicts, awaitables.values()
+        else:
+            raise asyncio.TimeoutError(
+                "None of {} was received in {} seconds"
+                .format(events, timeout))
 
 
 class Call(object):

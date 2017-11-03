@@ -6,27 +6,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 from setuptools import setup
-import os
-import sys
 
+reqs = ['click']
 
-reqs = ['python-ESL', 'click']
-
-
-on_rtd = os.environ.get('READTHEDOCS') == 'True'
-if on_rtd or sys.version_info >= (3, 5):
-    # RTD doesn't package SWIG in their default env
-    # and we don't care about it on py2.7
-    reqs.remove('python-ESL')
-
-
-with open('README.rst') as f:
+with open('README.rst', encoding='utf-8') as f:
     readme = f.read()
 
 
 setup(
     name="switchio",
-    version='0.1.0.alpha0',
+    version='0.1.0.alpha1.dev',
     description='asyncio powered FreeSWITCH cluster control',
     long_description=readme,
     license='Mozilla',
@@ -39,8 +28,6 @@ setup(
         'switchio',
         'switchio.apps',
         'switchio.apps.measure',
-        'switchio.connection',
-        'switchio.loops',
     ],
     entry_points={
         'console_scripts': [
@@ -61,7 +48,6 @@ setup(
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)',
         'Operating System :: POSIX :: Linux',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Intended Audience :: Telecommunications Industry',
