@@ -390,13 +390,6 @@ class EventListener(object):
 
         self.log.debug("hungup Session '{}'".format(uuid))
 
-        # cancel any pending consumer coroutine-tasks
-        for name, fut in sess._futures.items():
-            self.log.warning("Cancelling {} awaited {}".format(name, fut))
-            for task in sess.tasks.get(fut, ()):
-                task.print_stack()
-            fut.cancel()
-
         # hangups are always consumed
         return True, sess, job
 

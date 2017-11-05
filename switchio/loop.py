@@ -276,6 +276,16 @@ class EventLoop(object):
                 cid = model.cid if model else self.get_id(e, 'default')
                 self.log.debug("app id is '{}'".format(cid))
 
+                if model:
+                    # signal any awaiting futures
+                    fut = model._futures.pop(evname, None)
+                    if fut and not fut.cancelled():
+                        fut.set_result(e)
+                        # resume waiting coroutines...
+                        # seriously guys, this is literally so stupid
+                        # and confusing
+                        await just_yield()
+
                 callbacks = self.callbacks.get(cid, False)
                 if callbacks and consumed:
                     cbs = callbacks.get(evname, ())
@@ -295,15 +305,6 @@ class EventLoop(object):
                                 "Failed to execute callback {} for event "
                                 "with uid {}".format(cb, uid)
                             )
-                if model:
-                    # signal any awaiting futures
-                    fut = model._futures.pop(evname, None)
-                    if fut and not fut.cancelled():
-                        fut.set_result(e)
-                        # resume waiting coroutines...
-                        # seriously guys, this is literally so stupid
-                        # and confusing
-                        await just_yield()
 
                 coroutines = self.coroutines.get(cid, False)
                 if coroutines and consumed:
@@ -325,6 +326,15 @@ class EventLoop(object):
                             for var, evs in self._sess2waiters[model].items():
                                 if model.vars.get(var):
                                     [event.set() for event in evs]
+
+                # if model is done, cancel any pending consumer coroutine-tasks
+                if model and model.done() and getattr(model, '_futures', None):
+                    for name, fut in model._futures.items():
+                        if not fut.done():
+                            self.log.warning("Cancelling {} awaited {}".format(name, fut))
+                            for task in model.tasks.get(fut, ()):
+                                task.print_stack()
+                            fut.cancel()
 
             # exception raised by handler/chain on purpose?
             except utils.ESLError:
