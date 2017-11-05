@@ -5,16 +5,14 @@
 Test ESL protocol and connection wrappers
 '''
 import os
+import asyncio
 import pytest
 import switchio
 from switchio.connection import get_connection
-
-
-asyncio = pytest.importorskip("asyncio")
 from switchio.protocol import InboundProtocol
 
 
-@pytest.fixture
+@pytest.fixture(scope='module')
 def loop():
     return asyncio.new_event_loop()
 
@@ -24,6 +22,12 @@ def con(fshost, loop):
     con = get_connection(fshost, loop=loop)
     yield con
     con.disconnect()
+    pending = asyncio.Task.all_tasks(loop)
+    if pending:
+        for task in pending:
+            if not task.done():
+                task.cancel()
+        loop.run_until_complete(asyncio.wait(pending, loop=loop))
 
 
 @pytest.mark.parametrize(
@@ -31,7 +35,7 @@ def con(fshost, loop):
     [('doggy', False), ('ClueCon', True)],
     ids=lambda item: "pw={}, expect_auth={}".format(*item),
 )
-def test_connect(con, loop, password, expect_auth):
+def test_connect(con, password, expect_auth):
     """Connection basics.
     """
     if expect_auth:
