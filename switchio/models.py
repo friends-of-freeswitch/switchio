@@ -119,8 +119,9 @@ class Session(object):
 
         return self._log
 
-    def __str__(self):
-        return str(self.uuid)
+    def __repr__(self):
+        rep = object.__repr__(self).strip('<>')
+        return "<{} with UUID: {}>".format(rep, self.uuid)
 
     def __dir__(self):
         # TODO: use a transform func to provide __getattr__
@@ -176,20 +177,23 @@ class Session(object):
         return self.time - self.times['create']
 
     def unreg_tasks(self, fut):
-        self.tasks.pop(fut)
         if fut.cancelled():  # otherwise it's popped in the event loop
             self._futures.pop(fut._evname, None)
+        else:
+            assert not self._futures.get(fut._evname)  # sanity
 
     def recv(self, name, timeout=None):
         """Return an awaitable which resumes once the event-type ``name``
         is received for this session.
         """
         loop = self.event_loop.loop
-        fut = self._futures[name]  # returns a new future by default
+        fut = self._futures[name]  # defaultdict: returns new future by default
         fut._evname = name
+
+        # keep track of consuming coroutine(s)
         caller = asyncio.Task.current_task(loop)
-        # keep track of consuming coroutines
         self.tasks.setdefault(fut, []).append(caller)
+
         fut.add_done_callback(self.unreg_tasks)
         return fut if not timeout else asyncio.wait_for(
             fut, timeout, loop=loop)
