@@ -162,7 +162,7 @@ class Router(object):
                     )
         if not handled and self.guard:
             self.log.warn("Rejecting session {}".format(sess.uuid))
-            sess.hangup('NO_ROUTE_DESTINATION')
+            await sess.hangup('NO_ROUTE_DESTINATION')
 
     @staticmethod
     async def bridge(sess, match, router, dest_url=None, out_profile=None,
