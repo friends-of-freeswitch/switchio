@@ -56,7 +56,6 @@ class InboundProtocol(asyncio.Protocol):
         self.transport = transport
         self._disconnected = self.loop.create_future()
         self.authenticate()
-        self.log.debug("Authenticated to {}".format(self.host))
 
     def connection_lost(self, exc):
         self._auth_resp = None
@@ -88,6 +87,7 @@ class InboundProtocol(asyncio.Protocol):
                 if event['Reply-Text'] != '+OK accepted':
                     self._auth_resp = None
                     raise ConnectionError("Invalid password?")
+                self.log.debug("Authenticated to {}".format(self.host))
 
             def respond_to_auth(future):
                 fut = self.sendrecv(
