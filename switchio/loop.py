@@ -47,7 +47,7 @@ def handle_result(task, log, model):
     """
     try:
         task.result()
-        log.debug("Completed {}".format(task))
+        log.debug("Completed {} for {}".format(task, model))
     except Exception:
         log.exception("{} failed with:".format(task))
 
@@ -267,7 +267,7 @@ class EventLoop(object):
         handler = self._handlers.get(evname, False)
         loop = self.loop
         if handler:
-            self.log.debug("handler is '{}'".format(handler))
+            self.log.debug("handler is '{}'".format(handler.__name__))
             try:
                 consumed, ret = utils.uncons(*handler(e))  # invoke handler
                 model = ret[0]
@@ -321,20 +321,21 @@ class EventLoop(object):
                             partial(handle_result, log=self.log, model=model))
                         await just_yield()  # loop spin
 
-                        # unblock `session.vars` waiters
-                        if model in self._sess2waiters:
-                            for var, evs in self._sess2waiters[model].items():
-                                if model.vars.get(var):
-                                    [event.set() for event in evs]
+                if model:
+                    # unblock `session.vars` waiters
+                    if model in self._sess2waiters:
+                        for var, evs in self._sess2waiters[model].items():
+                            if model.vars.get(var):
+                                [event.set() for event in evs]
 
-                # if model is done, cancel any pending consumer coroutine-tasks
-                if model and model.done() and getattr(model, '_futures', None):
-                    for name, fut in model._futures.items():
-                        if not fut.done():
-                            self.log.warning("Cancelling {} awaited {}".format(name, fut))
-                            for task in model.tasks.get(fut, ()):
-                                task.print_stack()
-                            fut.cancel()
+                    # if model is done, cancel any pending consumer coroutine-tasks
+                    if model.done() and getattr(model, '_futures', None):
+                        for name, fut in model._futures.items():
+                            if not fut.done():
+                                self.log.warning("Cancelling {} awaited {}".format(name, fut))
+                                for task in model.tasks.get(fut, ()):
+                                    task.print_stack()
+                                fut.cancel()
 
             # exception raised by handler/chain on purpose?
             except utils.ESLError:
@@ -458,6 +459,8 @@ class EventLoop(object):
                 asyncio.wait(pending, loop=self.loop), loop=self.loop
                 ).result(3)
 
+            # XXX: this results in task exceptions be logged
+            # a second time outside of ``handle_result()`` above
             for task in pending:
                 try:
                     task.result()
