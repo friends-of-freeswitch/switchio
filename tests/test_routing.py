@@ -123,14 +123,15 @@ def test_break_on_true(fs_socks, service, router):
 
     @router.route(did)
     async def answer(sess, router, match):
-        sess.answer()
+        await sess.answer()
         router.sessions.append(sess)
         # prevent the downstream hangup route from executing
         raise router.StopRouting
 
     @router.route(did)
     async def hangup(sess, router, match):
-        sess.hangup()
+        router.sessions.append("hangup_route")
+        await sess.hangup()
 
     # don't reject on guard
     router.guard = False
@@ -158,6 +159,7 @@ def test_break_on_true(fs_socks, service, router):
         # verify all sessions are still active and 2nd route was never called
         for sess in router.sessions:
             assert sess.answered and not sess.hungup
+            assert "hangup_route" not in router.sessions
 
     # hangup should come shortly after
     time.sleep(0.5)
