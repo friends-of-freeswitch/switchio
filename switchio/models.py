@@ -6,7 +6,7 @@ Models representing FreeSWITCH entities
 """
 import asyncio
 import time
-from collections import deque
+from collections import deque, defaultdict
 import multiprocessing as mp
 from concurrent import futures
 from pprint import pprint
@@ -92,7 +92,7 @@ class Session(object):
         # sub-namespace for apps to set/get state
         self.vars = {}
         self._log = None
-        self._futures = {}
+        self._futures = defaultdict(event_loop.loop.create_future)
         self.tasks = {}
 
         # public attributes
@@ -107,6 +107,9 @@ class Session(object):
             ('create', 'answer', 'req_originate', 'originate', 'hangup'))
         self.times['create'] = utils.get_event_time(event)
 
+    def done(self):
+        return self.hungup
+
     @property
     def log(self):
         """Local logger instance.
@@ -116,8 +119,9 @@ class Session(object):
 
         return self._log
 
-    def __str__(self):
-        return str(self.uuid)
+    def __repr__(self):
+        rep = object.__repr__(self).strip('<>')
+        return "<{} with UUID: {}>".format(rep, self.uuid)
 
     def __dir__(self):
         # TODO: use a transform func to provide __getattr__
@@ -172,6 +176,49 @@ class Session(object):
         """
         return self.time - self.times['create']
 
+    def unreg_tasks(self, fut):
+        if fut.cancelled():  # otherwise it's popped in the event loop
+            self._futures.pop(fut._evname, None)
+        else:
+            assert not self._futures.get(fut._evname)  # sanity
+
+    def recv(self, name, timeout=None):
+        """Return an awaitable which resumes once the event-type ``name``
+        is received for this session.
+        """
+        loop = self.event_loop.loop
+        fut = self._futures[name]  # defaultdict: returns new future by default
+        fut._evname = name
+
+        # keep track of consuming coroutine(s)
+        caller = asyncio.Task.current_task(loop)
+        self.tasks.setdefault(fut, []).append(caller)
+
+        fut.add_done_callback(self.unreg_tasks)
+        return fut if not timeout else asyncio.wait_for(
+            fut, timeout, loop=loop)
+
+    async def poll(self, events, timeout=None,
+                   return_when=asyncio.FIRST_COMPLETED):
+        """Poll for any of a set of event types to be received for this session.
+        """
+        awaitables = {}
+        for name in events:
+            awaitables[self.recv(name)] = name
+        done, pending = await asyncio.wait(
+            awaitables, timeout=timeout, return_when=return_when)
+
+        if done:
+            ev_dicts = []
+            for fut in done:
+                awaitables.pop(fut)
+                ev_dicts.append(fut.result())
+            return ev_dicts, awaitables.values()
+        else:
+            raise asyncio.TimeoutError(
+                "None of {} was received in {} seconds"
+                .format(events, timeout))
+
     # call control / 'mod_commands' methods
     # TODO: dynamically add @decorated functions to this class
     # and wrap them using functools.update_wrapper ...?
@@ -198,11 +245,13 @@ class Session(object):
 
     def answer(self):
         self.con.api("uuid_answer {}".format(self.uuid))
+        return self.recv('CHANNEL_ANSWER')
 
     def hangup(self, cause='NORMAL_CLEARING'):
         '''Hangup this session with the provided `cause` hangup type keyword.
         '''
         self.con.api('uuid_kill {} {}'.format(self.uuid, cause))
+        return self.recv('CHANNEL_HANGUP')
 
     def sched_hangup(self, timeout, cause='NORMAL_CLEARING'):
         '''Schedule this session to hangup after `timeout` seconds.
@@ -332,6 +381,7 @@ class Session(object):
         '''Park this session
         '''
         self.con.api('uuid_park {}'.format(self.uuid))
+        return self.recv('CHANNEL_PARK')
 
     def broadcast(self, path, leg='', delay=None, hangup_cause=None):
         """Execute an application async on a chosen leg(s) with optional hangup
@@ -425,46 +475,6 @@ class Session(object):
         """Return bool indicating whether this is an outbound session
         """
         return self['Call-Direction'] == 'outbound'
-
-    def unreg_tasks(self, fut):
-        self.tasks.pop(fut)
-        if fut.cancelled():  # otherwise it's popped in the event loop
-            self._futures.pop(fut._evname)
-
-    def recv(self, name, timeout=None):
-        """Return an awaitable which resumes once the event-type ``name``
-        is received for this session.
-        """
-        loop = self.event_loop.loop
-        fut = self._futures.setdefault(name, loop.create_future())
-        fut._evname = name
-        caller = asyncio.Task.current_task(loop)
-        # keep track of consuming coroutines
-        self.tasks.setdefault(fut, []).append(caller)
-        fut.add_done_callback(self.unreg_tasks)
-        return fut if not timeout else asyncio.wait_for(
-            fut, timeout, loop=loop)
-
-    async def poll(self, events, timeout=None,
-                   return_when=asyncio.FIRST_COMPLETED):
-        """Poll for any of a set of event types to be received for this session.
-        """
-        awaitables = {}
-        for name in events:
-            awaitables[self.recv(name)] = name
-        done, pending = await asyncio.wait(
-            awaitables, timeout=timeout, return_when=return_when)
-
-        if done:
-            ev_dicts = []
-            for fut in done:
-                awaitables.pop(fut)
-                ev_dicts.append(fut.result())
-            return ev_dicts, awaitables.values()
-        else:
-            raise asyncio.TimeoutError(
-                "None of {} was received in {} seconds"
-                .format(events, timeout))
 
 
 class Call(object):
@@ -576,6 +586,12 @@ class Job(object):
         '''The final result
         '''
         return self.get()
+
+    def done(self):
+        """Return ``True`` if this job was successfully cancelled or finished
+        running.
+        """
+        return self._result or self._failed
 
     @property
     def _sig(self):

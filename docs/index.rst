@@ -39,7 +39,7 @@ import-and-go usage.
 .. _traffic theory:
     https://en.wikipedia.org/wiki/Teletraffic_engineering
 .. _github:
-    https://github.com/sangoma/switchio
+    https://github.com/friends-of-freeswitch/switchio
 .. _ESL SWIG python package:
     https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
 .. _pandas:

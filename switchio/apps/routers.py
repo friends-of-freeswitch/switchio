@@ -5,11 +5,12 @@
 Routing apps
 """
 import re
+import asyncio
 from functools import partial
 from collections import OrderedDict
 from collections import Counter
 from .. import utils
-from ..marks import event_callback
+from ..marks import coroutine, callback
 from ..apps import app
 
 
@@ -22,7 +23,7 @@ class Proxier(object):
         This is meant as a simple example for testing. If you want to build
         a routing system see the `Router` app below.
     """
-    @event_callback('CHANNEL_PARK')
+    @callback('CHANNEL_PARK')
     def on_park(self, sess):
         if sess.is_inbound():
             # by default bridges to sess['variable_sip_req_uri']
@@ -40,7 +41,7 @@ class Bridger(object):
             1: 'proxy'  # default is to proxy the call using the request uri
         }
 
-    @event_callback("CHANNEL_PARK")
+    @callback("CHANNEL_PARK")
     def on_park(self, sess):
         '''Bridge per session for a given call using the argument spec
         provided in `count2bridgeargs`. If the value for a given count is
@@ -55,7 +56,7 @@ class Bridger(object):
         elif args:  # a dict of kwargs to pass to the bridge cmd
             sess.bridge(**args)
 
-    @event_callback('CHANNEL_BRIDGE')
+    @callback('CHANNEL_BRIDGE')
     def on_bridge(self, sess):
         self.log.debug("Bridged aleg session '{}' to bleg session '{}'"
                        .format(sess.uuid, sess['Bridge-B-Unique-ID']))
@@ -77,12 +78,13 @@ class PatternRegistrar(object):
         self.regex2funcs.update(other.regex2funcs)
 
     def __call__(self, pattern, field='Caller-Destination-Number', **kwargs):
-        """Decorator interface allowing you to register callback functions
-        with regex patterns and kwargs. When `iter_matches` is called with a
-        mapping, any callable registered with a matching regex pattern will be
-        delivered as a partial.
+        """Decorator interface allowing you to register callback or coroutine
+        functions with regex patterns and kwargs. When `iter_matches` is
+        called with a mapping, any callable registered with a matching regex
+        pattern will be delivered as a partial.
         """
         def inner(func):
+            assert asyncio.iscoroutinefunction(func), 'Not a coroutine'
             self.regex2funcs.setdefault(
                 (pattern, field), []).append((func, kwargs))
             return func
@@ -132,8 +134,8 @@ class Router(object):
             utils.pstr(self, pool.evals('listener.host'))
         )
 
-    @event_callback("CHANNEL_PARK")
-    def on_park(self, sess):
+    @coroutine("CHANNEL_PARK")
+    async def on_park(self, sess):
         handled = False
         if not all(sess[key] == val for key, val in self.guards.items()):
             self.log.warn("Session with id {} did not pass guards"
@@ -146,7 +148,7 @@ class Router(object):
                         "Matched '{.string}' to route '{.__name__}'"
                         .format(func.keywords['match'], func.func))
 
-                    func()
+                    await func()
                 except self.StopRouting:
                     self.log.info(
                         "Routing was halted at {} at match '{}' for session {}"
@@ -160,10 +162,10 @@ class Router(object):
                     )
         if not handled and self.guard:
             self.log.warn("Rejecting session {}".format(sess.uuid))
-            sess.hangup('NO_ROUTE_DESTINATION')
+            await sess.hangup('NO_ROUTE_DESTINATION')
 
     @staticmethod
-    def bridge(sess, match, router, dest_url=None, out_profile=None,
+    async def bridge(sess, match, router, dest_url=None, out_profile=None,
                gateway=None, proxy=None):
         """A handy generic bridging function.
         """
