@@ -25,7 +25,7 @@ performance and scalability more like sanic_.
 .. _asyncio: https://docs.python.org/3.6/library/asyncio.html
 .. _FreeSWITCH: https://freeswitch.org/
 .. _Python: https://www.python.org/
-.. _switchy: https://www.python.org/
+.. _switchy: https://github.com/sangoma/switchy
 .. _coroutine: https://docs.python.org/3.6/library/asyncio-task.html
 .. _flask: http://flask.pocoo.org/
 .. _sanic: https://github.com/channelcat/sanic
