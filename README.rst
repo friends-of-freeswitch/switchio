@@ -25,17 +25,19 @@ performance and scalability more like sanic_.
 .. _asyncio: https://docs.python.org/3.6/library/asyncio.html
 .. _FreeSWITCH: https://freeswitch.org/
 .. _Python: https://www.python.org/
-.. _switchy: https://www.python.org/
+.. _switchy: https://github.com/sangoma/switchy
 .. _coroutine: https://docs.python.org/3.6/library/asyncio-task.html
 .. _flask: http://flask.pocoo.org/
 .. _sanic: https://github.com/channelcat/sanic
 .. _docs: https://switchio.readthedocs.org/
 
+
 Use the power of ``async`` and ``await``!
 -----------------------------------------
+Build a routing system using Python's new coroutine_ syntax:
+
 .. code:: python
 
-    import switchio
     from switchio.apps.routers import Router
 
     router = Router(guards={
@@ -47,6 +49,7 @@ Use the power of ``async`` and ``await``!
         """Say hello to inbound calls.
         """
         await sess.answer()  # resumes once call has been fully answered
+        sess.log.info("Answered call to {}".format(match.groups(0)))
 
         sess.playback('ivr/ivr-welcome_to_freeswitch.wav') # non-blocking
         sess.log.info("Playing welcome message")
@@ -56,7 +59,17 @@ Use the power of ``async`` and ``await``!
 
 Run this app (assuming it's in ``dialplan.py``) from the shell::
 
-    $ switchio serve my-fs-host.com --app ./dialplan.py:router
+    $ switchio serve fs-host1 fs-host2 fs-host3 --app ./dialplan.py:router
+
+
+Spin up an auto-dialer
+----------------------
+Run thousands of call flows to stress test your service system using
+the built-in auto-dialer_::
+
+    $ switchio dial fs-tester1 fs-tester2 --profile external --proxy myproxy.com --rate 100 --limit 3000
+
+.. _auto-dialer: http://switchio.readthedocs.io/en/latest/callgen.html
 
 
 Install
