@@ -7,8 +7,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 from setuptools import setup
 
-reqs = ['click']
-
 with open('README.rst', encoding='utf-8') as f:
     readme = f.read()
 
@@ -34,7 +32,7 @@ setup(
             'switchio = switchio.cli:cli',
         ]
     },
-    install_requires=reqs,
+    install_requires=['click', 'colorlog'],
     package_data={
         'switchio': ['../conf/switchiodp.xml']
     },
