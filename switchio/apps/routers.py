@@ -23,11 +23,12 @@ class Proxier(object):
         This is meant as a simple example for testing. If you want to build
         a routing system see the `Router` app below.
     """
-    @callback('CHANNEL_PARK')
-    def on_park(self, sess):
+    @coroutine('CHANNEL_PARK')
+    async def bridge2dest(self, sess):
         if sess.is_inbound():
             # by default bridges to sess['variable_sip_req_uri']
             sess.bridge()
+            await sess.recv("CHANNEL_ANSWER")
 
 
 @app
