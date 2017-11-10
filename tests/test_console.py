@@ -4,3 +4,9 @@
 '''
 Tests for console and command tools
 '''
+import subprocess
+
+
+def test_serve(fshosts, testdir):
+    cmd = ['switchio', 'serve'] + fshosts + ['--app', '../switchio/apps
+    proc = subprocess.Popen(cmd, shell=True)
