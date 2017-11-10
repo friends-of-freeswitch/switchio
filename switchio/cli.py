@@ -51,10 +51,11 @@ def get_apps(appnames):
     switchio.apps.load()
     for appspec in appnames:
         args = {}
-        appname, _, argspec = appspec.partition('/')
-        path, _, attr= appspec.partition(':')
+        path, _, attr = appspec.partition(':')
+        appname, _, argspec = attr.partition('/')
         if argspec:
             args = dict(v.split('=') for v in argspec.split(','))
+
         # module syntax (`mod.submod.AppName` or `mod.submod:AppName`)
         if not os.path.isfile(path) and '.' in appname:
             if not attr:
@@ -146,7 +147,7 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
         max_offered=int(max_offered) if max_offered else None,
         duration=int(duration) if duration else None,
         auto_duration=True if not duration else False,
-        auth=password,
+        password=password,
     )
     apps = get_apps(app)
     for cls, args in apps:
@@ -252,11 +253,10 @@ def serve(hosts, profile, app, loglevel, password, app_header):
     """Start a switchio service and block forever.
     """
     log = switchio.utils.log_to_stderr(loglevel.upper())
-    log.propagate = False
-    service = switchio.Service(hosts, auth=password)
+    service = switchio.Service(hosts, password=password)
     apps = get_apps(app)
     if apps:
-        for cls, _ in apps:
-            service.apps.load_app(cls, app_id=app_header)
+        for cls, kwargs in apps:
+            service.apps.load_app(cls, app_id=app_header, ppkwargs=kwargs)
 
     service.run()
