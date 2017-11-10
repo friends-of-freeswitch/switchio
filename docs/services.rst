@@ -25,13 +25,13 @@ A service is very easy to create given a set of :ref:`deployed <fsconfig>`
 
 .. code-block:: python
 
-    from switchio import Service, event_callback
+    from switchio import Service, callback
 
     class Proxier(object):
         """Proxy all inbound calls to the destination specified in the SIP
         Request-URI.
         """
-        @event_callback('CHANNEL_PARK')
+        @callback('CHANNEL_PARK')
         def on_park(self, sess):
             if sess.is_inbound():
                 sess.bridge(dest_url="${sip_req_uri}")

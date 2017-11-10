@@ -287,7 +287,7 @@ class TestClient:
         """
         from switchio.apps.players import TonePlay
         from switchio.apps.bert import Bert
-        from switchio.marks import get_callbacks, event_callback
+        from switchio.marks import get_callbacks, callback
         from switchio import utils
         with pytest.raises(AttributeError):
             # need an listener assigned first
@@ -345,16 +345,16 @@ class TestClient:
 
         # app reject due to mal-typed cb
         class DumbApp(object):
-            @event_callback('CHANNEL_ANSWER')
+            @callback('CHANNEL_ANSWER')
             def h0(self, sess):
                 pass
 
-            @event_callback('CHANNEL_HANGUP')
+            @callback('CHANNEL_HANGUP')
             def h1(self, sess):
                 pass
 
             # non-function marked obj
-            @event_callback('CHANNEL_PARK')
+            @callback('CHANNEL_PARK')
             class noncb(object):
                 pass
 

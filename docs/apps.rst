@@ -33,7 +33,7 @@ methods decorated using the :py:mod:`switchio.marks` module.
 
 Currently the marks supported would be one of::
 
-    @event_callback("EVENT_NAME")
+    @callback("EVENT_NAME")
     @handler("EVENT_NAME")
 
 Where `EVENT_NAME` is any of the strings supported by the ESL `event type`_
@@ -48,9 +48,9 @@ execution. It can be either of a function or generator.
     apps under :py:mod:`switchio.apps`.
 
 
-Event Callbacks
-***************
-``event_callbacks`` are methods which typically receive a type from
+Callbacks
+*********
+``callback`` are methods which typically receive a type from
 :py:mod:`switchio.models` as their first (and only) argument. This
 type is most often a :py:class:`~switchio.models.Session`.
 
@@ -67,7 +67,7 @@ a global::
 
     num_calls = 0
 
-    @switchio.event_callback('CHANNEL_ANSWER')
+    @switchio.callback('CHANNEL_ANSWER')
     def counter(session):
         global num_calls
         num_calls += 1
@@ -123,7 +123,7 @@ implemented quite trivially::
     import switchio
 
     class Proxier(object):
-        @switchio.event_callback('CHANNEL_PARK')
+        @switchio.callback('CHANNEL_PARK')
         def on_park(self, sess):
             if sess.is_inbound():
                 sess.bridge(dest_url="${sip_req_user}@${sip_req_host}:${sip_req_port}")

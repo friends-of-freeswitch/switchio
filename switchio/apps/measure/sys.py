@@ -5,7 +5,7 @@
 Rudimentary system stats collection using ``psutil``.
 """
 import time
-from switchio import event_callback, utils
+from switchio import callback, utils
 
 
 def sys_stats(df):
@@ -82,7 +82,7 @@ class SysStats(object):
     def collect_rate(self, rate):
         self._collect_period = 1. / rate
 
-    @event_callback("CHANNEL_CREATE")
+    @callback("CHANNEL_CREATE")
     def on_create(self, sess):
         now = time.time()
         if sess.is_outbound():

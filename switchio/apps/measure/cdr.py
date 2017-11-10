@@ -7,7 +7,7 @@ CDR app for collecting signalling latency and performance stats.
 import weakref
 import itertools
 import time
-from switchio.marks import event_callback
+from switchio.marks import callback
 from switchio import utils
 from .storage import pd, DataStorer
 
@@ -142,7 +142,7 @@ class CDR(object):
     def storer(self):
         return self._ds
 
-    @event_callback('CHANNEL_CREATE')
+    @callback('CHANNEL_CREATE')
     def on_create(self, sess):
         """Store total (cluster) session count at channel create time
         """
@@ -154,17 +154,17 @@ class CDR(object):
         call_vars['session_count'] = self.pool.count_sessions()
         call_vars['erlangs'] = self.pool.count_calls()
 
-    @event_callback('CHANNEL_ORIGINATE')
+    @callback('CHANNEL_ORIGINATE')
     def on_originate(self, sess):
         # store local time stamp for originate
         sess.times['originate'] = sess.time
         sess.times['req_originate'] = time.time()
 
-    @event_callback('CHANNEL_ANSWER')
+    @callback('CHANNEL_ANSWER')
     def on_answer(self, sess):
         sess.times['answer'] = sess.time
 
-    @event_callback('CHANNEL_HANGUP')
+    @callback('CHANNEL_HANGUP')
     def log_stats(self, sess, job):
         """Append measurement data only once per call
         """

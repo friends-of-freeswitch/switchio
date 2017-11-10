@@ -307,7 +307,7 @@ class Originator(object):
         if self.pool.count_jobs() == 0 and self.pool.count_sessions() == 0:
             self.log.info('all sessions have ended...')
 
-    @marks.event_callback("BACKGROUND_JOB")
+    @marks.callback("BACKGROUND_JOB")
     def _handle_bj(self, sess, job):
         '''Check for all jobs complete
         '''
@@ -330,7 +330,7 @@ class Originator(object):
         # default bg job handler
         self._report_on_none()
 
-    @marks.event_callback("CHANNEL_HANGUP")
+    @marks.callback("CHANNEL_HANGUP")
     def _handle_hangup(self, sess, job):
         self._report_on_none()
         # if sess.call.sessions and sess.is_outbound():
@@ -340,7 +340,7 @@ class Originator(object):
         #         .format(sess.uuid)
         #     )
 
-    @marks.event_callback("CHANNEL_ORIGINATE")
+    @marks.callback("CHANNEL_ORIGINATE")
     def _handle_originate(self, sess):
         '''Set the call duration
         '''

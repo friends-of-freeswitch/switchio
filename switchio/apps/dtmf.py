@@ -6,7 +6,7 @@ Dtmf tools
 """
 from collections import deque, OrderedDict
 from ..apps import app
-from ..marks import event_callback
+from ..marks import callback
 from ..utils import get_logger
 
 
@@ -26,7 +26,7 @@ class DtmfChecker(object):
         self.incomplete = OrderedDict()
         self.failed = []
 
-    @event_callback('CHANNEL_PARK')
+    @callback('CHANNEL_PARK')
     def on_park(self, sess):
         if sess.is_inbound():
             sess.answer()
@@ -41,7 +41,7 @@ class DtmfChecker(object):
             sess.broadcast('playback::silence_stream://0')
             sess.send_dtmf(''.join(map(str, self.sequence)), self.duration)
 
-    @event_callback('DTMF')
+    @callback('DTMF')
     def on_digit(self, sess):
         digit = int(sess['DTMF-Digit'])
         self.log.info(

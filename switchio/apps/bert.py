@@ -6,7 +6,7 @@ Bert testing
 """
 from collections import deque
 from ..apps import app
-from ..marks import event_callback
+from ..marks import callback
 from ..utils import get_logger, APIError
 
 
@@ -83,7 +83,7 @@ class Bert(object):
         assert isinstance(enable, bool)
         self._two_sided = enable
 
-    @event_callback('CHANNEL_PARK')
+    @callback('CHANNEL_PARK')
     def on_park(self, sess):
         '''Knows how to get us riled up
         '''
@@ -110,7 +110,7 @@ class Bert(object):
             sess.setvars(self.opts)
             sess.broadcast('bert_test::')
 
-    @event_callback("CHANNEL_ANSWER")
+    @callback("CHANNEL_ANSWER")
     def on_answer(self, sess):
         if sess.is_inbound():
             if self._two_sided:  # bert run on both sides
@@ -126,7 +126,7 @@ class Bert(object):
     )
 
     # custom event handling
-    @event_callback('mod_bert::lost_sync')
+    @callback('mod_bert::lost_sync')
     def on_lost_sync(self, sess):
         """Increment counters on synchronization failure
 
@@ -157,7 +157,7 @@ class Bert(object):
         sess.vars['bert_lost_sync_cnt'] += 1
         sess.vars['bert_sync'] = False
 
-    @event_callback('mod_bert::timeout')
+    @callback('mod_bert::timeout')
     def on_timeout(self, sess):
         """Mark session as bert time out
         """
@@ -165,7 +165,7 @@ class Bert(object):
         self.log.error('BERT timeout on session {}'.format(sess.uuid))
         self.timed_out.append(sess)
 
-    @event_callback('mod_bert::in_sync')
+    @callback('mod_bert::in_sync')
     def on_synced(self, sess):
         sess.vars['bert_sync'] = True
         self.log.debug('BERT sync on session {}'.format(sess.uuid))

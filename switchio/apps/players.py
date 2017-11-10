@@ -8,7 +8,7 @@ import inspect
 from collections import OrderedDict, namedtuple
 from .. import utils
 from ..apps import app
-from ..marks import event_callback
+from ..marks import coroutine, callback
 
 
 @app
@@ -16,15 +16,10 @@ class TonePlay(object):
     """Play a 'milli-watt' tone on the outbound leg and echo it back
     on the inbound
     """
-    @event_callback('CHANNEL_PARK')
-    def on_park(self, sess):
+    @coroutine('CHANNEL_PARK')
+    async def on_park(self, sess):
         if sess.is_inbound():
-            sess.answer()
-
-    @event_callback("CHANNEL_ANSWER")
-    def on_answer(self, sess):
-        # inbound leg simply echos back the tone
-        if sess.is_inbound():
+            await sess.answer()
             sess.echo()
 
         # play infinite tones on calling leg
@@ -98,12 +93,12 @@ class PlayRec(object):
         if self.tail < 1.0:
             self.tail = 1.0
 
-    @event_callback("CHANNEL_PARK")
+    @callback("CHANNEL_PARK")
     def on_park(self, sess):
         if sess.is_inbound():
             sess.answer()
 
-    @event_callback("CHANNEL_ANSWER")
+    @callback("CHANNEL_ANSWER")
     def on_answer(self, sess):
         call = sess.call
         if sess.is_inbound():
@@ -135,7 +130,7 @@ class PlayRec(object):
         # always enable a jitter buffer
         # sess.broadcast('jitterbuffer::60')
 
-    @event_callback("PLAYBACK_START")
+    @callback("PLAYBACK_START")
     def on_play(self, sess):
         fp = sess['Playback-File-Path']
         self.log.debug("Playing file '{}' for session '{}'"
@@ -152,7 +147,7 @@ class PlayRec(object):
                 peer.breakmedia()
                 peer.playback(self.audiofile)
 
-    @event_callback("PLAYBACK_STOP")
+    @callback("PLAYBACK_STOP")
     def on_stop(self, sess):
         '''On stop either trigger a new playing of the signal if more
         iterations are required or hangup the call.
@@ -196,7 +191,7 @@ class PlayRec(object):
         # start counting number of clips played
         sess.call.vars['playback_count'] = 0
 
-    @event_callback("RECORD_START")
+    @callback("RECORD_START")
     def on_rec(self, sess):
         self.log.debug("Recording file '{}' for session '{}'".format(
             sess['Record-File-Path'], sess.uuid)
@@ -209,7 +204,7 @@ class PlayRec(object):
         if sess.is_outbound():
             self.trigger_playback(sess)
 
-    @event_callback("RECORD_STOP")
+    @callback("RECORD_STOP")
     def on_recstop(self, sess):
         self.log.debug("Finished recording file '{}' for session '{}'".format(
             sess['Record-File-Path'], sess.uuid))
@@ -263,7 +258,7 @@ class MutedPlayRec(PlayRec):
         sess.playback(self.audiofile, endless=True)
         peer.playback(self.audiofile, endless=True)
 
-    @event_callback("PLAYBACK_START")
+    @callback("PLAYBACK_START")
     def on_play(self, sess):
         fp = sess['Playback-File-Path']
         self.log.debug("Playing file '{}' for session '{}'"
@@ -276,7 +271,7 @@ class MutedPlayRec(PlayRec):
             .format(sess.uuid, '' if muted else 'un')
         )
 
-    @event_callback("PLAYBACK_STOP")
+    @callback("PLAYBACK_STOP")
     def on_stop(self, sess):
         '''On stop either swap the mute state of the channels if more
         iterations are required or hangup the call.
