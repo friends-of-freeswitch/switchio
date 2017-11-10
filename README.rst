@@ -31,8 +31,11 @@ performance and scalability more like sanic_.
 .. _sanic: https://github.com/channelcat/sanic
 .. _docs: https://switchio.readthedocs.org/
 
+
 Use the power of ``async`` and ``await``!
 -----------------------------------------
+Build a routing system using Python's new coroutine_ syntax:
+
 .. code:: python
 
     from switchio.apps.routers import Router
@@ -56,7 +59,17 @@ Use the power of ``async`` and ``await``!
 
 Run this app (assuming it's in ``dialplan.py``) from the shell::
 
-    $ switchio serve my-fs-host.com --app ./dialplan.py:router
+    $ switchio serve fs-host1 fs-host2 fs-host3 --app ./dialplan.py:router
+
+
+Spin up an auto-dialer
+----------------------
+Run thousands of call flows to stress test your service system using
+the built-in auto-dialer_::
+
+    $ switchio dial fs-tester1 fs-tester2 --profile external --proxy myproxy.com --rate 100 --limit 3000
+
+.. _auto-dialer: http://switchio.readthedocs.io/en/latest/callgen.html
 
 
 Install
