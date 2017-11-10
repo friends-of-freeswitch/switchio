@@ -33,7 +33,7 @@ def marker(event_type, cb_type='callback', subscribe=()):
     return inner
 
 
-callback = event_callback = marker
+callback = marker
 coroutine = partial(marker, cb_type='coroutine')
 handler = partial(marker, cb_type='handler')
 
