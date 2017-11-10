@@ -35,7 +35,6 @@ Use the power of ``async`` and ``await``!
 -----------------------------------------
 .. code:: python
 
-    import switchio
     from switchio.apps.routers import Router
 
     router = Router(guards={
@@ -47,6 +46,7 @@ Use the power of ``async`` and ``await``!
         """Say hello to inbound calls.
         """
         await sess.answer()  # resumes once call has been fully answered
+        sess.log.info("Answered call to {}".format(match.groups(0)))
 
         sess.playback('ivr/ivr-welcome_to_freeswitch.wav') # non-blocking
         sess.log.info("Playing welcome message")
