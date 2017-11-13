@@ -423,7 +423,11 @@ class EventListener(object):
         return self.event_loop.unsubscribe(evname)
 
 
-def get_listener(host, port=8021, password='ClueCon', **kwargs):
-    id_headers = kwargs.pop('app_id_headers', {})
-    el = get_event_loop(host, port, password, app_id_headers=id_headers)
-    return EventListener(el, **kwargs)
+def get_listener(
+    host, port=8021, password='ClueCon', app_id_headers=None,
+    call_tracking_header='variable_call_uuid', max_limit=float('inf'),
+):
+    el = get_event_loop(
+        host, port, password, app_id_headers=app_id_headers or {})
+    return EventListener(
+        el, call_tracking_header=call_tracking_header, max_limit=max_limit)
