@@ -159,8 +159,8 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
     p = re.compile('.+?BIND-URL\s+?.+?@(.+?):(\d+).+?\s+',
                    re.IGNORECASE | re.DOTALL)
     for client in dialer.pool.clients:
-        status = client.client.api(
-            'sofia status profile {}'.format(profile)).getBody()
+        status = client.client.cmd(
+            'sofia status profile {}'.format(profile))
         m = p.match(status)
         if not m:
             raise click.ClickException('Slave {} does not have a profile '
