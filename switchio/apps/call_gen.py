@@ -32,10 +32,8 @@ def get_originator(contacts, *args, **kwargs):
             contacts = (contacts,)
 
     # pop kwargs destined for the listener
-    _, kwargnames = utils.get_args(handlers.EventListener.__init__)
-
-    lkwargs = {
-        name: kwargs.pop(name) for name in kwargnames if name in kwargs}
+    _, kwargnames = utils.get_args(handlers.get_listener)
+    lkwargs = {name: kwargs.pop(name) for name in kwargnames if name in kwargs}
 
     slavepool = api.get_pool(contacts, **lkwargs)
     return Originator(slavepool, *args, **kwargs)
@@ -46,8 +44,8 @@ def limiter(pairs):
     less then or equal to it's predefined capacity limit
     """
     for pair in cycle(pairs):
-        l = pair.listener
-        if l.count_calls() > l.max_limit:
+        el = pair.listener
+        if el.count_calls() > el.max_limit:
             continue
         yield pair
 
