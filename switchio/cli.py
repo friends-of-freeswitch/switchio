@@ -51,7 +51,7 @@ def get_apps(appnames):
     switchio.apps.load()
     for appspec in appnames:
         args = {}
-        path, _, attr = appspec.partition(':')
+        path, _, attr = appspec.rpartition(':')
         appname, _, argspec = attr.partition('/')
         if argspec:
             args = dict(v.split('=') for v in argspec.split(','))
@@ -120,13 +120,14 @@ def get_apps(appnames):
               default=False,
               help='Whether to jump into an interactive session '
               'after setting up the call originator')
-@click.option('--app', default=['Bert'], multiple=True,
-              help='switchio application to load. You can pass this option '
-              'multiple times and the apps are loaded in the order specified. '
-              'See the \'list-apps\' command to list available apps. For every '
-              'listed app you can optionally specify arguments by adding a slash '
-              'followed by comma-separated k=v pairs for every argument. (e.g '
-              'Bert/bert_timer_name=soft,bert_timeout_ms=5000)')
+@click.option(
+    '--app', default=['Bert'], multiple=True,
+    help='switchio application to load. You can pass this option '
+    'multiple times and the apps are loaded in the order specified. '
+    'See the \'list-apps\' command to list available apps. For every '
+    'listed app you can optionally specify arguments by adding a slash '
+    'followed by comma-separated k=v pairs for every argument. (e.g '
+    'Bert/bert_timer_name=soft,bert_timeout_ms=5000)')
 @click.option('--password', default='ClueCon',
               help='Password to use for ESL authentication')
 @click.option('--metrics-file',
@@ -252,7 +253,7 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
 def serve(hosts, profile, app, loglevel, password, app_header):
     """Start a switchio service and block forever.
     """
-    log = switchio.utils.log_to_stderr(loglevel.upper())
+    switchio.utils.log_to_stderr(loglevel.upper())
     service = switchio.Service(hosts, password=password)
     apps = get_apps(app)
     if apps:
