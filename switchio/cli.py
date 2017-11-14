@@ -51,10 +51,11 @@ def get_apps(appnames):
     switchio.apps.load()
     for appspec in appnames:
         args = {}
-        appname, _, argspec = appspec.partition('/')
-        path, _, attr= appspec.partition(':')
+        path, _, attr = appspec.rpartition(':')
+        appname, _, argspec = attr.partition('/')
         if argspec:
             args = dict(v.split('=') for v in argspec.split(','))
+
         # module syntax (`mod.submod.AppName` or `mod.submod:AppName`)
         if not os.path.isfile(path) and '.' in appname:
             if not attr:
@@ -119,13 +120,14 @@ def get_apps(appnames):
               default=False,
               help='Whether to jump into an interactive session '
               'after setting up the call originator')
-@click.option('--app', default=['Bert'], multiple=True,
-              help='switchio application to load. You can pass this option '
-              'multiple times and the apps are loaded in the order specified. '
-              'See the \'list-apps\' command to list available apps. For every '
-              'listed app you can optionally specify arguments by adding a slash '
-              'followed by comma-separated k=v pairs for every argument. (e.g '
-              'Bert/bert_timer_name=soft,bert_timeout_ms=5000)')
+@click.option(
+    '--app', default=['Bert'], multiple=True,
+    help='switchio application to load. You can pass this option '
+    'multiple times and the apps are loaded in the order specified. '
+    'See the \'list-apps\' command to list available apps. For every '
+    'listed app you can optionally specify arguments by adding a slash '
+    'followed by comma-separated k=v pairs for every argument. (e.g '
+    'Bert/bert_timer_name=soft,bert_timeout_ms=5000)')
 @click.option('--password', default='ClueCon',
               help='Password to use for ESL authentication')
 @click.option('--metrics-file',
@@ -146,7 +148,7 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
         max_offered=int(max_offered) if max_offered else None,
         duration=int(duration) if duration else None,
         auto_duration=True if not duration else False,
-        auth=password,
+        password=password,
     )
     apps = get_apps(app)
     for cls, args in apps:
@@ -158,8 +160,8 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
     p = re.compile('.+?BIND-URL\s+?.+?@(.+?):(\d+).+?\s+',
                    re.IGNORECASE | re.DOTALL)
     for client in dialer.pool.clients:
-        status = client.client.api(
-            'sofia status profile {}'.format(profile)).getBody()
+        status = client.client.cmd(
+            'sofia status profile {}'.format(profile))
         m = p.match(status)
         if not m:
             raise click.ClickException('Slave {} does not have a profile '
@@ -251,12 +253,11 @@ def dial(hosts, proxy, dest_url, profile, gateway, rate, limit, max_offered,
 def serve(hosts, profile, app, loglevel, password, app_header):
     """Start a switchio service and block forever.
     """
-    log = switchio.utils.log_to_stderr(loglevel.upper())
-    log.propagate = False
-    service = switchio.Service(hosts, auth=password)
+    switchio.utils.log_to_stderr(loglevel.upper())
+    service = switchio.Service(hosts, password=password)
     apps = get_apps(app)
     if apps:
-        for cls, _ in apps:
-            service.apps.load_app(cls, app_id=app_header)
+        for cls, kwargs in apps:
+            service.apps.load_app(cls, app_id=app_header, ppkwargs=kwargs)
 
     service.run()

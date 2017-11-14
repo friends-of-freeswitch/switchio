@@ -94,7 +94,7 @@ class Client(object):
         to this client's listener's callback chain.
 
         :param ns: A namespace-like object containing functions marked with
-            @event_callback (can be a module, class or instance).
+            @callback (can be a module, class or instance).
         :params str on_value: app group id key to be used for registering app
             callbacks with the `EventListener`. This value will be inserted in
             the `originate` command as an X-header and used to look up which
@@ -134,6 +134,11 @@ class Client(object):
                 # run init step
                 next(ret)
                 app._finalize = ret
+
+        elif prepost_kwargs:
+            raise TypeError(
+                "{} prepost kwargs were passed but {}.prepost() does not exist"
+                .format(prepost_kwargs, app))
 
         self.log.info(
             "Loading '{}' app with group id '{}' for event_loop '{}'"
