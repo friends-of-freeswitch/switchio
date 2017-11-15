@@ -8,9 +8,31 @@ The format is based on `Keep a Changelog`_ and this project adheres to
 .. _Keep a Changelog: http://keepachangelog.com/en
 .. _Semantic Versioning: http://semver.org/
 
+[Unreleased]
+------------
 
-0.1.0.alpha0 - 2017-10-31
--------------------------
+
+[0.1.0.alpha1] - 2017-11-15
+---------------------------
+Changed
+*******
+- Coroutine support to the ``switchio.apps.routers.Router`` app
+  which enforces full async routing handlers.
+- New readme showcasing the py3.5+ only API
+- Making return values from ``Session`` methods awaitable
+
+Fixed
+*****
+- Fix up some CLI bugs introduced during the hard fork / core rewrite
+- Add proper coroutine-task teardown handling and logging
+
+Removed
+*******
+- SWIG and py2.7 support
+
+
+[0.1.0.alpha0] - 2017-10-31
+---------------------------
 Added
 *****
 ``switchio`` is a hard fork of Sangoma's `switchy`_ project which seeks

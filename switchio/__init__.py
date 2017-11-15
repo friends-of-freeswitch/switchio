@@ -7,9 +7,8 @@ switchio: ``asyncio`` powered FreeSWITCH cluster control
 Licensed under the MPL 2.0 license (see `LICENSE` file)
 """
 from os import path
-from . import apps
 from .utils import get_logger, ESLError
-from .api import Client
+from .api import get_client, Client
 from .loop import get_event_loop
 from .handlers import get_listener
 from .apps.call_gen import get_originator
@@ -20,8 +19,24 @@ from .sync import sync_caller
 from .serve import Service
 
 __package__ = 'switchio'
-__version__ = '0.1.0.alpha0'
+__version__ = '0.1.0.alpha1'
 __author__ = ('Sangoma Technologies', 'qa@eng.sangoma.com')
-
+__all__ = [
+    'get_logger',
+    'ESLError',
+    'get_client',
+    'get_event_loop',
+    'get_listener',
+    'get_originator',
+    'SlavePool',
+    'MultiEval',
+    'callback',
+    'handler',
+    'coroutine',
+    'get_connection',
+    'ConnectionError',
+    'sync_caller',
+    'Service',
+]
 
 PARK_DP = path.join(path.dirname(__file__), '../conf', 'switchiodp.xml')
