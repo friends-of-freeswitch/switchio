@@ -4,6 +4,7 @@
   <!-- Park call and transfer control to esl -->
   <extension name="switchiopark">
     <condition field="destination_number" expression="^(.*)$">
+      <action application="set" data="park_timeout=3:DESTINATION_OUT_OF_ORDER"/>
       <action application="park"/>
     </condition>
   </extension>
