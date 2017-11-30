@@ -33,9 +33,6 @@ setup(
         ]
     },
     install_requires=['click', 'colorlog'],
-    package_data={
-        'switchio': ['../conf/switchiodp.xml']
-    },
     extras_require={
         'metrics': ['pandas>=0.18'],
         'hdf5': ['tables==3.2.1.1'],
