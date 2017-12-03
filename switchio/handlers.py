@@ -131,18 +131,26 @@ class EventListener(object):
         self.failed_jobs = Counter()
         self.total_answered_sessions = 0
 
+    @handler('CHANNEL_HANGUP')
     @handler('CHANNEL_PARK')
     @handler('CALL_UPDATE')
     def lookup_sess(self, e):
         """The most basic handler template which looks up the locally tracked
         session corresponding to event `e` and updates it with event data
         """
-        uuid = e.get('Unique-ID')
-        sess = self.sessions.get(uuid, False)
+        sess = self.sessions.get(e.get('Unique-ID'), False)
         if sess:
             sess.update(e)
             return True, sess
         return False, None
+
+    def lookup_sess_and_job(self, e):
+        """Look up and return the session and any corresponding background job.
+        """
+        consumed, sess = self.lookup_sess(e)
+        if consumed:
+            return True, sess, sess.bg_job
+        return False, None, None
 
     @handler('LOG')
     def _handle_log(self, e):
@@ -321,9 +329,10 @@ class EventListener(object):
             self.log.warn('Skipping answer of {}'.format(uuid))
             return False, None
 
-    @handler('CHANNEL_HANGUP')
-    def _handle_hangup(self, e):
-        '''Handle hangup events
+    @handler('CHANNEL_DESTROY')
+    # @handler('CHANNEL_HANGUP_COMPLETE')  # XXX: a race between these two...
+    def _handle_destroy(self, e):
+        '''Handle channel destroy events.
 
         Returns
         -------

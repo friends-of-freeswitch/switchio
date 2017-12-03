@@ -331,7 +331,7 @@ class Originator(object):
         self._report_on_none()
 
     @marks.event_callback("CHANNEL_HANGUP")
-    def _handle_hangup(self, sess, job):
+    def _handle_hangup(self, sess):
         self._report_on_none()
         # if sess.call.sessions and sess.is_outbound():
         #     # we normally expect that the caller hangs up
