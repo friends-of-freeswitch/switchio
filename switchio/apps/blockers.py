@@ -34,7 +34,7 @@ class CalleeBlockOnInvite(object):
         else:  # str case
             self.action = partial(Session.hangup, cause=value)
 
-    @event_callback("CHANNEL_CREATE")
+    @callback("CHANNEL_CREATE")
     def on_invite(self, sess):
         if sess.is_inbound():
             self.action(sess)
@@ -72,7 +72,7 @@ class CalleeRingback(object):
         if self.auto_duration:
             self.callee_hup_after = value
 
-    @event_callback("CHANNEL_CALLSTATE")
+    @callback("CHANNEL_CALLSTATE")
     def on_cs(self, sess):
         self.log.debug("'{}' sess CS is '{}'".format(
             sess['Call-Direction'], sess['Channel-Call-State']))
