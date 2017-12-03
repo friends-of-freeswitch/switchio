@@ -14,6 +14,13 @@ from . import utils
 # debugging - watch out pformat() is slow...
 # from pprint import pformat
 
+_sendmsg = """\
+sendmsg {uuid}
+call-command: {cmd}
+execute-app-name: {app}
+execute-app-arg: {params}{arg}
+loops: {loops}"""
+
 
 class InboundProtocol(asyncio.Protocol):
     """Inbound ESL client which delivers parsed events to an
@@ -268,6 +275,17 @@ class InboundProtocol(asyncio.Protocol):
             future.add_done_callback(self._handle_cmd_resp)
 
         return future
+
+    def sendmsg(self, uuid, cmd, app, arg='', params='', loops=1):
+        """Send a message to the core using a sendmsg packet.
+        """
+        cmd = _sendmsg.format(
+            uuid=uuid, cmd=cmd, app=app, arg=arg, params=params, loops=loops)
+        self.log.debug("Sending message:\n{}".format(cmd))
+        fut = self.sendrecv(cmd)
+        fut.add_done_callback(self._handle_cmd_resp)
+        fut.cmd = cmd
+        return fut
 
     def disconnect(self):
         """Disconnect this protocol.
