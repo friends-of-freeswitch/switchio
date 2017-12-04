@@ -555,12 +555,12 @@ class Job(object):
     :param str sess_uuid: optional session uuid if job is associated with an
         active FS session
     '''
-    def __init__(self, event_or_fut, sess_uuid=None, callback=None,
-                 client_id=None, con=None, kwargs={}):
-        self.fut = event_or_fut if getattr(
-            event_or_fut, 'result', None) else None
-        self.events = Events(event_or_fut) if not self.fut else None
-        # self.uuid = self.events['Job-UUID']
+    def __init__(self, future=None, sess_uuid=None, callback=None,
+                 event=None, client_id=None, con=None, kwargs={}):
+        self.fut = future
+        self.events = Events()
+        if event:
+            self.events.update(event)
         self.sess_uuid = sess_uuid
         self.launch_time = time.time()
         self.cid = client_id  # placeholder for client ident
@@ -585,17 +585,16 @@ class Job(object):
 
     @property
     def uuid(self):
-        if self.fut:  # py35+ only
+        try:
+            return self.events['Job-UUID']
+        except KeyError:
             try:
-                event = self.fut.result()
+                return self.fut.result()['Job-UUID']
             except futures.TimeoutError:
                 self.log.warn(
                     "Response timeout for job {}"
                     .format(self.sess_uuid)
                 )
-            self.events = Events(event)
-            self.fut = None
-        return self.events['Job-UUID']
 
     @property
     def result(self):
