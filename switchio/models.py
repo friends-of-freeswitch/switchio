@@ -303,7 +303,7 @@ class Session(object):
         else:  # set a stream file delimiter
             self.setvar('playback_delimiter', delim)
 
-        varset = '{{{vars}}}'.format(','.join(pairs)) if pairs else ''
+        varset = '{{{}}}'.format(','.join(pairs)) if pairs else ''
         args = '{streams}{start}'.format(
                 streams=delim.join(args),
                 start='@@{}'.format(start_sample) if start_sample else '',

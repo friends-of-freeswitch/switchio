@@ -29,7 +29,8 @@ class TonePlay(object):
 
         # play infinite tones on calling leg
         if sess.is_outbound():
-            sess.broadcast('playback::{loops=-1}tone_stream://%(251,0,1004)')
+            sess.playback('tone_stream://%(251,0,1004)',
+                          params={'loops': '-1'})
 
 
 RecInfo = namedtuple("RecInfo", "host caller callee")
