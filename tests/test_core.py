@@ -127,7 +127,7 @@ def checkcalls(scenario, ael, travis):
             # wait for events to arrive and be processed
             start = time.time()
             msg = "Wasn't quite fast enough to track {} cps".format(rate)
-            while ael.count_calls() != limit:
+            while ael.count_calls() != limit and (time.time() - start) < duration + 3:
                 time.sleep(0.0001)
             else:
                 assert ael.count_calls() == limit, msg
