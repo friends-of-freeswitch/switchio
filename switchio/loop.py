@@ -153,7 +153,7 @@ class EventLoop(object):
             self._thread.daemon = True  # die with parent
             self._thread.start()
 
-    def connect(self, loop=None, timeout=3, **conn_kwargs):
+    def connect(self, loop=None, timeout=3, debug=False, **conn_kwargs):
         '''Initialize underlying receive connection.
         '''
         # TODO: once we remove SWIG/py27 support this check can be removed
@@ -165,7 +165,7 @@ class EventLoop(object):
                 return
 
         if not self.is_alive():
-            self._launch_bg_loop()
+            self._launch_bg_loop(debug=debug)
             while not self.loop:
                 time.sleep(0.1)
 
