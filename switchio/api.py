@@ -17,7 +17,7 @@ from . import handlers
 from .utils import ConfigurationError, APIError
 from .commands import build_originate_cmd
 from . import marks
-from .connection import get_connection, ConnectionError
+from .connection import get_connection
 
 
 class Client(object):
@@ -321,7 +321,7 @@ class Client(object):
         return listener
 
     def bgapi(self, cmd, listener=None, callback=None, client_id=None,
-              **jobkwargs):
+              sess_uuid=None, **jobkwargs):
         '''Execute a non blocking api call and handle it to completion
 
         Parameters
@@ -337,27 +337,15 @@ class Client(object):
             kwargs passed here.
         '''
         listener = self._assert_alive(listener)
-        # block the event loop while we insert our job
-        listener.block_jobs()
         con = listener.event_loop._con
-        try:
-            ev = con.bgapi(cmd)
-            if ev:
-                bj = listener.register_job(
-                    ev, callback=callback,
-                    client_id=client_id or self._id,
-                    con=self._con,
-                    **jobkwargs
-                )
-            else:
-                if not con.connected():
-                    raise ConnectionError("local connection down on '{}'!?"
-                                          .format(con.host))
-                else:
-                    raise APIError("bgapi cmd failed?!\n{}".format(cmd))
-        finally:
-            # wakeup the listener's event loop
-            listener.unblock_jobs()
+        future = con.bgapi(cmd)
+        bj = listener.register_job(
+            future=future, callback=callback,
+            client_id=client_id or self._id,
+            con=self._con,
+            sess_uuid=sess_uuid,
+            **jobkwargs
+        )
         return bj
 
     def originate(self, dest_url=None,
