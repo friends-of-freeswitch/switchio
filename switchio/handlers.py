@@ -56,9 +56,6 @@ class EventListener(object):
         self.sessions_per_app = Counter()
         self.max_limit = max_limit
         self.call_tracking_header = call_tracking_header
-        # job synchronization
-        self._lookup_blocker = mp.Event()  # used block event loop temporarily
-        self._lookup_blocker.set()
         # state reset
         self.reset()
 
@@ -66,7 +63,7 @@ class EventListener(object):
         for evname, cbtype, cb in get_callbacks(self, only='handler'):
             self.event_loop.add_handler(evname, cb)
 
-    def register_job(self, event, **kwargs):
+    def register_job(self, future, **kwargs):
         '''Register for a job to be handled when the appropriate event arrives.
         Once an event corresponding to the job is received, the bgjob event
         handler will 'consume' it and invoke its callback.
@@ -82,28 +79,9 @@ class EventListener(object):
         -------
         bj : an instance of Job (a background job)
         '''
-        bj = Job(event, **kwargs)
+        bj = Job(future, **kwargs)
         self.bg_jobs[bj.uuid] = bj
         return bj
-
-    def block_jobs(self):
-        '''Block the event loop from processing
-        background job events (useful for registering for
-        job events - see `self.register_job`)
-
-        WARNING
-        -------
-        This will block the event loop thread permanently starting on the next
-        received background job event. Be sure to run 'unblock_jobs'
-        immediately after registering your job.
-        '''
-        self._lookup_blocker.clear()
-
-    def unblock_jobs(self):
-        '''Unblock the event loop from processing
-        background job events
-        '''
-        self._lookup_blocker.set()
 
     def count_jobs(self):
         return len(self.bg_jobs)
@@ -131,18 +109,26 @@ class EventListener(object):
         self.failed_jobs = Counter()
         self.total_answered_sessions = 0
 
+    @handler('CHANNEL_HANGUP')
     @handler('CHANNEL_PARK')
     @handler('CALL_UPDATE')
     def lookup_sess(self, e):
         """The most basic handler template which looks up the locally tracked
         session corresponding to event `e` and updates it with event data
         """
-        uuid = e.get('Unique-ID')
-        sess = self.sessions.get(uuid, False)
+        sess = self.sessions.get(e.get('Unique-ID'), False)
         if sess:
             sess.update(e)
             return True, sess
         return False, None
+
+    def lookup_sess_and_job(self, e):
+        """Look up and return the session and any corresponding background job.
+        """
+        consumed, sess = self.lookup_sess(e)
+        if consumed:
+            return True, sess, sess.bg_job
+        return False, None, None
 
     @handler('LOG')
     def _handle_log(self, e):
@@ -173,78 +159,63 @@ class EventListener(object):
         err = '-ERR'
         job_uuid = e.get('Job-UUID')
         body = e.get('Body')
+
         # always report errors even for jobs which we aren't tracking
         if err in body:
             resp = body.strip(err).strip()
             error = True
             self.log.debug("job '{}' failed with:\n{}".format(
                            job_uuid, str(body)))
+        elif ok in body:
+            resp = body.strip(ok + '\n')
 
-        if job_uuid in self.bg_jobs:
-            job = self.bg_jobs.get(job_uuid, None)
+        job = self.bg_jobs.get(job_uuid, None)
+        if not job:
+            job = Job(event=e)
         else:
-            # might be in the middle of inserting a job
-            self._lookup_blocker.wait()
-            job = self.bg_jobs.get(job_uuid, None)
+            job.events.update(e)
 
-        # if this job is registered, process it
-        if job:
-            job.update(e)
-            consumed = True
+        # attempt to lookup an associated session
+        sess = self.sessions.get(job.sess_uuid or resp, None)
+
+        if error:
             # if the job returned an error, report it and remove the job
-            if error:
-                # if this job corresponds to a tracked session then
-                # remove it as well
+            self.log.error(
+                "Job '{}' corresponding to session '{}'"
+                " failed with:\n{}".format(
+                    job_uuid,
+                    job.sess_uuid, str(body))
+                )
+            job.fail(resp)  # fail the job
+            # always pop failed jobs
+            self.bg_jobs.pop(job_uuid)
+            # append the id for later lookup and discard?
+            self.failed_jobs[resp] += 1
+            consumed = True
+
+        else:  # OK case
+            if sess:
+                # special case: the bg job event returns a known originated
+                # session's (i.e. pre-registered) uuid in its body
                 if job.sess_uuid:
-                    self.log.error(
-                        "Job '{}' corresponding to session '{}'"
-                        " failed with:\n{}".format(
-                            job_uuid,
-                            job.sess_uuid, str(body))
-                        )
-                    # session may already have been popped in hangup handler?
-                    # TODO make a special method for popping sessions?
-                    sess = self.sessions.pop(job.sess_uuid, None)
-                    if sess:
-                        # remove any call containing this session
-                        call = sess.call
-                        if call:
-                            call = self.calls.pop(call.uuid, None)
-                        else:
-                            self.log.debug("No Call containing Session "
-                                           "'{}'".format(sess.uuid))
-                    else:
-                        self.log.warn("No session corresponding to bj '{}'"
-                                      .format(job_uuid))
-                job.fail(resp)  # fail the job
-                # always pop failed jobs
-                self.bg_jobs.pop(job_uuid)
-                # append the id for later lookup and discard?
-                self.failed_jobs[resp] += 1
 
-            # success, associate with any related session
-            elif ok in body:
-                resp = body.strip(ok + '\n')
+                    assert str(job.sess_uuid) == str(resp), \
+                        ("""Session uuid '{}' <-> BgJob uuid '{}' mismatch!?
+                         """.format(job.sess_uuid, resp))
 
-                # special case: the bg job event returns an originated
-                # session's uuid in its body
-                sess = self.sessions.get(resp, None)
-                if sess:
-                    if job.sess_uuid:
-                        assert str(job.sess_uuid) == str(resp), \
-                            ("""Session uuid '{}' <-> BgJob uuid '{}' mismatch!?
-                             """.format(job.sess_uuid, resp))
-
-                    # reference this job in the corresponding session
-                    # self.sessions[resp].bg_job = job
-                    sess.bg_job = job
-                    self.log.debug("Job '{}' was sucessful".format(
-                                   job_uuid))
-                # run the job's callback
-                job(resp)
+                # reference this job in the corresponding session
+                # self.sessions[resp].bg_job = job
+                sess.bg_job = job
+                self.log.debug("Job '{}' was sucessful".format(
+                               job_uuid))
+                consumed = True
             else:
-                self.log.warning("Received unexpected job message:\n{}"
-                                 .format(body))
+                self.log.warn("No session corresponding to bj '{}'"
+                              .format(job_uuid))
+
+            # run the job's callback
+            job(resp)
+
         return consumed, sess, job
 
     @handler('CHANNEL_CREATE')
@@ -321,9 +292,10 @@ class EventListener(object):
             self.log.warn('Skipping answer of {}'.format(uuid))
             return False, None
 
-    @handler('CHANNEL_HANGUP')
-    def _handle_hangup(self, e):
-        '''Handle hangup events
+    @handler('CHANNEL_DESTROY')
+    # @handler('CHANNEL_HANGUP_COMPLETE')  # XXX: a race between these two...
+    def _handle_destroy(self, e):
+        '''Handle channel destroy events.
 
         Returns
         -------

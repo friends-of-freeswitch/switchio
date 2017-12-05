@@ -280,7 +280,7 @@ def test_with_orig(get_orig, measure, storer):
     orig.start()
 
     # wait for all calls to come up then hupall
-    orig.waitwhile(lambda: orig.total_originated_sessions < orig.max_offered)
+    orig.waitwhile(lambda: orig.total_originated_sessions < orig.max_offered, timeout=20)
     orig.hupall()
     start = time.time()
     orig.waitwhile(

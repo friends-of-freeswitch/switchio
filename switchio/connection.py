@@ -217,6 +217,12 @@ class Connection(object):
         queue.task_done()
         return event
 
+    def execute(self, uuid, app, arg='', params='', loops=1):
+        """Execute a dialplan ``app`` with argument ``arg``.
+        """
+        return self.protocol.sendmsg(uuid, 'execute', app, arg, params,
+                                     loops=loops)
+
     def api(self, cmd, errcheck=True, block=False, timeout=0.5):
         '''Invoke api command (with error checking by default).
         '''

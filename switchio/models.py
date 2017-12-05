@@ -10,6 +10,7 @@ from collections import deque, defaultdict
 import multiprocessing as mp
 from concurrent import futures
 from pprint import pprint
+import warnings
 from . import utils
 
 
@@ -229,7 +230,7 @@ class Session(object):
     def setvar(self, var, value):
         """Set variable to value
         """
-        self.broadcast("set::{}={}".format(var, value))
+        self.execute('set', '='.join((var, value)))
 
     def setvars(self, params):
         """Set all variables in map `params` with a single command
@@ -241,7 +242,7 @@ class Session(object):
     def unsetvar(self, var):
         """Unset a channel var.
         """
-        self.broadcast("unset::{}".format(var))
+        return self.execute("unset", var)
 
     def answer(self):
         self.con.api("uuid_answer {}".format(self.uuid))
@@ -302,15 +303,12 @@ class Session(object):
         else:  # set a stream file delimiter
             self.setvar('playback_delimiter', delim)
 
-        self.broadcast(
-            '{app}::{varset}{streams}{start} {leg}'.format(
-                app=app,
+        varset = '{{{}}}'.format(','.join(pairs)) if pairs else ''
+        args = '{streams}{start}'.format(
                 streams=delim.join(args),
                 start='@@{}'.format(start_sample) if start_sample else '',
-                leg=leg,
-                varset='{{{vars}}}'.format(','.join(pairs)) if pairs else '',
             )
-        )
+        self.execute(app, args, params=varset)
 
     def start_record(self, path, rx_only=False, stereo=False, rate=16000):
         '''Record audio from this session to a local file on the slave filesystem
@@ -326,7 +324,7 @@ class Session(object):
             self.setvar('RECORD_STEREO', 'true')
 
         self.setvar('record_sample_rate', '{}'.format(rate))
-        self.broadcast('record_session::{}'.format(path))
+        self.execute('record_session', path)
 
     def stop_record(self, path='all', delay=0):
         '''Stop recording audio from this session to a local file on the slave
@@ -336,13 +334,13 @@ class Session(object):
             https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+stop_record_session
         '''
         if delay:
-            self.con.api(
-                "sched_api +{delay} none uuid_broadcast {sessid} "
-                "stop_record_session::{path}".
-                format(sessid=self.uuid, delay=delay, path=path)
+            self.execute(
+                "sched_api",
+                "+{delay} none stop_record_session {path}".
+                format(delay=delay, path=path)
             )
         else:
-            self.broadcast('stop_record_session::{}'.format(path))
+            self.execute('stop_record_session', path)
 
     def record(self, action, path, rx_only=True):
         '''Record audio from this session to a local file on the slave filesystem
@@ -356,9 +354,9 @@ class Session(object):
         self.con.api('uuid_record {} {} {}'.format(self.uuid, action, path))
 
     def echo(self):
-        '''Echo back all audio recieved
+        '''Echo back all audio recieved.
         '''
-        self.broadcast('echo::')
+        self.execute('echo')
 
     def bypass_media(self, state):
         '''Re-invite a bridged node out of the media path for this session
@@ -383,6 +381,12 @@ class Session(object):
         self.con.api('uuid_park {}'.format(self.uuid))
         return self.recv('CHANNEL_PARK')
 
+    def execute(self, cmd, arg='', params='', loops=1):
+        """Execute an application async.
+        """
+        return self.con.execute(
+            self.uuid, cmd, arg, params=params, loops=loops)
+
     def broadcast(self, path, leg='', delay=None, hangup_cause=None):
         """Execute an application async on a chosen leg(s) with optional hangup
         afterwards. If provided tell FS to schedule the app ``delay`` seconds
@@ -394,6 +398,11 @@ class Session(object):
         .. _sched_broadcast:
             https://freeswitch.org/confluence/display/FREESWITCH/mod_commands#mod_commands-sched_broadcast
         """
+        warnings.warn((
+            "`Session.broadcast()` has been deprecated due to unreliable\
+            `uuid_broadcast` behaviour in FreeSWITCH core. Use\
+            `Session.execute()` instead."),
+            DeprecationWarning)
         if not delay:
             return self.con.api(
                 'uuid_broadcast {} {} {}'.format(self.uuid, path, leg))
@@ -414,8 +423,9 @@ class Session(object):
         if gateway:
             profile = 'gateway/{}'.format(gateway)
 
-        self.broadcast(
-            "bridge::{{{varset}}}sofia/{}/{}{dest}".format(
+        self.execute(
+            'bridge',
+            "{{{varset}}}sofia/{}/{}{dest}".format(
                 profile if profile else self['variable_sofia_profile_name'],
                 dest_url if dest_url else self['variable_sip_req_uri'],
                 varset=','.join(pairs),
@@ -455,7 +465,7 @@ class Session(object):
         .. _respond:
             https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+respond
         """
-        self.broadcast('respond::{}'.format(response))
+        self.execute('respond', response)
 
     def deflect(self, uri):
         """Send a refer to the client.
@@ -464,7 +474,13 @@ class Session(object):
 
              <action application="deflect" data="sip:someone@somewhere.com" />
          """
-        self.broadcast("deflect::{}".format(uri))
+        self.execute("deflect", uri)
+
+    def speak(self, text, engine='flite', voice='kal', timer_name=''):
+        """Speak, young switch (alpha).
+        """
+        return self.execute(
+            'speak', '|'.join((engine, voice, text, timer_name)))
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
@@ -539,12 +555,12 @@ class Job(object):
     :param str sess_uuid: optional session uuid if job is associated with an
         active FS session
     '''
-    def __init__(self, event_or_fut, sess_uuid=None, callback=None,
-                 client_id=None, con=None, kwargs={}):
-        self.fut = event_or_fut if getattr(
-            event_or_fut, 'result', None) else None
-        self.events = Events(event_or_fut) if not self.fut else None
-        # self.uuid = self.events['Job-UUID']
+    def __init__(self, future=None, sess_uuid=None, callback=None,
+                 event=None, client_id=None, con=None, kwargs={}):
+        self.fut = future
+        self.events = Events()
+        if event:
+            self.events.update(event)
         self.sess_uuid = sess_uuid
         self.launch_time = time.time()
         self.cid = client_id  # placeholder for client ident
@@ -569,17 +585,16 @@ class Job(object):
 
     @property
     def uuid(self):
-        if self.fut:  # py35+ only
+        try:
+            return self.events['Job-UUID']
+        except KeyError:
             try:
-                event = self.fut.result()
+                return self.fut.result()['Job-UUID']
             except futures.TimeoutError:
                 self.log.warn(
                     "Response timeout for job {}"
                     .format(self.sess_uuid)
                 )
-            self.events = Events(event)
-            self.fut = None
-        return self.events['Job-UUID']
 
     @property
     def result(self):

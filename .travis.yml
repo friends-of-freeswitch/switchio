@@ -29,16 +29,16 @@ before_install:
     - export PATH="$PWD:$PATH"
     - cd ..
 
-  # pull and start up freeswitch container bound to 'lo'
-  # - docker pull safarov/freeswitch
-  # - docker run -d --net=host -v $TRAVIS_BUILD_DIR/conf/ci-minimal/:/etc/freeswitch safarov/freeswitch
-  # - docker ps -a
+     # pull and start up freeswitch container bound to 'lo'
+     # - docker pull safarov/freeswitch
+     # - docker run -d --net=host -e SOUND_RATES=8000:16000 -e SOUND_TYPES=music:en-us-callie -v freeswitch-sounds:/usr/share/freeswitch/sounds -v $TRAVIS_BUILD_DIR/conf/ci-minimal/:/etc/freeswitch safarov/freeswitch
+     # - docker ps -a
 
 install:
-  # - pip install -U tox
-  - cd $TRAVIS_BUILD_DIR
-  - pip install . -r requirements-test.txt
+    # - pip install -U tox
+    - cd $TRAVIS_BUILD_DIR
+    - pip install . -r requirements-test.txt
 
 # NOTE: no support for pandas/pytables yet
 script:
-  - pytest --use-docker tests/
+    - pytest --use-docker tests/ -p no:logging

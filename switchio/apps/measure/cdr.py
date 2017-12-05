@@ -164,7 +164,7 @@ class CDR(object):
     def on_answer(self, sess):
         sess.times['answer'] = sess.time
 
-    @event_callback('CHANNEL_HANGUP')
+    @event_callback('CHANNEL_DESTROY')
     def log_stats(self, sess, job):
         """Append measurement data only once per call
         """

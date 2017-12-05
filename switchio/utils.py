@@ -43,8 +43,11 @@ TRACE = 5
 def get_logger(name=None):
     '''Return the package log or a sub-log for `name` if provided.
     '''
-    log = logging.getLogger('switchio')
-    return log.getChild(name) if name else log
+    log = rlog = logging.getLogger('switchio')
+    if name and name != 'switchio':
+        log = rlog.getChild(name)
+        log.level = rlog.level
+    return log
 
 
 def log_to_stderr(level=None):

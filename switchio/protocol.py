@@ -14,6 +14,13 @@ from . import utils
 # debugging - watch out pformat() is slow...
 # from pprint import pformat
 
+_sendmsg = """\
+sendmsg {uuid}
+call-command: {cmd}
+execute-app-name: {app}
+execute-app-arg: {params}{arg}
+loops: {loops}"""
+
 
 class InboundProtocol(asyncio.Protocol):
     """Inbound ESL client which delivers parsed events to an
@@ -106,6 +113,11 @@ class InboundProtocol(asyncio.Protocol):
             # self.log.log(
             #     utils.TRACE, "Event packet:\n{}".format(pformat(event)))
             ctype = event.get('Content-Type', None)
+
+            if ctype == 'command/reply':
+                if event.get('Job-UUID'):
+                    ctype = 'job/reply'
+
             futures = fut_map.get(ctype, None)
 
             if ctype == 'text/disconnect-notice':
@@ -253,7 +265,7 @@ class InboundProtocol(asyncio.Protocol):
 
     def bgapi(self, cmd, errcheck=True):
         # TODO: drop ``errcheck`` here - it's legacy and should be the default
-        future = self.sendrecv('bgapi {}'.format(cmd))
+        future = self.sendrecv('bgapi {}'.format(cmd), resp_type='job/reply')
         future.cmd = 'bgapi ' + cmd
         if errcheck:
             future.add_done_callback(self._handle_cmd_resp)
@@ -268,6 +280,17 @@ class InboundProtocol(asyncio.Protocol):
             future.add_done_callback(self._handle_cmd_resp)
 
         return future
+
+    def sendmsg(self, uuid, cmd, app, arg='', params='', loops=1):
+        """Send a message to the core using a sendmsg packet.
+        """
+        cmd = _sendmsg.format(
+            uuid=uuid, cmd=cmd, app=app, arg=arg, params=params, loops=loops)
+        self.log.debug("Sending message:\n{}".format(cmd))
+        fut = self.sendrecv(cmd)
+        fut.add_done_callback(self._handle_cmd_resp)
+        fut.cmd = cmd
+        return fut
 
     def disconnect(self):
         """Disconnect this protocol.
