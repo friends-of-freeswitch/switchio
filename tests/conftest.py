@@ -140,7 +140,7 @@ def fssock(fs_socks):
 
 
 @pytest.fixture
-def cps(request):
+def cps(request, travis):
     """It appears as though fs can deliver channel create events at
     around 250 cps (don't know if we can even track faster
     then this) IF the calls are bridged directly using an xml
@@ -149,7 +149,7 @@ def cps(request):
     get around 165 for slow servers...
     """
     cps = int(request.config.option.cps)
-    return cps if cps < 250 else 250
+    return cps if not travis else 80
 
 
 @pytest.yield_fixture

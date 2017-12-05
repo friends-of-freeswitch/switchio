@@ -255,7 +255,7 @@ class TestListener:
         checkcalls(rate=cps, limit=cps, call_count=cps, duration=4)
 
     @pytest.mark.usefixtures('load_limits')
-    def test_track_1kcapacity(self, proxy_dp, checkcalls, cps):
+    def test_track_1kcapacity(self, proxy_dp, checkcalls, cps, travis):
         '''load fs with up to 1000 simultaneous calls
         and test we (are fast enough to) track all the created sessions
 
@@ -263,7 +263,7 @@ class TestListener:
         this tes may fail intermittently as it depends on the
         speed of the fs server under test
         '''
-        limit = 1000
+        limit = 1000 if not travis else 500
         duration = limit / cps + 1  # h = E/lambda (erlang formula)
         checkcalls(rate=cps, limit=limit, duration=duration, sleep=duration)
 

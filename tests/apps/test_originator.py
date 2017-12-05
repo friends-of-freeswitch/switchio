@@ -59,7 +59,7 @@ def test_rep_fields(get_orig):
     # verify invalid field causes failure
     orig.rep_fields_func = lambda: {'invalidname': 'kitty'}
     orig.start()
-    time.sleep(0.05)
+    time.sleep(0.2)
     # burst loop thread should fail due to missing 'field' kwarg to str.format
     assert orig.stopped()
 
