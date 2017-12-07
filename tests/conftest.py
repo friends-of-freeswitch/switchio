@@ -68,14 +68,16 @@ def containers(request, confdir):
         docker = request.getfixturevalue('dockerctl')
         with docker.run(
             'safarov/freeswitch',
-            volumes={confdir: {'bind': '/etc/freeswitch/'}},
+            volumes={confdir: {'bind': '/etc/freeswitch/'},
+                     'freeswitch-sounds': '/usr/share/freeswitch/sounds'},
+            environment={'SOUND_RATES': '8000:16000',
+                         'SOUND_TYPES': 'music:en-us-callie'},
             num=request.config.option.ncntrs
         ) as containers:
             yield containers
     else:
         pytest.skip(
-            "You must specify `--use-docker` to activate containers"
-        )
+            "You must specify `--use-docker` to activate containers")
 
 
 @pytest.fixture(scope='session')

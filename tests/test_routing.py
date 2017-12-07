@@ -234,3 +234,40 @@ def test_multiple_routers(scenarios, service, router, order, reject, expect):
         scenarios, 'bridge', router.pool.evals('client.host'), expect=expect
     ):
         pass
+
+
+def test_extra_subscribe(fssock, scenario, service):
+    """Test the introductor example in the readme.
+    """
+    router = Router(
+        guards={
+            'Caller-Direction': 'inbound',
+            'variable_sofia_profile_name': 'external'},
+        subscribe=('PLAYBACK_START', 'PLAYBACK_STOP'),
+    )
+
+    @router.route('(.*)')
+    async def welcome(sess, match, router):
+        """Say hello to inbound calls.
+        """
+        await sess.answer()  # resumes once call has been fully answered
+        sess.log.info("Answered call to {}".format(match.groups(0)))
+
+        sess.playback(  # non-blocking
+            'en/us/callie/ivr/8000/ivr-founder_of_freesource.wav')
+        sess.log.info("Playing welcome message")
+
+        await sess.recv("PLAYBACK_START")
+        await sess.recv("PLAYBACK_STOP")
+        await sess.hangup()  # resumes once call has been fully hungup
+
+    service.apps.load_app(router, app_id='default')
+    service.run(block=False)
+    assert service.is_alive()
+
+    # make inbound call with SIPp client
+    uac = scenario.prepare()[1]
+    uac.proxyaddr = None
+    uac.destaddr = fssock
+    uac.pause_duration = 4000
+    uac()

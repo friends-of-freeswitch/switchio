@@ -10,7 +10,7 @@ from functools import partial
 from collections import OrderedDict
 from collections import Counter
 from .. import utils
-from ..marks import coroutine, callback
+from ..marks import coroutine, callback, extend_attr_list
 from ..apps import app
 
 
@@ -123,9 +123,11 @@ class Router(object):
         """Signal a router to discontinue execution.
         """
 
-    def __init__(self, guards=None, reject_on_guard=True):
+    def __init__(self, guards=None, reject_on_guard=True, subscribe=()):
         self.guards = guards or {}
         self.guard = reject_on_guard
+        # subscribe for any additional event types requested by the user
+        extend_attr_list(self.on_park, 'switchio_events_sub', subscribe)
         self.route = PatternRegistrar()
 
     def prepost(self, pool):
@@ -165,8 +167,10 @@ class Router(object):
             await sess.hangup('NO_ROUTE_DESTINATION')
 
     @staticmethod
-    async def bridge(sess, match, router, dest_url=None, out_profile=None,
-               gateway=None, proxy=None):
+    async def bridge(
+        sess, match, router, dest_url=None, out_profile=None,
+        gateway=None, proxy=None
+    ):
         """A handy generic bridging function.
         """
         sess.bridge(

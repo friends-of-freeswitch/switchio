@@ -40,9 +40,12 @@ Build a routing system using Python's new coroutine_ syntax:
 
     from switchio.apps.routers import Router
 
-    router = Router(guards={
-        'Call-Direction': 'inbound',
-        'variable_sofia_profile': 'external'})
+    router = Router(
+        guards={
+            'Call-Direction': 'inbound',
+            'variable_sofia_profile': 'external'},
+        subscribe=('PLAYBACK_START', 'PLAYBACK_STOP'),
+    )
 
     @router.route('(.*)')
     async def welcome(sess, match, router):
@@ -51,15 +54,27 @@ Build a routing system using Python's new coroutine_ syntax:
         await sess.answer()  # resumes once call has been fully answered
         sess.log.info("Answered call to {}".format(match.groups(0)))
 
-        sess.playback('ivr/ivr-welcome_to_freeswitch.wav') # non-blocking
+        sess.playback(  # non-blocking
+            'en/us/callie/ivr/8000/ivr-founder_of_freesource.wav')
+        await sess.recv("PLAYBACK_START")
         sess.log.info("Playing welcome message")
-        await sess.recv("PLAYBACK_STOP")
 
+        await sess.recv("PLAYBACK_STOP")
         await sess.hangup()  # resumes once call has been fully hungup
 
 Run this app (assuming it's in ``dialplan.py``) from the shell::
 
     $ switchio serve fs-host1 fs-host2 fs-host3 --app ./dialplan.py:router
+
+You can also run it from your own script:
+
+.. code:: python
+
+    if __name__ == '__main__':
+        from switchio import Service
+        service = Service(['fs-host1', 'fs-host2', 'fs-host3'])
+        service.apps.load_app(router, app_id='default')
+        service.run()
 
 
 Spin up an auto-dialer
