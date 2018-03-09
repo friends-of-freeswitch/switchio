@@ -299,6 +299,8 @@ class Connection(object):
         body = event.get('Body') if event else None
         if not body:
             return False, None
+        else:
+            body = body.strip()
         if '-ERR' in body.splitlines()[-1]:
             raise utils.APIError(body)
         return True, body
