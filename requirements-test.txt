@@ -1,4 +1,4 @@
-pytest
+pytest>=3.4.2
 pdbpp
 
 # pysipp for call tracking testing
