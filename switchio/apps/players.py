@@ -70,7 +70,7 @@ class PlayRec(object):
         self.rec_period = rec_period
         self.stereo = rec_stereo
         self.log = utils.get_logger(self.__class__.__name__)
-        self.silence = 'silence_stream://0'  # infinite silence stream
+        self.silence = 'silence_stream://-1'  # infinite silence stream
         self.iterations = iterations
         self.tail = 1.0
 
