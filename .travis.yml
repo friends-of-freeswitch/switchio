@@ -11,17 +11,6 @@ python:
 
 
 before_install:
-    # build and install latest SWIG
-    - git clone https://github.com/swig/swig.git
-    - cd swig
-    - git checkout rel-3.0.12
-    - ./autogen.sh
-    - ./configure --prefix=$HOME/swig
-    - make
-    - make install
-    - export PATH="$HOME/swig/bin/:$PATH"
-    - cd ..
-
     # build and install SIPp
     - git clone https://github.com/SIPp/sipp.git
     - cd sipp
@@ -41,4 +30,4 @@ install:
 
 # NOTE: no support for pandas/pytables yet
 script:
-    - pytest --use-docker tests/ -p no:logging
+    - pytest --use-docker tests/
