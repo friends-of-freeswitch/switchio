@@ -1,31 +1,31 @@
 switchio
 ========
-Fast `FreeSWITCH`_ control purpose-built on `traffic theory`_ and `stress testing`_.
+``asyncio`` powered `FreeSWITCH`_ cluster control purpose-built on
+`traffic theory`_ and `stress testing`_.
 
-Overview
---------
-``switchio`` intends to be a *fast* control library for harnessing the power of
-the *FreeSWITCH* telephony engine whilst leveraging the expressiveness of
-Python. It relies on the *FreeSWITCH* ESL `inbound`_ method for control and
-was originally built for generating traffic using *FreeSWITCH* clusters.
+``switchio`` is a *fast* asynchronous control system for managing *FreeSWITCH* clusters.
+It uses the *FreeSWITCH* ESL `inbound`_ protocol and was originally built for generating
+traffic to stress test telephony service systems.
 
 
-Installation and Dependencies
------------------------------
-See instructions on the `github`_ page.
+Installation
+------------
+::
+    pip install switchio
 
 Features
 --------
 
-- drive multiple *FreeSWITCH* processes as a traffic generator
-- write :doc:`services <services>` in pure Python to process flows from a *FreeSWITCH* cluster
-- build a dialplan system using a :ref:`flask-like` API
+- drive multiple *FreeSWITCH* processes (a cluster) from a single Python program
+- build dialplan systems using a :ref:`flask-like` API and native `coroutines`_
+- create cluster controllers using ``switchio`` :doc:`services <services>`
+- generate traffic using the built-in :ref:`auto-dialer <callgen>`
 - record, display and export CDR and performance metrics captured during stress tests
-- async without requiring :code:`twisted`
+- use the internal ``asyncio`` inbound ESL `protocol`_ for lower level control
 
 *FreeSWITCH* Configuration
 **************************
-``switchio`` relies on some baseline server :ref:`deployment <fsconfig>` steps for
+``switchio`` relies on some simple :ref:`deployment <fsconfig>` steps for
 import-and-go usage.
 
 
@@ -38,10 +38,10 @@ import-and-go usage.
     https://en.wikipedia.org/wiki/Stress_testing
 .. _traffic theory:
     https://en.wikipedia.org/wiki/Teletraffic_engineering
-.. _github:
-    https://github.com/friends-of-freeswitch/switchio
-.. _ESL SWIG python package:
-    https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
+.. _protocol:
+    https://github.com/friends-of-freeswitch/switchio/blob/master/switchio/protocol.py
+.. _coroutines:
+    https://docs.python.org/3/library/asyncio-task.html
 .. _pandas:
     http://pandas.pydata.org/
 .. _matplotlib:
