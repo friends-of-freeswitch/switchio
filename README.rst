@@ -156,7 +156,7 @@ Check out these other great projects:
 
 Performance monitoring
 ----------------------
-If you'd like to record performance measurements using the 
+If you'd like to record performance measurements using the
 CDR_ app, some optional numerical packages can be used:
 
 .. _CDR: http://switchio.readthedocs.io/en/latest/apps.html#cdr
