@@ -9,12 +9,20 @@ python:
     # - pypy
     - nightly
 
+addons:
+  apt:
+    packages:
+      - libpcap-dev
+      - libsctp-dev
+      - libncurses5-dev
+      - libssl-dev
+      - libgsl0-dev
 
 before_install:
     # build and install SIPp
     - git clone https://github.com/SIPp/sipp.git
     - cd sipp
-    - ./build.sh
+    - ./build.sh --full
     - export PATH="$PWD:$PATH"
     - cd ..
 
