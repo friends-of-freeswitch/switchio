@@ -207,12 +207,12 @@ As a summary, here is an snippet showing all these steps together:
 .. code-block:: python
 
     import time
-    from switchio import Client, EventListener
+    from switchio import get_client, get_listener
     from switchio.apps.players import TonePlay
 
     # init
-    listener = EventListener('vm-host')
-    client = Client('vm-host', listener=listener)
+    listener = get_listener('vm-host')
+    client = get_client('vm-host', listener=listener)
     client.connect()
     listener.connect()
     listener.start()

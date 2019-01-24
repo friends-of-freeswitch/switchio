@@ -7,24 +7,24 @@
 
 Call Applications
 =================
-*switchio* supports writing and composing call control *applications* written in
+*switchio* supports writing and composing call control apps written in
 pure Python. An *app* is simply a `namespace`_ which defines **a set of event
-callbacks** [#]_.
+processing (async) functions** [#]_.
 
 Apps are somewhat analogous to `extensions`_ in *FreeSWITCH*'s
 `XML dialplan`_ interface and can similarly be activated using any
 `event header`_ *or* `channel variable`_ value of your choosing.
-Callbacks are invoked based on the recieved `event type`_.
-
 
 *Apps* can be implemented each as a standalone Python `namespace`_ which can
 hold state and be mutated at runtime. This allows for all sorts of dynamic call
 processing logic. *Apps* can also be shared across a *FreeSWITCH* process cluster
-allowing for centralized call processing overtop a scalable service system.
+allowing for centralized call processing overtop a scalable multi-process service system.
+Processing functions are implemented either as regular or async (i.e. coroutine) function
+callbacks and are selected to be invoked depending on the recieved `event type`_.
 
-Applications are :ref:`loaded <appload>` either using a :py:class:`~switchio.api.Client`
-or, in the case of an *switchio* cluster :doc:`Service <services>`, an
-:py:class:`~switchio.apps.AppManager` instance.
+Applications are :ref:`loaded <appload>` either directly using the low level
+:py:class:`~switchio.api.Client` or, in the case of a *switchio* cluster
+:doc:`Service <services>`, using a :py:class:`~switchio.apps.AppManager`.
 
 API
 ---
@@ -33,25 +33,26 @@ methods decorated using the :py:mod:`switchio.marks` module.
 
 Currently the marks supported would be one of::
 
-    @event_callback("EVENT_NAME")
-    @handler("EVENT_NAME")
+    @coroutine("EVENT_NAME")  # session oriented async function
+    @callback("EVENT_NAME")   # session oriented callback function
+    @handler("EVENT_NAME")    # low level event oriented callback function
 
 Where `EVENT_NAME` is any of the strings supported by the ESL `event type`_
 list.
 
 Additionally, app types can support a :py:func:`prepost` callable which serves
 as a setup/teardown fixture mechanism for the app to do pre/post app loading
-execution. It can be either of a function or generator.
+execution. It can be either of a function or single-yield generator.
 
 .. note::
     For examples using :py:func:`prepost` see the extensive set of built-in
     apps under :py:mod:`switchio.apps`.
 
 
-Event Callbacks
-***************
-``event_callbacks`` are methods which typically receive a type from
-:py:mod:`switchio.models` as their first (and only) argument. This
+Event Callbacks and Coroutines
+******************************
+Session oriented *event processors* are methods which typically receive a
+type from :py:mod:`switchio.models` as their first (and only) argument. This
 type is most often a :py:class:`~switchio.models.Session`.
 
 .. note::
@@ -67,7 +68,7 @@ a global::
 
     num_calls = 0
 
-    @switchio.event_callback('CHANNEL_ANSWER')
+    @switchio.callback('CHANNEL_ANSWER')
     def counter(session):
         global num_calls
         num_calls += 1
@@ -82,9 +83,10 @@ a global::
 Event Handlers
 **************
 An event handler is any callable marked by :py:meth:`handler` which
-is expected to handle a received `ESLEvent` object and process it within the
-:py:class:`~switchio.handlers.EventListener` event loop. It's function signature
-should expect a single argument, that being the received event.
+is expected to handle an ESL *event* packet and process it within the
+:py:class:`~switchio.handlers.EventListener` event loop.
+It's function signature should expect a single argument - the received
+event packaged in a ``dict`` .
 
 Example handlers can be found in the :py:class:`~switchio.handlers.EventListener`
 such as the default `CHANNEL_ANSWER` handler
@@ -92,8 +94,8 @@ such as the default `CHANNEL_ANSWER` handler
 .. literalinclude:: ../switchio/handlers.py
     :pyobject: EventListener._handle_answer
 
-As you can see a knowledge of the underlying `ESL SWIG python
-package`_ usually is required for `handler` implementations.
+As you can see a knowledge of the underlying `ESL event list`_
+usually is required for `handler` implementations.
 
 
 Examples
@@ -123,10 +125,11 @@ implemented quite trivially::
     import switchio
 
     class Proxier(object):
-        @switchio.event_callback('CHANNEL_PARK')
-        def on_park(self, sess):
+        @switchio.coroutine('CHANNEL_PARK')
+        async def on_park(self, sess):
             if sess.is_inbound():
                 sess.bridge(dest_url="${sip_req_user}@${sip_req_host}:${sip_req_port}")
+                await sess.recv("CHANNEL_ANSWER")
 
 .. _cdrapp:
 
@@ -174,7 +177,7 @@ sub-package which also includes the very notorious
     https://freeswitch.org/confluence/display/FREESWITCH/Event+Socket+Library
 .. _classes:
     https://docs.python.org/3/tutorial/classes.html#a-first-look-at-classes
-.. _ESL SWIG python package:
-    https://freeswitch.org/confluence/display/FREESWITCH/Python+ESL
+.. _ESL event list:
+    https://freeswitch.org/confluence/display/FREESWITCH/Event+List
 .. _asyncio:
     https://docs.python.org/3/library/asyncio.html
