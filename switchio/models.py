@@ -480,7 +480,7 @@ class Session(object):
         """Speak, young switch (alpha).
         """
         return self.execute(
-            'speak', '|'.join((engine, voice, text, timer_name)))
+            'speak', '|'.join((engine, voice, text, timer_name))[:-1])
 
     def is_inbound(self):
         """Return bool indicating whether this is an inbound session
