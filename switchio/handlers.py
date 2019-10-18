@@ -332,7 +332,7 @@ class EventListener(object):
                 call.sessions.remove(sess)
             else:
                 # session was somehow tracked by the wrong call
-                self.log.err("session '{}' mismatched with call '{}'?"
+                self.log.error("session '{}' mismatched with call '{}'?"
                              .format(sess.uuid, call.uuid))
 
             # all sessions hungup
