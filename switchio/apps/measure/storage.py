@@ -20,7 +20,7 @@ import time
 try:
     import pandas as pd
 except ImportError as ie:
-    utils.log_to_stderr().warn(str(ie))
+    utils.log_to_stderr().warning(str(ie))
     pd = None
 else:
     from . import shmarray

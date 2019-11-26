@@ -38,7 +38,7 @@ def new_event_loop():
         import uvloop
         return uvloop.new_event_loop()
     except ImportError as err:
-        utils.log_to_stderr().warn(str(err))
+        utils.log_to_stderr().warning(str(err))
         return asyncio.new_event_loop()
 
 
