@@ -92,8 +92,8 @@ async def async_reconnect(host, port, password, prot, loop, log):
                 break
             except ConnectionError:
                 log.warning(
-                    "Failed reconnection attempt...retries"
-                    " left {}".format(count - i))
+                    f"Failed reconnection attempt... will retry in
+                     "{prot.reconnect_delay} seconds..."
                 await asyncio.sleep(prot.reconnect_delay)
     else:
         count = prot.autorecon
@@ -186,7 +186,7 @@ class Connection(object):
 
             prot = self.protocol = InboundProtocol(
                 self.host, password, loop, autorecon=self.autorecon,
-                on_disconnect=reconnect, reconnect_delay=0.1)
+                on_disconnect=reconnect, reconnect_delay=self.reconnect_delay)
 
             coro = connect_and_auth(
                 host, port, password, prot, self.loop, self.log)
@@ -322,4 +322,4 @@ def get_connection(host, port=8021, password='ClueCon', loop=None,
     loop = loop or asyncio.get_event_loop()
     loop._tid = get_ident()
     return Connection(host, port=port, password=password,
-                      loop=loop, autorecon=autorecon, reconnect_delay=0.1)
+                      loop=loop, autorecon=autorecon, reconnect_delay=reconnect_delay)
