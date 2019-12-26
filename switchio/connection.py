@@ -188,6 +188,7 @@ class Connection(object):
                     host, port, password, prot,
                     loop, self.log), loop=loop)
 
+            self.log.debug(f'Connection.connect:protocol: {self.autorecon}')
             prot = self.protocol = InboundProtocol(
                 self.host, password, loop, autorecon=self.autorecon,
                 on_disconnect=reconnect, reconnect_delay=self.reconnect_delay)

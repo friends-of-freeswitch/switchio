@@ -28,7 +28,6 @@ class InboundProtocol(asyncio.Protocol):
     """
     def __init__(self, host, password, loop, autorecon=False,
                  on_disconnect=None, reconnect_delay=None):
-        self.log.debug(f'Protocol.__init__(1): {autorecon}')
         self.host = host
         self.password = password
         self.loop = loop
@@ -37,6 +36,7 @@ class InboundProtocol(asyncio.Protocol):
         self.reconnect_delay = reconnect_delay
         self.event_queue = asyncio.Queue(loop=loop)
         self.log = utils.get_logger(utils.pstr(self))
+        self.log.debug(f'Protocol.__init__(1): {autorecon}')
         self.transport = None
         self._previous = None, None
         # segment data in the form (event, size, data)
