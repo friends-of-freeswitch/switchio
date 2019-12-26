@@ -28,6 +28,7 @@ class InboundProtocol(asyncio.Protocol):
     """
     def __init__(self, host, password, loop, autorecon=False,
                  on_disconnect=None, reconnect_delay=None):
+        self.log.debug(f'Protocol.__init__(1): {autorecon}')
         self.host = host
         self.password = password
         self.loop = loop
