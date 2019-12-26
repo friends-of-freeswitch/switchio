@@ -48,6 +48,8 @@ class InboundProtocol(asyncio.Protocol):
         for ctype in ['command/reply', 'auth/request', 'api/response']:
             self._futures_map.get(ctype)
 
+        self.log.debug(f'Protocol.__init__: {self.autorecon}')
+
     def connected(self):
         return bool(self.transport) and not self.transport.is_closing()
 
@@ -69,6 +71,9 @@ class InboundProtocol(asyncio.Protocol):
         self._auth_resp = None
         self.log.debug('The connection closed @ {}'.format(self.host))
         self._disconnected.set_result(True)
+
+        self.log.debug(f'connection_lost: {self.autorecon}')
+
         if self.autorecon:
             self.on_disconnect(self)
 

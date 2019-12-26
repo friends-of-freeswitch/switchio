@@ -13,7 +13,7 @@ with open('README.rst', encoding='utf-8') as f:
 
 setup(
     name="switchio",
-    version='0.1.0.a3~mgwilliams',
+    version='0.1.0.a4~mgwilliams',
     description='asyncio powered FreeSWITCH cluster control',
     long_description=readme,
     license='Mozilla',
