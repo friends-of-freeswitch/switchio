@@ -396,10 +396,12 @@ class EventListener(object):
 
 
 def get_listener(
-    host, port=8021, password='ClueCon', app_id_headers=None,
+    host, port=8021, password='ClueCon', app_id_headers=None, autorecon=False,
+    reconnect_delay=None,
     call_tracking_header='variable_call_uuid', max_limit=float('inf'),
 ):
     el = get_event_loop(
-        host, port, password, app_id_headers=app_id_headers or {})
+        host, port, password, app_id_headers=app_id_headers or {},
+        autorecon=False, reconnect_delay=None)
     return EventListener(
         el, call_tracking_header=call_tracking_header, max_limit=max_limit)

@@ -61,7 +61,7 @@ class EventLoop(object):
     AUTH = 'ClueCon'
 
     def __init__(self, host=HOST, port=PORT, auth=AUTH, app_id_headers=None,
-                 loop=None):
+                 loop=None, autorecon=False, reconnect_delay=None):
         '''
         :param str host: Hostname or IP addr of the FS server
         :param str port: Port on which the FS process is listening for ESL
@@ -95,7 +95,7 @@ class EventLoop(object):
 
         # set up contained connections
         self._con = get_connection(self.host, self.port, self.auth,
-                                   loop=loop)
+                                   loop=loop, autorecon=autorecon, reconnect_delay=reconnect_delay)
 
         self.coroutines = {}  # coroutine chains, one for each event type
         self._entry_fut = None
