@@ -152,6 +152,7 @@ class Connection(object):
         self.autorecon = autorecon
         self.reconnect_delay = reconnect_delay
         self.protocol = None
+        self.log.debug(f'Connection.__init__: {self.autorecon}')
 
     def __enter__(self, **kwargs):
         self.connect(**kwargs)
@@ -174,6 +175,8 @@ class Connection(object):
         password = password or self.password
         self.loop = loop if loop else self.loop
         loop = self.loop
+
+        self.log.debug(f'Connection.connect: {self.autorecon}')
 
         if not self.connected() or not block:
 
