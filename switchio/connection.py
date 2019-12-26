@@ -92,8 +92,8 @@ async def async_reconnect(host, port, password, prot, loop, log):
                 break
             except ConnectionError:
                 log.warning(
-                    f"Failed reconnection attempt... will retry in
-                     "{prot.reconnect_delay} seconds..."
+                    f"Failed reconnection attempt... will retry in "
+                     "{prot.reconnect_delay} seconds...")
                 await asyncio.sleep(prot.reconnect_delay)
     else:
         count = prot.autorecon
