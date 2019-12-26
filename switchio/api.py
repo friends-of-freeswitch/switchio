@@ -31,7 +31,8 @@ class Client(object):
     app_id_header = utils.xheaderify('switchio_app')
 
     def __init__(self, host='127.0.0.1', port='8021', auth='ClueCon',
-                 call_tracking_header=None, listener=None, logger=None):
+                 call_tracking_header=None, listener=None, logger=None,
+                 autorecon=30, reconnect_delay=0.1):
         self.host = host
         self.port = port
         self.auth = auth
@@ -50,7 +51,9 @@ class Client(object):
 
         # WARNING: order of these next steps matters!
         # create a local connection for sending commands
-        self._con = get_connection(self.host, self.port, self.auth)
+        self._con = get_connection(self.host, self.port, self.auth,
+                                   autorecon=autorecon,
+                                   reconnect_delay=reconnect_delay)
         # if the listener is provided it is expected that the
         # user will run the set up methods (i.e. connect, start, etc..)
         self.listener = listener
