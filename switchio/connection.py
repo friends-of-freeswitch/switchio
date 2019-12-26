@@ -81,10 +81,10 @@ async def connect_and_auth(host, port, password, prot, loop, log, timeout=0.5):
 
 async def async_reconnect(host, port, password, prot, loop, log):
     log.info("Attempting to reconnect to {}:{}".format(host, port))
+    log.info(f'async_reconnect: {prot.autorecon}')
     if not prot.autorecon:
         log.debug("Autorecon had been disabled")
         return
-    log.info(f'async_reconnect: {prot.autorecon}')
     elif prot.autorecon is True:
         while True:
             try:
