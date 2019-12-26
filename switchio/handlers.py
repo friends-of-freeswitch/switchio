@@ -402,6 +402,6 @@ def get_listener(
 ):
     el = get_event_loop(
         host, port, password, app_id_headers=app_id_headers or {},
-        autorecon=False, reconnect_delay=None)
+        autorecon=autorecon, reconnect_delay=reconnect_delay)
     return EventListener(
         el, call_tracking_header=call_tracking_header, max_limit=max_limit)
