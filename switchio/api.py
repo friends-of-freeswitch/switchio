@@ -51,7 +51,7 @@ class Client(object):
 
         # WARNING: order of these next steps matters!
         # create a local connection for sending commands
-        self.log('api.__init__: {autorecon}')
+        self.log.debug('api.__init__: {autorecon}')
         self._con = get_connection(self.host, self.port, self.auth,
                                    autorecon=autorecon,
                                    reconnect_delay=reconnect_delay)
