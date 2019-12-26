@@ -223,7 +223,7 @@ class EventLoop(object):
                 if evname:
                     consumed = await self._process_event(e, evname)
                     if not consumed:
-                        self.log.warn("unconsumed  event '{}'?".format(e))
+                        self.log.debug("unconsumed  event '{}'?".format(e))
                 else:
                     self.log.warn("received unnamed event '{}'?".format(e))
 

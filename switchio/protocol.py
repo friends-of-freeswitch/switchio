@@ -27,12 +27,13 @@ class InboundProtocol(asyncio.Protocol):
     ``asyncio.Queue``.
     """
     def __init__(self, host, password, loop, autorecon=False,
-                 on_disconnect=None):
+                 on_disconnect=None, reconnect_delay=None):
         self.host = host
         self.password = password
         self.loop = loop
         self.on_disconnect = on_disconnect
         self.autorecon = autorecon
+        self.reconnect_delay = reconnect_delay
         self.event_queue = asyncio.Queue(loop=loop)
         self.log = utils.get_logger(utils.pstr(self))
         self.transport = None

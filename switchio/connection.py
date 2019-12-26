@@ -84,24 +84,34 @@ async def async_reconnect(host, port, password, prot, loop, log):
     if not prot.autorecon:
         log.debug("Autorecon had been disabled")
         return
+    elif prot.autorecon is True:
+        while True:
+            try:
+                await connect_and_auth(
+                    host, port, password, prot, loop, log, timeout=1)
+                break
+            except ConnectionError:
+                log.warning(
+                    "Failed reconnection attempt...retries"
+                    " left {}".format(count - i))
+                await asyncio.sleep(prot.reconnect_delay)
     else:
         count = prot.autorecon
-
-    for i in range(count):
-        try:
-            await connect_and_auth(
-                host, port, password, prot, loop, log, timeout=1)
-            break
-        except ConnectionError:
+        for i in range(count):
+            try:
+                await connect_and_auth(
+                    host, port, password, prot, loop, log, timeout=1)
+                break
+            except ConnectionError:
+                log.warning(
+                    "Failed reconnection attempt...retries"
+                    " left {}".format(count - i))
+                await asyncio.sleep(prot.reconnect_delay)
+        else:
             log.warning(
-                "Failed reconnection attempt...retries"
-                " left {}".format(count - i))
-            await asyncio.sleep(0.1)
-    else:
-        log.warning(
-            "Reconnection attempts to '{}' failed. Please call"
-            " 'connect' manually when server is ready "
-            .format(host))
+                "Reconnection attempts to '{}' failed. Please call"
+                " 'connect' manually when server is ready "
+                .format(host))
 
     if prot.connected():
         log.info("Successfully reconnected to '{}:{}'"
@@ -121,7 +131,7 @@ class Connection(object):
     :type autorecon: int or bool
     """
     def __init__(self, host, port='8021', password='ClueCon', loop=None,
-                 autorecon=30):
+                 autorecon=30, reconnect_delay=0.1):
         """
         Parameters
         -----------
@@ -139,6 +149,7 @@ class Connection(object):
         self._sub = ()  # events subscription
         self.loop = loop
         self.autorecon = autorecon
+        self.reconnect_delay = reconnect_delay
         self.protocol = None
 
     def __enter__(self, **kwargs):
@@ -175,7 +186,7 @@ class Connection(object):
 
             prot = self.protocol = InboundProtocol(
                 self.host, password, loop, autorecon=self.autorecon,
-                on_disconnect=reconnect)
+                on_disconnect=reconnect, reconnect_delay=0.1)
 
             coro = connect_and_auth(
                 host, port, password, prot, self.loop, self.log)
@@ -304,9 +315,11 @@ class Connection(object):
         return True, body
 
 
-def get_connection(host, port=8021, password='ClueCon', loop=None):
+def get_connection(host, port=8021, password='ClueCon', loop=None,
+                   autorecon=30, reconnect_delay=0.1):
     """ESL connection factory.
     """
     loop = loop or asyncio.get_event_loop()
     loop._tid = get_ident()
-    return Connection(host, port=port, password=password, loop=loop)
+    return Connection(host, port=port, password=password,
+                      loop=loop, autorecon=autorecon, reconnect_delay=0.1)
