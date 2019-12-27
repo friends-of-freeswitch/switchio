@@ -91,10 +91,10 @@ async def async_reconnect(host, port, password, prot, loop, log):
                 await connect_and_auth(
                     host, port, password, prot, loop, log, timeout=1)
                 break
-            except ConnectionError:
+            except (ConnectionError, ConnectionRefusedError):
                 log.warning(
-                    f"Failed reconnection attempt... will retry in "
-                     "{prot.reconnect_delay} seconds...")
+                    "Failed reconnection attempt... will retry in "
+                    f"{prot.reconnect_delay} seconds...")
                 await asyncio.sleep(prot.reconnect_delay)
     else:
         count = prot.autorecon
@@ -103,7 +103,7 @@ async def async_reconnect(host, port, password, prot, loop, log):
                 await connect_and_auth(
                     host, port, password, prot, loop, log, timeout=1)
                 break
-            except ConnectionError:
+            except (ConnectionError, ConnectoinRefusedError):
                 log.warning(
                     "Failed reconnection attempt...retries"
                     " left {}".format(count - i))
