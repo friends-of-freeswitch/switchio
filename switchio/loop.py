@@ -38,7 +38,7 @@ def new_event_loop():
         import uvloop
         return uvloop.new_event_loop()
     except ImportError as err:
-        utils.log_to_stderr().warn(str(err))
+        utils.log_to_stderr().warning(str(err))
         return asyncio.new_event_loop()
 
 
@@ -61,7 +61,7 @@ class EventLoop(object):
     AUTH = 'ClueCon'
 
     def __init__(self, host=HOST, port=PORT, auth=AUTH, app_id_headers=None,
-                 loop=None):
+                 loop=None, autorecon=False, reconnect_delay=None):
         '''
         :param str host: Hostname or IP addr of the FS server
         :param str port: Port on which the FS process is listening for ESL
@@ -95,7 +95,7 @@ class EventLoop(object):
 
         # set up contained connections
         self._con = get_connection(self.host, self.port, self.auth,
-                                   loop=loop)
+                                   loop=loop, autorecon=autorecon, reconnect_delay=reconnect_delay)
 
         self.coroutines = {}  # coroutine chains, one for each event type
         self._entry_fut = None
@@ -223,7 +223,7 @@ class EventLoop(object):
                 if evname:
                     consumed = await self._process_event(e, evname)
                     if not consumed:
-                        self.log.warn("unconsumed  event '{}'?".format(e))
+                        self.log.debug("unconsumed  event '{}'?".format(e))
                 else:
                     self.log.warn("received unnamed event '{}'?".format(e))
 

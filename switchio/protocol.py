@@ -27,14 +27,16 @@ class InboundProtocol(asyncio.Protocol):
     ``asyncio.Queue``.
     """
     def __init__(self, host, password, loop, autorecon=False,
-                 on_disconnect=None):
+                 on_disconnect=None, reconnect_delay=None):
         self.host = host
         self.password = password
         self.loop = loop
         self.on_disconnect = on_disconnect
         self.autorecon = autorecon
+        self.reconnect_delay = reconnect_delay
         self.event_queue = asyncio.Queue(loop=loop)
         self.log = utils.get_logger(utils.pstr(self))
+        self.log.debug(f'Protocol.__init__(1): {autorecon}')
         self.transport = None
         self._previous = None, None
         # segment data in the form (event, size, data)
@@ -46,6 +48,8 @@ class InboundProtocol(asyncio.Protocol):
         self._futures_map = defaultdict(deque)
         for ctype in ['command/reply', 'auth/request', 'api/response']:
             self._futures_map.get(ctype)
+
+        self.log.debug(f'Protocol.__init__: {self.autorecon}')
 
     def connected(self):
         return bool(self.transport) and not self.transport.is_closing()
@@ -68,6 +72,9 @@ class InboundProtocol(asyncio.Protocol):
         self._auth_resp = None
         self.log.debug('The connection closed @ {}'.format(self.host))
         self._disconnected.set_result(True)
+
+        self.log.debug(f'connection_lost: {self.autorecon}')
+
         if self.autorecon:
             self.on_disconnect(self)
 

@@ -108,7 +108,7 @@ def load(packages=(), imp_excs=('pandas',)):
         imp_excs=imp_excs,
     ):
         if isinstance(app, ImportError):
-            utils.log_to_stderr().warn("'{}' failed to load - {}\n".format(
+            utils.log_to_stderr().warning("'{}' failed to load - {}\n".format(
                 path, app.message))
         else:
             apps_map[path] = app

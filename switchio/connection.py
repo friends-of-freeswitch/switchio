@@ -81,27 +81,38 @@ async def connect_and_auth(host, port, password, prot, loop, log, timeout=0.5):
 
 async def async_reconnect(host, port, password, prot, loop, log):
     log.info("Attempting to reconnect to {}:{}".format(host, port))
+    log.info(f'async_reconnect: {prot.autorecon}')
     if not prot.autorecon:
         log.debug("Autorecon had been disabled")
         return
+    elif prot.autorecon is True:
+        while True:
+            try:
+                await connect_and_auth(
+                    host, port, password, prot, loop, log, timeout=1)
+                break
+            except (ConnectionError, ConnectionRefusedError):
+                log.warning(
+                    "Failed reconnection attempt... will retry in "
+                    f"{prot.reconnect_delay} seconds...")
+                await asyncio.sleep(prot.reconnect_delay)
     else:
         count = prot.autorecon
-
-    for i in range(count):
-        try:
-            await connect_and_auth(
-                host, port, password, prot, loop, log, timeout=1)
-            break
-        except ConnectionError:
+        for i in range(count):
+            try:
+                await connect_and_auth(
+                    host, port, password, prot, loop, log, timeout=1)
+                break
+            except (ConnectionError, ConnectoinRefusedError):
+                log.warning(
+                    "Failed reconnection attempt...retries"
+                    " left {}".format(count - i))
+                await asyncio.sleep(prot.reconnect_delay)
+        else:
             log.warning(
-                "Failed reconnection attempt...retries"
-                " left {}".format(count - i))
-            await asyncio.sleep(0.1)
-    else:
-        log.warning(
-            "Reconnection attempts to '{}' failed. Please call"
-            " 'connect' manually when server is ready "
-            .format(host))
+                "Reconnection attempts to '{}' failed. Please call"
+                " 'connect' manually when server is ready "
+                .format(host))
 
     if prot.connected():
         log.info("Successfully reconnected to '{}:{}'"
@@ -121,7 +132,7 @@ class Connection(object):
     :type autorecon: int or bool
     """
     def __init__(self, host, port='8021', password='ClueCon', loop=None,
-                 autorecon=30):
+                 autorecon=30, reconnect_delay=0.1):
         """
         Parameters
         -----------
@@ -139,7 +150,9 @@ class Connection(object):
         self._sub = ()  # events subscription
         self.loop = loop
         self.autorecon = autorecon
+        self.reconnect_delay = reconnect_delay
         self.protocol = None
+        self.log.debug(f'Connection.__init__: {self.autorecon}')
 
     def __enter__(self, **kwargs):
         self.connect(**kwargs)
@@ -163,6 +176,8 @@ class Connection(object):
         self.loop = loop if loop else self.loop
         loop = self.loop
 
+        self.log.debug(f'Connection.connect: {self.autorecon}')
+
         if not self.connected() or not block:
 
             def reconnect(prot):
@@ -173,9 +188,10 @@ class Connection(object):
                     host, port, password, prot,
                     loop, self.log), loop=loop)
 
+            self.log.debug(f'Connection.connect:protocol: {self.autorecon}')
             prot = self.protocol = InboundProtocol(
                 self.host, password, loop, autorecon=self.autorecon,
-                on_disconnect=reconnect)
+                on_disconnect=reconnect, reconnect_delay=self.reconnect_delay)
 
             coro = connect_and_auth(
                 host, port, password, prot, self.loop, self.log)
@@ -304,9 +320,11 @@ class Connection(object):
         return True, body
 
 
-def get_connection(host, port=8021, password='ClueCon', loop=None):
+def get_connection(host, port=8021, password='ClueCon', loop=None,
+                   autorecon=30, reconnect_delay=0.1):
     """ESL connection factory.
     """
     loop = loop or asyncio.get_event_loop()
     loop._tid = get_ident()
-    return Connection(host, port=port, password=password, loop=loop)
+    return Connection(host, port=port, password=password,
+                      loop=loop, autorecon=autorecon, reconnect_delay=reconnect_delay)
