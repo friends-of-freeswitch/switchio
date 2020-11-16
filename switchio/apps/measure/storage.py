@@ -12,6 +12,7 @@ from collections import OrderedDict, deque
 from contextlib import contextmanager
 import tempfile
 import csv
+import numpy
 import os
 from switchio import utils
 import multiprocessing as mp
@@ -36,7 +37,7 @@ def moving_avg(x, n=100):
     '''Compute the windowed arithmetic mean of `x` with window length `n`
     '''
     n = min(x.size, n)
-    cs = pd.np.cumsum(x)
+    cs = numpy.cumsum(x)
     cs[n:] = cs[n:] - cs[:-n]
     # cs[n - 1:] / n  # true means portion
     return cs / n  # NOTE: first n-2 vals are not true means
@@ -350,10 +351,10 @@ class DataStorer(object):
                  storetype=None):
         self.name = name
         try:
-            self.dtype = pd.np.dtype(dtype) if pd else dtype
+            self.dtype = numpy.dtype(dtype) if pd else dtype
         except TypeError:
             # set all columns to float64
-            self.dtype = pd.np.dtype(
+            self.dtype = numpy.dtype(
                 list(zip(dtype, itertools.repeat('float64')))
             )
 

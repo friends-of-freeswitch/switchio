@@ -192,7 +192,7 @@ class Session(object):
         fut._evname = name
 
         # keep track of consuming coroutine(s)
-        caller = asyncio.Task.current_task(loop)
+        caller = asyncio.current_task(loop)
         self.tasks.setdefault(fut, []).append(caller)
 
         fut.add_done_callback(self.unreg_tasks)

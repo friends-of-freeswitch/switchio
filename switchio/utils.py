@@ -179,9 +179,9 @@ def get_args(func):
     :return: the argnames, kwargnames defined by func
     :rtype: tuple
     """
-    args, varargs, varkw, defaults = inspect.getargspec(func)
-    index = -len(defaults) if defaults else None
-    return args[slice(0, index)], args[slice(index, None if index else 0)]
+    argspec = inspect.getfullargspec(func)
+    index = -len(argspec.defaults) if argspec.defaults else None
+    return argspec.args[slice(0, index)], argspec.args[slice(index, None if index else 0)]
 
 
 def is_callback(func):

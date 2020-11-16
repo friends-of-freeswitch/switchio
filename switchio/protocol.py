@@ -134,7 +134,7 @@ class InboundProtocol(asyncio.Protocol):
                 except IndexError:
                     self.log.warning("no scheduled future could be found "
                                   "for event?\n{!r}".format(event))
-                except asyncio.InvalidStateError:
+                except asyncio.base_futures.InvalidStateError:
                     if not fut.cancelled():
                         self.log.warning(
                             "future was already cancelled for event {}"

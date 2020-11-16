@@ -22,7 +22,7 @@ def con(fshost, loop):
     con = get_connection(fshost, loop=loop)
     yield con
     con.disconnect()
-    pending = asyncio.Task.all_tasks(loop)
+    pending = asyncio.all_tasks(loop)
     if pending:
         for task in pending:
             if not task.done():
