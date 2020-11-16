@@ -591,7 +591,7 @@ class Job(object):
             try:
                 return self.fut.result()['Job-UUID']
             except futures.TimeoutError:
-                self.log.warn(
+                self.log.warning(
                     "Response timeout for job {}"
                     .format(self.sess_uuid)
                 )

@@ -20,7 +20,7 @@ import time
 try:
     import pandas as pd
 except ImportError as ie:
-    utils.log_to_stderr().warn(str(ie))
+    utils.log_to_stderr().warning(str(ie))
     pd = None
 else:
     from . import shmarray
@@ -426,7 +426,7 @@ class DataStorer(object):
         self._iput += 1
         diff = time.time() - start
         if diff > 0.005:  # any more then 5ms warn the user
-            self.log.warn("queue.put took '{}' seconds".format(diff))
+            self.log.warning("queue.put took '{}' seconds".format(diff))
 
     def stopwriter(self):
         """Trigger the background frame writer to terminate
