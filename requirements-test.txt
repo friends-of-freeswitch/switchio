@@ -1,4 +1,5 @@
 pytest>=3.4.2
+numpy
 pdbpp
 
 # pysipp for call tracking testing
