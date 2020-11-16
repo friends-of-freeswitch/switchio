@@ -67,7 +67,7 @@ def containers(request, confdir):
     if request.config.option.usedocker:
         docker = request.getfixturevalue('dockerctl')
         with docker.run(
-            'safarov/freeswitch',
+            'safarov/freeswitch:1.10.3',
             volumes={
                 confdir: {'bind': '/etc/freeswitch/'},
                 'freeswitch-sounds': {'bind': '/usr/share/freeswitch/sounds'},

@@ -33,7 +33,7 @@ def con(fshost, loop):
 @pytest.mark.parametrize(
     'password, expect_auth',
     [('doggy', False), ('ClueCon', True)],
-    ids=lambda item: "pw={}, expect_auth={}".format(*item),
+    # ids=lambda item: "pw={}, expect_auth={}".format(*item),
 )
 def test_connect(con, password, expect_auth):
     """Connection basics.
