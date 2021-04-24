@@ -1,0 +1,4 @@
+freeswitch-sounds-music-8000-1.0.52.tar.gz
+freeswitch-sounds-music-16000-1.0.52.tar.gz
+freeswitch-sounds-en-us-callie-8000-1.0.51.tar.gz
+freeswitch-sounds-en-us-callie-16000-1.0.51.tar.gz
