@@ -10,6 +10,7 @@ import pytest
 import switchio
 from switchio.connection import get_connection
 from switchio.protocol import InboundProtocol
+from switchio import utils
 
 
 @pytest.fixture(scope='module')
@@ -22,7 +23,7 @@ def con(fshost, loop):
     con = get_connection(fshost, loop=loop)
     yield con
     con.disconnect()
-    pending = asyncio.all_tasks(loop)
+    pending = utils.all_tasks(loop)
     if pending:
         for task in pending:
             if not task.done():

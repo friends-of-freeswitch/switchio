@@ -13,6 +13,7 @@ import logging
 import uuid as mod_uuid
 import importlib
 import pkgutil
+import asyncio
 
 
 class ESLError(Exception):
@@ -38,6 +39,11 @@ LOG_FORMAT = PREFIX + LEVEL + (
     "%(name)s %(filename)s:%(lineno)d : %(message)s")
 DATE_FORMAT = '%b %d %H:%M:%S'
 TRACE = 5
+# Backwards compatibility for < python-3.7
+all_tasks = (getattr(asyncio, 'all_tasks', None)
+             or asyncio.Task.all_tasks)
+current_task = (getattr(asyncio, 'current_task', None)
+                or asyncio.Task.current_task)
 
 
 def get_logger(name=None):
