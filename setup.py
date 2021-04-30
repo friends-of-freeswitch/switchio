@@ -32,6 +32,7 @@ setup(
             'switchio = switchio.cli:cli',
         ]
     },
+    python_requires='>=3.6',
     install_requires=['click', 'colorlog'],
     package_data={
         'switchio': ['../conf/switchiodp.xml']
@@ -46,8 +47,9 @@ setup(
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)',
         'Operating System :: POSIX :: Linux',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
         'Intended Audience :: Telecommunications Industry',
         'Intended Audience :: Developers',
         'Topic :: Communications :: Telephony',
