@@ -2,14 +2,14 @@ switchio
 ========
 asyncio_ powered FreeSWITCH_ cluster control using pure Python_ 3.6+
 
-|pypi| |travis| |versions| |license| |docs|
+|pypi| |github_actions| |versions| |license| |docs|
 
 .. |versions| image:: https://img.shields.io/pypi/pyversions/switchio.svg
     :target: https://pypi.org/project/switchio
 .. |pypi| image:: https://img.shields.io/pypi/v/switchio.svg
     :target: https://pypi.org/project/switchio
-.. |travis| image:: https://img.shields.io/travis/friends-of-freeswitch/switchio/master.svg
-    :target: https://travis-ci.org/friends-of-freeswitch/switchio
+.. |github_actions| image:: https://github.com/friends-of-freeswitch/switchio/actions/workflows/python-app.yml/badge.svg
+    :target: https://github.com/friends-of-freeswitch/switchio/actions/workflows/python-app.yml
 .. |license| image:: https://img.shields.io/pypi/l/switchio.svg
     :target: https://pypi.org/project/switchio
 .. |docs| image:: https://readthedocs.org/projects/switchio/badge/?version=latest
