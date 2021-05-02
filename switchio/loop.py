@@ -38,7 +38,7 @@ def new_event_loop():
         import uvloop
         return uvloop.new_event_loop()
     except ImportError as err:
-        utils.log_to_stderr().warn(str(err))
+        utils.log_to_stderr().warning(str(err))
         return asyncio.new_event_loop()
 
 
@@ -182,9 +182,9 @@ class EventLoop(object):
                       self.host))
 
     def get_tasks(self, include_current=False):
-        tasks = asyncio.Task.all_tasks(self.loop)
+        tasks = utils.all_tasks(self.loop)
         if not include_current:
-            curr = asyncio.Task.current_task(self.loop)
+            curr = utils.current_task(self.loop)
             tasks.discard(curr)
         return tuple(tasks)
 
@@ -223,9 +223,9 @@ class EventLoop(object):
                 if evname:
                     consumed = await self._process_event(e, evname)
                     if not consumed:
-                        self.log.warn("unconsumed  event '{}'?".format(e))
+                        self.log.warning("unconsumed  event '{}'?".format(e))
                 else:
-                    self.log.warn("received unnamed event '{}'?".format(e))
+                    self.log.warning("received unnamed event '{}'?".format(e))
 
         pending = self.get_tasks()
         if pending:
@@ -427,7 +427,7 @@ class EventLoop(object):
         '''Stop bg thread and event loop.
         '''
         if current_thread() is self._thread:
-            self.log.warn("Stop called from event loop thread?")
+            self.log.warning("Stop called from event loop thread?")
 
         # wait on disconnect success
         self._con.disconnect()

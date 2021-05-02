@@ -132,11 +132,11 @@ class InboundProtocol(asyncio.Protocol):
                     fut = futures.popleft()
                     fut.set_result(event)
                 except IndexError:
-                    self.log.warn("no scheduled future could be found "
+                    self.log.warning("no scheduled future could be found "
                                   "for event?\n{!r}".format(event))
-                except asyncio.InvalidStateError:
+                except asyncio.base_futures.InvalidStateError:
                     if not fut.cancelled():
-                        self.log.warn(
+                        self.log.warning(
                             "future was already cancelled for event {}"
                             .format(event))
                     else:
@@ -251,7 +251,7 @@ class InboundProtocol(asyncio.Protocol):
         try:
             event = future.result()
         except asyncio.CancelledError:
-            self.log.warn("future cancelled for cmd `{}`"
+            self.log.warning("future cancelled for cmd `{}`"
                           .format(future.cmd))
             return {}
 

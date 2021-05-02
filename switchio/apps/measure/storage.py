@@ -12,6 +12,7 @@ from collections import OrderedDict, deque
 from contextlib import contextmanager
 import tempfile
 import csv
+import numpy
 import os
 from switchio import utils
 import multiprocessing as mp
@@ -20,7 +21,7 @@ import time
 try:
     import pandas as pd
 except ImportError as ie:
-    utils.log_to_stderr().warn(str(ie))
+    utils.log_to_stderr().warning(str(ie))
     pd = None
 else:
     from . import shmarray
@@ -36,7 +37,7 @@ def moving_avg(x, n=100):
     '''Compute the windowed arithmetic mean of `x` with window length `n`
     '''
     n = min(x.size, n)
-    cs = pd.np.cumsum(x)
+    cs = numpy.cumsum(x)
     cs[n:] = cs[n:] - cs[:-n]
     # cs[n - 1:] / n  # true means portion
     return cs / n  # NOTE: first n-2 vals are not true means
@@ -350,10 +351,10 @@ class DataStorer(object):
                  storetype=None):
         self.name = name
         try:
-            self.dtype = pd.np.dtype(dtype) if pd else dtype
+            self.dtype = numpy.dtype(dtype) if pd else dtype
         except TypeError:
             # set all columns to float64
-            self.dtype = pd.np.dtype(
+            self.dtype = numpy.dtype(
                 list(zip(dtype, itertools.repeat('float64')))
             )
 
@@ -426,7 +427,7 @@ class DataStorer(object):
         self._iput += 1
         diff = time.time() - start
         if diff > 0.005:  # any more then 5ms warn the user
-            self.log.warn("queue.put took '{}' seconds".format(diff))
+            self.log.warning("queue.put took '{}' seconds".format(diff))
 
     def stopwriter(self):
         """Trigger the background frame writer to terminate

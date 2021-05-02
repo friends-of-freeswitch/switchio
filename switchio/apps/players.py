@@ -217,7 +217,7 @@ class PlayRec(object):
         # mark as recorded so user can block with `EventListener.waitfor`
         sess.vars['recorded'] = True
         if sess.hungup:
-            self.log.warn(
+            self.log.warning(
                 "sess '{}' was already hungup prior to recording completion?"
                 .format(sess.uuid))
 

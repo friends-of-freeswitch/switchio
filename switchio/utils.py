@@ -13,6 +13,7 @@ import logging
 import uuid as mod_uuid
 import importlib
 import pkgutil
+import asyncio
 
 
 class ESLError(Exception):
@@ -38,6 +39,11 @@ LOG_FORMAT = PREFIX + LEVEL + (
     "%(name)s %(filename)s:%(lineno)d : %(message)s")
 DATE_FORMAT = '%b %d %H:%M:%S'
 TRACE = 5
+# Backwards compatibility for < python-3.7
+all_tasks = (getattr(asyncio, 'all_tasks', None)
+             or asyncio.Task.all_tasks)
+current_task = (getattr(asyncio, 'current_task', None)
+                or asyncio.Task.current_task)
 
 
 def get_logger(name=None):
@@ -179,9 +185,9 @@ def get_args(func):
     :return: the argnames, kwargnames defined by func
     :rtype: tuple
     """
-    args, varargs, varkw, defaults = inspect.getargspec(func)
-    index = -len(defaults) if defaults else None
-    return args[slice(0, index)], args[slice(index, None if index else 0)]
+    argspec = inspect.getfullargspec(func)
+    index = -len(argspec.defaults) if argspec.defaults else None
+    return argspec.args[slice(0, index)], argspec.args[slice(index, None if index else 0)]
 
 
 def is_callback(func):

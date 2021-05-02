@@ -59,7 +59,8 @@ class shmarray(numpy.ndarray):
         try:
             tp.__array_interface__
         except AttributeError:
-            ctypeslib.prep_array(tp)
+            if hasattr(ctypeslib, 'prep_array'):
+                ctypeslib.prep_array(tp)
 
         obj = numpy.ndarray.__new__(
             cls, shape, dtype, ctypesArray, offset, strides, order)

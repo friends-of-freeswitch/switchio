@@ -52,7 +52,7 @@ class DtmfChecker(object):
         remaining = self.incomplete[sess]
         expected = remaining.popleft()
         if expected != digit:
-            self.log.warn("Expected digit '{}', instead received '{}' for"
+            self.log.warning("Expected digit '{}', instead received '{}' for"
                           " session '{}'".format(expected, digit))
             self.failed.append(sess)
         if not remaining:  # all digits have now arrived

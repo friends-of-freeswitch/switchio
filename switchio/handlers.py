@@ -210,7 +210,7 @@ class EventListener(object):
                                job_uuid))
                 consumed = True
             else:
-                self.log.warn("No session corresponding to bj '{}'"
+                self.log.warning("No session corresponding to bj '{}'"
                               .format(job_uuid))
 
             # run the job's callback
@@ -247,7 +247,7 @@ class EventListener(object):
         # variable is used for tracking locally bridged calls
         call_uuid = e.get(self.call_tracking_header)  # could be 'None'
         if not call_uuid:
-            self.log.warn(
+            self.log.warning(
                 "Unable to associate {} session '{}' with a call using "
                 "variable '{}'".format(
                     direction, sess.uuid, self.call_tracking_header))
@@ -289,7 +289,7 @@ class EventListener(object):
             sess.update(e)
             return True, sess
         else:
-            self.log.warn('Skipping answer of {}'.format(uuid))
+            self.log.warning('Skipping answer of {}'.format(uuid))
             return False, None
 
     @handler('CHANNEL_DESTROY')
@@ -316,7 +316,7 @@ class EventListener(object):
         # if possible lookup the relevant call
         call_uuid = e.get(self.call_tracking_header)
         if not call_uuid:
-            self.log.warn(
+            self.log.warning(
                 "handling HANGUP for {} session '{}' which can not be "
                 "associated with an active call using {}?"
                 .format(direction, sess.uuid, self.call_tracking_header))
@@ -342,7 +342,7 @@ class EventListener(object):
                 # remove call from our set
                 call = self.calls.pop(call.uuid, None)
                 if not call:
-                    self.log.warn(
+                    self.log.warning(
                         "Call with id '{}' containing Session '{}' was "
                         "already removed".format(call.uuid, sess.uuid))
         else:

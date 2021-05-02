@@ -140,8 +140,8 @@ class Router(object):
     async def on_park(self, sess):
         handled = False
         if not all(sess[key] == val for key, val in self.guards.items()):
-            self.log.warn("Session with id {} did not pass guards"
-                          .format(sess.uuid))
+            self.log.warning("Session with id {} did not pass guards"
+                             .format(sess.uuid))
         else:
             for func in self.route.iter_matches(sess, sess=sess, router=self):
                 handled = True  # at least one match
@@ -163,7 +163,7 @@ class Router(object):
                         .format(func.func, func.keywords['match'], sess.uuid)
                     )
         if not handled and self.guard:
-            self.log.warn("Rejecting session {}".format(sess.uuid))
+            self.log.warning("Rejecting session {}".format(sess.uuid))
             await sess.hangup('NO_ROUTE_DESTINATION')
 
     @staticmethod

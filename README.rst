@@ -1,6 +1,6 @@
 switchio
 ========
-asyncio_ powered FreeSWITCH_ cluster control using pure Python_ 3.5+
+asyncio_ powered FreeSWITCH_ cluster control using pure Python_ 3.6+
 
 |pypi| |travis| |versions| |license| |docs|
 

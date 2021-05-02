@@ -335,7 +335,7 @@ class Originator(object):
         self._report_on_none()
         # if sess.call.sessions and sess.is_outbound():
         #     # we normally expect that the caller hangs up
-        #     self.log.warn(
+        #     self.log.warning(
         #         'received hangup for inbound session {}'
         #         .format(sess.uuid)
         #     )
@@ -521,7 +521,7 @@ class Originator(object):
     def hupall(self):
         '''Send the 'hupall' command to hangup all active calls.
         '''
-        self.log.warn("Stopping all calls with hupall!")
+        self.log.warning("Stopping all calls with hupall!")
         # set stopped state - no further bursts will be scheduled
         self.stop()
         return self.pool.evals('client.hupall()')
