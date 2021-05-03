@@ -12,21 +12,6 @@ from switchio import utils, connection
 import asyncio
 
 
-@pytest.fixture
-def ael(el):
-    """An event listener (el) with active event loop
-    Unsubscribe the listener from verbose updates.
-    """
-    assert not el.connected()
-    # avoid latency caused by update events
-    el.unsubscribe("CALL_UPDATE")
-    el.connect()
-    el.start()
-    assert el.connected()
-    yield el
-    el.disconnect()
-
-
 def bridge2dest_callback(sess):
     if sess['Call-Direction'] == 'inbound':
         sess.bridge(dest_url=sess['variable_sip_req_uri'])

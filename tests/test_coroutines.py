@@ -88,3 +88,51 @@ def test_coro_timeout(fsip):
         assert task.done()
         with pytest.raises(asyncio.TimeoutError):
             task.result()
+
+
+@pytest.mark.parametrize('sleep', [2, 5])
+def test_simplest_flow(fssock, scenario, client, ael, sleep):
+    """Verify that a coroutine can satisfy SIPp's simplest call flow.
+
+    Additionally, verify that when calls are not answered and left in the park
+    state they time out and are rejected after 3 seconds (according to the CI
+    dialplan).
+    """
+    class MyApp:
+        @coroutine(
+            "CHANNEL_PARK",
+            subscribe=('PLAYBACK_STOP', 'PLAYBACK_START')
+        )
+        async def answer_play_hangup(self, sess):
+            await asyncio.sleep(sleep)
+            await sess.answer()
+            # non-blocking
+            sess.playback(
+                'en/us/callie/ivr/8000/ivr-founder_of_freesource.wav')
+            await sess.recv("PLAYBACK_START")
+            await sess.recv("CHANNEL_HANGUP")
+            # XXX: seems the playback isn't stopping on its own? - the
+            # hangup does it though...
+            # sess.breakmedia()
+            await sess.recv("PLAYBACK_STOP")
+            await sess.recv("CHANNEL_HANGUP_COMPLETE")
+
+    client.connect()
+    client.listener = ael
+    # assigning a listener overrides it's call lookup var so restore it
+    client.listener.call_tracking_header = 'variable_call_uuid'
+    assert 'default' == client.load_app(MyApp, on_value="default")
+
+    uac = scenario.prepare()[1]
+    uac.proxyaddr = None
+    uac.destaddr = fssock
+    uac.pause_duration = 6000
+
+    # make the call
+    if sleep > 3:
+        # XML dialplan's `park_timeout` should reject the call
+        with pytest.raises(RuntimeError):
+            uac()
+    else:
+        # call should be hung up by this UAC
+        uac()

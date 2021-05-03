@@ -39,4 +39,7 @@ __all__ = [
     'Service',
 ]
 
-PARK_DP = path.join(path.dirname(__file__), '../conf', 'switchiodp.xml')
+PARK_DP = path.join(
+    path.dirname(__file__),
+    '../conf/ci-minimal/dialplan', 'switchiodp.xml'
+)

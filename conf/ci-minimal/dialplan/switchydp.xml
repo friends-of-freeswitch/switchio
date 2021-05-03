@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- A context for relinquishing control of all calls to switchio, the inbound ESL client -->
 <context name="switchio">
-  <!-- Park call and transfer control to esl -->
   <extension name="switchiopark">
     <condition field="destination_number" expression="^(.*)$">
+      <!-- Park call and transfer control to switchio over ESL -->
+      <action application="set" data="park_timeout=3:NETWORK_OUT_OF_ORDER"/>
       <action application="park"/>
     </condition>
   </extension>

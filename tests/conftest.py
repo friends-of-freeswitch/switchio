@@ -175,6 +175,21 @@ def el(fshost):
     assert not el.is_alive()
 
 
+@pytest.fixture
+def ael(el):
+    """An event listener (el) with active event loop
+    Unsubscribe the listener from verbose updates.
+    """
+    assert not el.connected()
+    # avoid latency caused by update events
+    el.unsubscribe("CALL_UPDATE")
+    el.connect()
+    el.start()
+    assert el.connected()
+    yield el
+    el.disconnect()
+
+
 @pytest.yield_fixture
 def client(fshost):
     """Deliver a core.Client connected to fshost

@@ -107,7 +107,7 @@ See the docs_ for the deats!
 
 .. _inbound ESL: https://freeswitch.org/confluence/display/FREESWITCH/mod_event_socket#mod_event_socket-Configuration
 .. _park-only: https://freeswitch.org/confluence/display/FREESWITCH/mod_dptools%3A+park
-.. _here: https://github.com/friends-of-freeswitch/switchio/blob/master/conf/switchiodp.xml
+.. _here: https://github.com/friends-of-freeswitch/switchio/blob/park_timeout/conf/ci-minimal/dialplan/switchydp.xml
 
 
 What's included?
