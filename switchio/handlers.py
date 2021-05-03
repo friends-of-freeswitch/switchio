@@ -170,8 +170,10 @@ class EventListener(object):
             resp = body.strip(ok + '\n')
 
         job = self.bg_jobs.get(job_uuid, None)
+        job_just_created = False
         if not job:
             job = Job(event=e)
+            job_just_created = True
         else:
             job.events.update(e)
 
@@ -187,8 +189,9 @@ class EventListener(object):
                     job.sess_uuid, str(body))
                 )
             job.fail(resp)  # fail the job
-            # always pop failed jobs
-            self.bg_jobs.pop(job_uuid)
+            if not job_just_created:
+                # always pop failed jobs
+                self.bg_jobs.pop(job_uuid)
             # append the id for later lookup and discard?
             self.failed_jobs[resp] += 1
             consumed = True

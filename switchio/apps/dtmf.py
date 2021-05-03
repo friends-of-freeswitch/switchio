@@ -38,7 +38,7 @@ class DtmfChecker(object):
                 "Transmitting DTMF seq '{}' for session  '{}'"
                 .format(self.sequence, sess.uuid)
             )
-            sess.broadcast('playback::silence_stream://0')
+            sess.broadcast('playback::silence_stream://-1')
             sess.send_dtmf(''.join(map(str, self.sequence)), self.duration)
 
     @event_callback('DTMF')
